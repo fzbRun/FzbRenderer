@@ -1,11 +1,18 @@
 #pragma once
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
+
+//必须在vulkan.h前定义VK_USE_PLATFORM_WIN32_KHR，但是vulkan.h是通过glfw3.h导入的，但是我在#include <GLFW/glfw3.h>前定义VK_USE_PLATFORM_WIN32_KHR没用
+//但是，我打开vulkan.h发现，定义VK_USE_PLATFORM_WIN32_KHR只会包含如下两个h文件，因此直接手动导入也是一样的。
+#define NOMINMAX	//windows.h中max与std和glm的max有冲突
+#include <windows.h>
+#include <vulkan/vulkan_win32.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_ENABLE_EXPERIMENTAL
-#include<vulkan/glm/glm.hpp>
+#include<glm/glm.hpp>
 
 #include <array>
 #include <optional>
@@ -181,8 +188,10 @@ struct MyImage {
 	uint32_t width = 512;
 	uint32_t height = 512;
 	uint32_t depth = 1;
+	uint32_t layerNum = 1;
 	uint32_t mipLevels = 1;
 	VkImageType type = VK_IMAGE_TYPE_2D;
+	VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
 	VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
 	VkFormat format = VK_FORMAT_R8G8B8A8_SRGB;
 	VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -198,6 +207,8 @@ struct MyImage {
 	VkImageView imageView;
 	VkDeviceMemory imageMemory;
 	VkSampler textureSampler;
+
+	HANDLE handle;
 
 };
 

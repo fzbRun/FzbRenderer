@@ -1,9 +1,7 @@
 #pragma once
-#ifndef COMMON_FUNCTIONS
-#define COMMON_FUNCTIONS
+#ifndef COMMON_APP
+#define COMMON_APP
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
 #include <string>
 #include <vector>
 #include <chrono>
@@ -19,16 +17,19 @@
 #include <unordered_map>
 #include<set>
 #include<filesystem>
+#include <algorithm>
 
+#ifndef STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#endif
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
-#include <vulkan/glm/gtx/hash.hpp>
+#include <glm/gtx/hash.hpp>
 
 #include "Camera.h"
 #include "StructSet.h"
@@ -180,7 +181,11 @@ public:
 
 	}
 
-	void createInstance(const char* appName = "Î´ÃüÃû", vector<const char*> instanceExtence = vector<const char*>(), vector<const char*> validationLayers = validationLayers_default) {
+	void createInstance() {
+		fzbCreateInstance();
+	}
+
+	void fzbCreateInstance(const char* appName = "Î´ÃüÃû", vector<const char*> instanceExtence = vector<const char*>(), vector<const char*> validationLayers = validationLayers_default) {
 
 		//¼ì²âlayer
 		if (enableValidationLayers && !checkValidationLayerSupport()) {
@@ -1538,7 +1543,7 @@ public:
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = myImage.image;
-		viewInfo.viewType = myImage.type == VK_IMAGE_TYPE_2D ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_3D;
+		viewInfo.viewType = myImage.viewType;// == VK_IMAGE_TYPE_2D ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_3D;
 		viewInfo.format = myImage.format;
 		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;

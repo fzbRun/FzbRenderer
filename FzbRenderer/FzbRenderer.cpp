@@ -65,7 +65,7 @@ private:
 
 	void initVulkan() {
 		initComponent();
-		createInstance("Voxelization", { VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME });
+		createInstance();
 		setupDebugMessenger();
 		createSurface();
 		createDevice();
@@ -84,10 +84,19 @@ private:
 
 	void initComponent() {
 		svoSetting.UseSVO = true;
+		svoSetting.UseSVO_OnlyVoxelGridMap = false;
 		svoSetting.UseBlock = true;
 		svoSetting.UseConservativeRasterization = false;
 		svoSetting.UseSwizzle = false;
 		svoSetting.voxelNum = voxelNum;
+	}
+
+	void createInstance() {
+		std::vector<const char*> instanceExtensions = { VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME };
+		if (svoSetting.UseSVO) {
+			FzbSVO::getInstanceExtensions(svoSetting, instanceExtensions);
+		}
+		fzbCreateInstance("FzbRenderer", instanceExtensions);
 	}
 
 	void createDevice() {
@@ -533,16 +542,17 @@ private:
 		fence = createFence();
 	}
 
-	void waitComponentFence() {
-		if (currentFrame == 0)
-			vkWaitForFences(logicalDevice, 1, &fzbSVO->fence, VK_TRUE, UINT64_MAX);
+	void waitComponentFinished() {
+		//应该使用信号量而不是栏栅
+		//if (currentFrame == 0)
+		//	vkWaitForFences(logicalDevice, 1, &fzbSVO->fence, VK_TRUE, UINT64_MAX);
 	}
 
 	void drawFrame() {
 
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		waitComponentFence();
+		waitComponentFinished();
 		vkWaitForFences(logicalDevice, 1, &fence, VK_TRUE, UINT64_MAX);
 
 		uint32_t imageIndex;
@@ -564,9 +574,8 @@ private:
 		vkResetCommandBuffer(commandBuffers[0], 0);
 		recordCommandBuffer(commandBuffers[0], imageIndex);
 
-		//其实这里可以将两个subpass拆开，因为第一个subpass不需要等待帧缓冲
-		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores };
-		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores, fzbSVO->fzbSync->fzbSemaphores[svoSetting.UseSVO_OnlyVoxelGridMap ? 0 : 1].semaphore};
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
 		submitInfo = {};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.waitSemaphoreCount = 1;

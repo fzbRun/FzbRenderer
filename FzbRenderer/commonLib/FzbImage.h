@@ -12,6 +12,13 @@
 #ifndef FZB_IMAGE_H
 #define FZB_IMAGE_H
 
+void GetMemoryWin32HandleKHR(VkDevice device, VkMemoryGetWin32HandleInfoKHR* handleInfo, HANDLE* handle) {
+	auto func = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR");
+	if (func != nullptr) {
+		func(device, handleInfo, handle);
+	}
+}
+
 /*
 FzbImage主要用于给单独的渲染模块使用
 App类不需要FzbImage，其本身包含FzbImage的功能
@@ -23,6 +30,8 @@ public:
 	//依赖
 	VkPhysicalDevice physicalDevice;
 	VkDevice logicalDevice;
+
+	bool UseExternal = false;
 
 	FzbImage(std::unique_ptr<FzbDevice>& fzbDevice) {
 		this->physicalDevice = fzbDevice->physicalDevice;
@@ -57,21 +66,46 @@ public:
 		imageInfo.samples = myImage.sampleCount;
 		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 		imageInfo.flags = 0;
+
+		VkExternalMemoryImageCreateInfo externalMemoryImageCreateInfo{};
+		if (UseExternal) {
+			externalMemoryImageCreateInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+			externalMemoryImageCreateInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+			imageInfo.pNext = &externalMemoryImageCreateInfo;
+		}
+
 		if (vkCreateImage(logicalDevice, &imageInfo, nullptr, &myImage.image) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create image!");
 		}
 
 		VkMemoryRequirements memRequirements;
 		vkGetImageMemoryRequirements(logicalDevice, myImage.image, &memRequirements);
+
 		VkMemoryAllocateInfo allocInfo{};
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocInfo.allocationSize = memRequirements.size;
 		allocInfo.memoryTypeIndex = fzbBuffer->findMemoryType(memRequirements.memoryTypeBits, myImage.properties);
+
+		VkExportMemoryAllocateInfo exportInfo = {};
+		if (UseExternal) {
+			exportInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+			exportInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+			allocInfo.pNext = &exportInfo;
+		}
+
 		if (vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &myImage.imageMemory) != VK_SUCCESS) {
 			throw std::runtime_error("failed to allocate image memory!");
 		}
 
 		vkBindImageMemory(logicalDevice, myImage.image, myImage.imageMemory, 0);
+
+		if (UseExternal) {
+			VkMemoryGetWin32HandleInfoKHR handleInfo = {};
+			handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+			handleInfo.memory = myImage.imageMemory;
+			handleInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+			GetMemoryWin32HandleKHR(logicalDevice, &handleInfo, &myImage.handle);
+		}
 
 	}
 
@@ -279,7 +313,7 @@ public:
 		VkImageViewCreateInfo viewInfo{};
 		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		viewInfo.image = myImage.image;
-		viewInfo.viewType = myImage.type == VK_IMAGE_TYPE_2D ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_3D;
+		viewInfo.viewType = myImage.viewType;// == VK_IMAGE_TYPE_2D ? VK_IMAGE_VIEW_TYPE_2D : VK_IMAGE_VIEW_TYPE_3D;
 		viewInfo.format = myImage.format;
 		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -475,6 +509,17 @@ public:
 		);
 		//#endif
 
+	}
+
+	void cleanImage(MyImage& myImage) {
+		if (myImage.handle)
+			CloseHandle(myImage.handle);
+		if (myImage.textureSampler) {
+			vkDestroySampler(logicalDevice, myImage.textureSampler, nullptr);
+		}
+		vkDestroyImageView(logicalDevice, myImage.imageView, nullptr);
+		vkDestroyImage(logicalDevice, myImage.image, nullptr);
+		vkFreeMemory(logicalDevice, myImage.imageMemory, nullptr);
 	}
 
 };

@@ -8,11 +8,14 @@
 #include "../FzbSync.h"
 #include "../Camera.h"
 
+#include "./CUDA/createSVO.cuh"
+
 #ifndef SVO_H	//Sparse voxel octree
 #define SVO_H
 
 struct FzbSVOSetting {
 	bool UseSVO = true;
+	bool UseSVO_OnlyVoxelGridMap = false;
 	bool UseSwizzle = false;
 	bool UseBlock = false;
 	bool UseConservativeRasterization = false;
@@ -31,6 +34,7 @@ class FzbSVO {
 public:
 
 	//依赖
+	VkPhysicalDevice physicalDevice;
 	VkDevice logicalDevice;
 	VkQueue graphicsQueue;
 	VkExtent2D swapChainExtent;
@@ -50,13 +54,11 @@ public:
 	VkPipeline voxelGridMapPipeline;
 	VkPipelineLayout voxelGridMapPipelineLayout;
 
-	VkSemaphore imageAvailableSemaphores;
-	VkSemaphore renderFinishedSemaphores;
-	VkFence fence;
-
+	FzbSVOCudaVariable* fzbSVOCudaVar;
 
 	FzbSVO(std::unique_ptr<FzbDevice>& fzbDevice, std::unique_ptr<FzbSwapchain>& fzbSwapchain, VkCommandPool commandPool, MyModel& model, FzbSVOSetting svoSetting) {
 		
+		this->physicalDevice = fzbDevice->physicalDevice;
 		this->logicalDevice = fzbDevice->logicalDevice;
 		this->graphicsQueue = fzbDevice->graphicsQueue;
 		this->swapChainExtent = fzbSwapchain->swapChainExtent;
@@ -67,6 +69,17 @@ public:
 		this->fzbSync = std::make_unique<FzbSync>(fzbDevice);
 		this->svoSetting = svoSetting;
 
+		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
+			this->fzbImage->UseExternal = true;
+		}
+
+	}
+
+	static void getInstanceExtensions(FzbSVOSetting svoSetting, std::vector<const char*>& instanceExtensions) {
+		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
+			instanceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
+			instanceExtensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
+		}
 	}
 
 	static void getDeviceExtensions(FzbSVOSetting svoSetting, std::vector<const char*>& deviceExtensions) {
@@ -79,6 +92,12 @@ public:
 			deviceExtensions.push_back(VK_KHR_MULTIVIEW_EXTENSION_NAME);
 			deviceExtensions.push_back(VK_NV_VIEWPORT_SWIZZLE_EXTENSION_NAME);
 			deviceExtensions.push_back(VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME);
+		}
+		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
+			deviceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_EXTENSION_NAME);
+			deviceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME);
+			deviceExtensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_EXTENSION_NAME);
+			deviceExtensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_WIN32_EXTENSION_NAME);
 		}
 
 	}
@@ -98,19 +117,18 @@ public:
 		createVoxelGridMapPipeline();
 		createVoxelGridMapSyncObjects();
 		createVoxelGridMap();
+		if (!svoSetting.UseSVO_OnlyVoxelGridMap)
+			createSVOCuda(physicalDevice, voxelGridMap, fzbSync->fzbSemaphores[0].handle, fzbSync->fzbSemaphores[1].handle, fzbSVOCudaVar);
 	}
 
 	void cleanSVO() {
 
-		if (!svoSetting.UseSVO)
-			return;
-
-		if (voxelGridMap.textureSampler) {
-			vkDestroySampler(logicalDevice, voxelGridMap.textureSampler, nullptr);
+		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
+			cleanSVOCuda(fzbSVOCudaVar);
+			delete fzbSVOCudaVar;
 		}
-		vkDestroyImageView(logicalDevice, voxelGridMap.imageView, nullptr);
-		vkDestroyImage(logicalDevice, voxelGridMap.image, nullptr);
-		vkFreeMemory(logicalDevice, voxelGridMap.imageMemory, nullptr);
+
+		fzbImage->cleanImage(voxelGridMap);
 
 		for (size_t i = 0; i < fzbBuffer->framebuffers.size(); i++) {
 			for (int j = 0; j < fzbBuffer->framebuffers[i].size(); j++) {
@@ -127,9 +145,7 @@ public:
 		vkDestroyDescriptorPool(logicalDevice, fzbDescriptor->descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(logicalDevice, voxelGridMapDescriptorSetLayout, nullptr);
 
-		vkDestroySemaphore(logicalDevice, imageAvailableSemaphores, nullptr);
-		vkDestroySemaphore(logicalDevice, renderFinishedSemaphores, nullptr);
-		vkDestroyFence(logicalDevice, fence, nullptr);
+		fzbSync->cleanFzbSync();
 
 		fzbBuffer->cleanupBuffers();
 
@@ -226,9 +242,11 @@ private:
 		voxelGridMap.height = svoSetting.voxelNum;
 		voxelGridMap.depth = svoSetting.voxelNum;
 		voxelGridMap.type = VK_IMAGE_TYPE_3D;
+		voxelGridMap.viewType = VK_IMAGE_VIEW_TYPE_3D;
 		voxelGridMap.format = VK_FORMAT_R32_UINT;
 		voxelGridMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
 		fzbImage->createMyImage(voxelGridMap, fzbBuffer);
+
 	}
 
 	void createVoxelGridMapDescriptor() {
@@ -483,9 +501,15 @@ private:
 	}
 
 	void createVoxelGridMapSyncObjects() {	//这里应该返回一个信号量，然后阻塞主线程，知道渲染完成，才能唤醒
-		imageAvailableSemaphores = fzbSync->createSemaphore();
-		renderFinishedSemaphores = fzbSync->createSemaphore();
-		fence = fzbSync->createFence();
+		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
+			fzbSync->createSemaphore(false);
+		}
+		else {
+			fzbSync->createSemaphore(true);
+			fzbSync->createSemaphore(true);
+		}
+
+		fzbSync->createFence();
 	}
 
 	void createVoxelGridMap() {
@@ -493,7 +517,7 @@ private:
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-		vkResetFences(logicalDevice, 1, &fence);
+		vkResetFences(logicalDevice, 1, &fzbSync->fzbFences[0]);
 		VkCommandBuffer commandBuffer = fzbBuffer->commandBuffers[0];
 		vkResetCommandBuffer(commandBuffer, 0);
 
@@ -545,20 +569,15 @@ private:
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffer;
 		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderFinishedSemaphores;
+		submitInfo.pSignalSemaphores = svoSetting.UseSVO_OnlyVoxelGridMap ? &fzbSync->fzbSemaphores[0].semaphore : &fzbSync->fzbSemaphores[1].semaphore;
 
 		//执行完后解开fence
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
 	}
 
-
-
 };
-
-
-
 
 #endif
