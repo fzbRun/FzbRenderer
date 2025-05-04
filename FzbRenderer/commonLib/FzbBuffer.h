@@ -8,6 +8,13 @@
 #ifndef FZB_BUFFER_H
 #define FZB_BUFFER_H
 
+void GetMemoryWin32HandleKHR(VkDevice device, VkMemoryGetWin32HandleInfoKHR* handleInfo, HANDLE* handle) {
+	auto func = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR");
+	if (func != nullptr) {
+		func(device, handleInfo, handle);
+	}
+}
+
 /*
 FzbBuffer主要用于给单独的渲染模块使用
 App类不需要FzbBuffer，其本身包含FzbBuffer的功能
@@ -39,6 +46,8 @@ public:
 
 	std::vector<std::vector<VkFramebuffer>> framebuffers;
 
+	std::vector<HANDLE> storageBufferHandles;
+
 	FzbBuffer(std::unique_ptr<FzbDevice>& fzbDevice, VkCommandPool commandPool) {
 		this->commandPool = commandPool;
 		this->physicalDevice = fzbDevice->physicalDevice;
@@ -61,13 +70,20 @@ public:
 
 	}
 
-	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory) {
+	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory, bool UseExternal = false) {
 
 		VkBufferCreateInfo bufferInfo{};
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 		bufferInfo.size = size;
 		bufferInfo.usage = usage;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		VkExternalMemoryBufferCreateInfo extBufferInfo{};
+		if (UseExternal) {
+			extBufferInfo.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_BUFFER_CREATE_INFO;
+			extBufferInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+			bufferInfo.pNext = &extBufferInfo;
+		}
 
 		if (vkCreateBuffer(logicalDevice, &bufferInfo, nullptr, &buffer) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create vertex buffer!");
@@ -80,11 +96,29 @@ public:
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocInfo.allocationSize = memRequirements.size;
 		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
+
+		VkExportMemoryAllocateInfo exportAllocInfo{};
+		if (UseExternal) {
+			exportAllocInfo.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+			exportAllocInfo.handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+			allocInfo.pNext = &exportAllocInfo;
+		}
+
 		if (vkAllocateMemory(logicalDevice, &allocInfo, nullptr, &bufferMemory) != VK_SUCCESS) {
 			throw std::runtime_error("failed to allocate vertex buffer memory!");
 		}
 
 		vkBindBufferMemory(logicalDevice, buffer, bufferMemory, 0);
+
+		if (UseExternal) {
+			HANDLE handle;
+			VkMemoryGetWin32HandleInfoKHR handleInfo{};
+			handleInfo.sType = VK_STRUCTURE_TYPE_MEMORY_GET_WIN32_HANDLE_INFO_KHR;
+			handleInfo.memory = bufferMemory;
+			handleInfo.handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR;
+			GetMemoryWin32HandleKHR(logicalDevice, &handleInfo, &handle);
+			this->storageBufferHandles.push_back(handle);
+		}
 
 	}
 
@@ -155,7 +189,7 @@ public:
 	}
 
 	template<typename T>	//模板函数需要在头文件中定义
-	void createStorageBuffer(uint32_t bufferSize, std::vector<T>* bufferData) {
+	void createStorageBuffer(uint32_t bufferSize, std::vector<T>* bufferData, bool UseExternal = false) {
 		VkBuffer stagingBuffer;
 		VkDeviceMemory stagingBufferMemory;
 		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
@@ -167,7 +201,7 @@ public:
 
 		VkBuffer storageBuffer;
 		VkDeviceMemory storageBufferMemory;
-		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, storageBuffer, storageBufferMemory);
+		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, storageBuffer, storageBufferMemory, UseExternal);
 
 		copyBuffer(stagingBuffer, storageBuffer, bufferSize);
 
@@ -270,6 +304,10 @@ public:
 		for (int i = 0; i < uniformBuffersStatic.size(); i++) {
 			vkDestroyBuffer(logicalDevice, uniformBuffersStatic[i], nullptr);
 			vkFreeMemory(logicalDevice, uniformBuffersMemorysStatic[i], nullptr);
+		}
+
+		for (int i = 0; i < storageBufferHandles.size(); i++) {
+			CloseHandle(storageBufferHandles[i]);
 		}
 
 		//vkDestroyCommandPool(logicalDevice, commandPool, nullptr);	//交给主程序销毁

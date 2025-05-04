@@ -54,7 +54,12 @@ public:
 	VkPipeline voxelGridMapPipeline;
 	VkPipelineLayout voxelGridMapPipelineLayout;
 
-	FzbSVOCudaVariable* fzbSVOCudaVar;
+	std::unique_ptr<SVOCuda> svoCuda;
+	vector<FzbSVONode> nodePool;
+	vector<FzbVoxelValue> voxelValueBuffer;
+
+	VkDescriptorSetLayout svoDescriptorSetLayout;
+	VkDescriptorSet svoDescriptorSet;
 
 	FzbSVO(std::unique_ptr<FzbDevice>& fzbDevice, std::unique_ptr<FzbSwapchain>& fzbSwapchain, VkCommandPool commandPool, MyModel& model, FzbSVOSetting svoSetting) {
 		
@@ -70,7 +75,7 @@ public:
 		this->svoSetting = svoSetting;
 
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			this->fzbImage->UseExternal = true;
+			this->svoCuda = std::make_unique<SVOCuda>();
 		}
 
 	}
@@ -111,21 +116,24 @@ public:
 
 		createBuffer(model);
 		initVoxelGridMap();
+		createDescriptorPool();
 		createVoxelGridMapDescriptor();
 		createVoxelGridMapRenderPass();
 		createVoxelGridMapFramebuffer();
 		createVoxelGridMapPipeline();
 		createVoxelGridMapSyncObjects();
 		createVoxelGridMap();
-		if (!svoSetting.UseSVO_OnlyVoxelGridMap)
-			createSVOCuda(physicalDevice, voxelGridMap, fzbSync->fzbSemaphores[0].handle, fzbSync->fzbSemaphores[1].handle, fzbSVOCudaVar);
+		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
+			createSVOCuda();
+			createSVODescriptor();
+		}
+
 	}
 
 	void cleanSVO() {
 
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			cleanSVOCuda(fzbSVOCudaVar);
-			delete fzbSVOCudaVar;
+			svoCuda->clean();
 		}
 
 		fzbImage->cleanImage(voxelGridMap);
@@ -234,6 +242,10 @@ private:
 
 		memcpy(fzbBuffer->uniformBuffersMappedsStatic[0], &SVOUniformBufferObject, sizeof(SVOUniform));
 
+		if (svoSetting.UseSVO_OnlyVoxelGridMap)
+			return;
+		
+
 	}
 
 	void initVoxelGridMap(){
@@ -245,16 +257,20 @@ private:
 		voxelGridMap.viewType = VK_IMAGE_VIEW_TYPE_3D;
 		voxelGridMap.format = VK_FORMAT_R32_UINT;
 		voxelGridMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-		fzbImage->createMyImage(voxelGridMap, fzbBuffer);
-
+		fzbImage->createMyImage(voxelGridMap, fzbBuffer, !svoSetting.UseSVO_OnlyVoxelGridMap);
 	}
 
-	void createVoxelGridMapDescriptor() {
-
+	void createDescriptorPool() {
 		std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
 		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 });
+		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
+			bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 });
+		}
 		fzbDescriptor->createDescriptorPool(bufferTypeAndNum);
+	}
+
+	void createVoxelGridMapDescriptor() {
 
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
 		std::vector<VkShaderStageFlagBits> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_FRAGMENT_BIT };
@@ -576,6 +592,54 @@ private:
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
+	}
+
+	void createSVOCuda() {
+
+		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, fzbSync->fzbSemaphores[0].handle, fzbSync->fzbSemaphores[1].handle);
+
+		//由于不能从cuda中直接导出数组的handle，因此我们需要先创建一个buffer，然后在cuda中将数据copy进去
+		nodePool.resize(svoCuda->nodeArrayNum * 8);
+		this->fzbBuffer->createStorageBuffer<FzbSVONode>(svoCuda->nodeArrayNum * 8 * sizeof(FzbSVONode), &nodePool, true);
+		voxelValueBuffer.resize(svoCuda->voxelNum);
+		this->fzbBuffer->createStorageBuffer<FzbVoxelValue>(svoCuda->voxelNum * sizeof(FzbVoxelValue), &voxelValueBuffer, true);
+
+		svoCuda->getSVOCuda(physicalDevice, fzbBuffer->storageBufferHandles[0], fzbBuffer->storageBufferHandles[1]);
+
+	}
+
+	void createSVODescriptor() {
+		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+		std::vector<VkShaderStageFlagBits> descriptorShaderFlags = { VK_SHADER_STAGE_FRAGMENT_BIT, VK_SHADER_STAGE_FRAGMENT_BIT };
+		svoDescriptorSetLayout = fzbDescriptor->createDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
+		svoDescriptorSet = fzbDescriptor->createDescriptorSet(svoDescriptorSetLayout);
+
+		std::array<VkWriteDescriptorSet, 2> svoDescriptorWrites{};
+		VkDescriptorBufferInfo nodePoolBufferInfo{};
+		nodePoolBufferInfo.buffer = fzbBuffer->storageBuffers[0];
+		nodePoolBufferInfo.offset = 0;
+		nodePoolBufferInfo.range = sizeof(FzbSVONode) * this->svoCuda->nodeArrayNum * 8;
+		svoDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		svoDescriptorWrites[0].dstSet = svoDescriptorSet;
+		svoDescriptorWrites[0].dstBinding = 0;
+		svoDescriptorWrites[0].dstArrayElement = 0;
+		svoDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		svoDescriptorWrites[0].descriptorCount = 1;
+		svoDescriptorWrites[0].pBufferInfo = &nodePoolBufferInfo;
+
+		VkDescriptorBufferInfo voxelValueBufferInfo{};
+		voxelValueBufferInfo.buffer = fzbBuffer->storageBuffers[1];
+		voxelValueBufferInfo.offset = 0;
+		voxelValueBufferInfo.range = sizeof(FzbVoxelValue) * this->svoCuda->voxelNum;
+		svoDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		svoDescriptorWrites[1].dstSet = svoDescriptorSet;
+		svoDescriptorWrites[1].dstBinding = 0;
+		svoDescriptorWrites[1].dstArrayElement = 0;
+		svoDescriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		svoDescriptorWrites[1].descriptorCount = 1;
+		svoDescriptorWrites[1].pBufferInfo = &voxelValueBufferInfo;
+
+		vkUpdateDescriptorSets(logicalDevice, svoDescriptorWrites.size(), svoDescriptorWrites.data(), 0, nullptr);
 	}
 
 };

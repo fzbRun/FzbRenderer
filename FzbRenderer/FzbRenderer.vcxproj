@@ -117,7 +117,8 @@
     </Link>
     <CudaCompile>
       <CodeGeneration>compute_86,sm_86;%(CodeGeneration)</CodeGeneration>
-      <AdditionalOptions> -std=c++17 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions> -rdc=true -lcudadevrt -std=c++17 %(AdditionalOptions)</AdditionalOptions>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -141,7 +142,8 @@
     </Link>
     <CudaCompile>
       <CodeGeneration>compute_86,sm_86;%(CodeGeneration)</CodeGeneration>
-      <AdditionalOptions> -std=c++17 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions> -rdc=true -lcudadevrt -std=c++17 %(AdditionalOptions)</AdditionalOptions>
+      <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>

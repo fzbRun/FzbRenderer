@@ -12,12 +12,12 @@
 #ifndef FZB_IMAGE_H
 #define FZB_IMAGE_H
 
-void GetMemoryWin32HandleKHR(VkDevice device, VkMemoryGetWin32HandleInfoKHR* handleInfo, HANDLE* handle) {
-	auto func = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR");
-	if (func != nullptr) {
-		func(device, handleInfo, handle);
-	}
-}
+//void GetMemoryWin32HandleKHR(VkDevice device, VkMemoryGetWin32HandleInfoKHR* handleInfo, HANDLE* handle) {
+//	auto func = (PFN_vkGetMemoryWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetMemoryWin32HandleKHR");
+//	if (func != nullptr) {
+//		func(device, handleInfo, handle);
+//	}
+//}
 
 /*
 FzbImage主要用于给单独的渲染模块使用
@@ -31,14 +31,12 @@ public:
 	VkPhysicalDevice physicalDevice;
 	VkDevice logicalDevice;
 
-	bool UseExternal = false;
-
 	FzbImage(std::unique_ptr<FzbDevice>& fzbDevice) {
 		this->physicalDevice = fzbDevice->physicalDevice;
 		this->logicalDevice = fzbDevice->logicalDevice;
 	}
 
-	void createImage(MyImage& myImage, std::unique_ptr<FzbBuffer>& fzbBuffer) {
+	void createImage(MyImage& myImage, std::unique_ptr<FzbBuffer>& fzbBuffer, bool UseExternal = false) {
 
 		VkImageCreateInfo imageInfo{};
 		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -360,7 +358,7 @@ public:
 
 	}
 
-	void createMyImage(MyImage& myImage, std::unique_ptr<FzbBuffer>& fzbBuffer) {
+	void createMyImage(MyImage& myImage, std::unique_ptr<FzbBuffer>& fzbBuffer, bool UseExternal = false) {
 
 		if (myImage.texturePath) {
 			int texWidth, texHeight, texChannels;

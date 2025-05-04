@@ -581,7 +581,7 @@ public:
 	void fzbCreateDevice(std::vector<const char*> deviceExtensions = deviceExtensions_default, VkPhysicalDeviceFeatures* deviceFeatures = nullptr, const void* pNextFeatures = nullptr, std::vector<const char*> validationLayers = validationLayers_default) {
 		fzbDevice = std::make_unique<FzbDevice>(instance, surface, enableValidationLayers);
 		fzbDevice->pickPhysicalDevice(deviceExtensions);
-		fzbDevice->createLogicalDevice(deviceExtensions, deviceFeatures, pNextFeatures, validationLayers);
+		fzbDevice->createLogicalDevice(deviceFeatures, deviceExtensions, pNextFeatures, validationLayers);
 		getDeviceInformation();
 	}
 

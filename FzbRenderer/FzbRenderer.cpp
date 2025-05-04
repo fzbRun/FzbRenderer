@@ -84,7 +84,7 @@ private:
 
 	void initComponent() {
 		svoSetting.UseSVO = true;
-		svoSetting.UseSVO_OnlyVoxelGridMap = false;
+		svoSetting.UseSVO_OnlyVoxelGridMap = true;
 		svoSetting.UseBlock = true;
 		svoSetting.UseConservativeRasterization = false;
 		svoSetting.UseSwizzle = false;

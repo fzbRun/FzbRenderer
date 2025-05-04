@@ -144,10 +144,15 @@ cudaExternalMemory_t importVulkanMemoryObjectFromKMTHandle(HANDLE handle, unsign
     return extMem;
 }
 
+//----------------------------------------------------------------缓冲区——-----------------------------------------------------
 /*
 A device pointer can be mapped onto an imported memory object as shown below. 
 The offset and size of the mapping must match that specified when creating the mapping using the corresponding Vulkan API.
 All mapped device pointers must be freed using cudaFree().
+*/
+/*
+貌似只能从vulkan中传递数据到cuda，而不能从cuda中传递数据到vulkan
+我们只能在vulkan中创建一个buffer，然后在cuda中将输出copy进去
 */
 void* mapBufferOntoExternalMemory(cudaExternalMemory_t extMem, unsigned long long offset, unsigned long long size) {
 
@@ -165,6 +170,7 @@ void* mapBufferOntoExternalMemory(cudaExternalMemory_t extMem, unsigned long lon
 
 }
 
+//----------------------------------------------------------------纹理------------------------------------------------------------
 /*
 A CUDA mipmapped array can be mapped onto an imported memory object as shown below. 
 The offset, dimensions, format and number of mip levels must match that specified when creating the mapping using the corresponding Vulkan API. 
@@ -269,123 +275,6 @@ unsigned int getCudaMipmappedArrayFlagsForVulkanImage(VkImageViewType vkImageVie
 
 }
 
-/*
-A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BITcan be imported into CUDA using the file descriptor associated with that object as shown below. 
-Note that CUDA assumes ownership of the file descriptor once it is imported. 
-Using the file descriptor after a successful import results in undefined behavior.
-*/
-cudaExternalSemaphore_t importVulkanSemaphoreObjectFromFileDescriptor(int fd) {
-
-    cudaExternalSemaphore_t extSem = NULL;
-    cudaExternalSemaphoreHandleDesc desc = {};
-
-    memset(&desc, 0, sizeof(desc));
-
-    desc.type = cudaExternalSemaphoreHandleTypeOpaqueFd;
-    desc.handle.fd = fd;
-
-    cudaImportExternalSemaphore(&extSem, &desc);
-
-    // Input parameter 'fd' should not be used beyond this point as CUDA has assumed ownership of it
-    return extSem;
-
-}
-
-/*
-A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT can be imported into CUDA using the NT handle associated with that object as shown below. 
-Note that CUDA does not assume ownership of the NT handle and it is the application’s responsibility to close the handle when it is not required anymore. 
-The NT handle holds a reference to the resource, so it must be explicitly freed before the underlying semaphore can be freed.
-*/
-cudaExternalSemaphore_t importVulkanSemaphoreObjectFromNTHandle(HANDLE handle) {
-
-    cudaExternalSemaphore_t extSem = NULL;
-    cudaExternalSemaphoreHandleDesc desc = {};
-
-    memset(&desc, 0, sizeof(desc));
-
-    desc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
-    desc.handle.win32.handle = handle;
-
-    cudaImportExternalSemaphore(&extSem, &desc);
-
-    // Input parameter 'handle' should be closed if it's not needed anymore
-    //CloseHandle(handle);
-
-    return extSem;
-}
-
-/*
-A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT can also be imported using a named handle if one exists as shown below.
-*/
-cudaExternalSemaphore_t importVulkanSemaphoreObjectFromNamedNTHandle(LPCWSTR name) {
-
-    cudaExternalSemaphore_t extSem = NULL;
-    cudaExternalSemaphoreHandleDesc desc = {};
-
-    memset(&desc, 0, sizeof(desc));
-
-    desc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
-    desc.handle.win32.name = (void*)name;
-
-    cudaImportExternalSemaphore(&extSem, &desc);
-
-    return extSem;
-}
-
-/*
-A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT can be imported into CUDA using the globally shared D3DKMT handle 
-associated with that object as shown below. 
-Since a globally shared D3DKMT handle does not hold a reference to the underlying semaphore it is automatically destroyed when all other references to the resource are destroyed.
-*/
-cudaExternalSemaphore_t importVulkanSemaphoreObjectFromKMTHandle(HANDLE handle) {
-
-    cudaExternalSemaphore_t extSem = NULL;
-    cudaExternalSemaphoreHandleDesc desc = {};
-
-    memset(&desc, 0, sizeof(desc));
-
-    desc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32Kmt;
-    desc.handle.win32.handle = (void*)handle;
-
-    cudaImportExternalSemaphore(&extSem, &desc);
-
-    return extSem;
-
-}
-
-/*
-An imported Vulkan semaphore object can be signaled as shown below. 
-Signaling such a semaphore object sets it to the signaled state. 
-The corresponding wait that waits on this signal must be issued in Vulkan. 
-Additionally, the wait that waits on this signal must be issued after this signal has been issued.
-*/
-void signalExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
-
-    cudaExternalSemaphoreSignalParams params = {};
-
-    memset(&params, 0, sizeof(params));
-
-    cudaSignalExternalSemaphoresAsync(&extSem, &params, 1, stream);
-
-}
-
-/*
-An imported Vulkan semaphore object can be waited on as shown below. 
-Waiting on such a semaphore object waits until it reaches the signaled state and then resets it back to the unsignaled state. 
-The corresponding signal that this wait is waiting on must be issued in Vulkan. 
-Additionally, the signal must be issued before this wait can be issued.
-*/
-void waitExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
-
-    cudaExternalSemaphoreWaitParams params = {};
-
-    memset(&params, 0, sizeof(params));
-
-    cudaWaitExternalSemaphoresAsync(&extSem, &params, 1, stream);
-
-}
-
-//------------------------------------------------------------Vulkan交互基础函数-----------------------------------------------------------------
 void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, MyImage& vkImage, HANDLE handle, unsigned long long size, 
     bool isDedicated, cudaExternalMemory_t& extMem, cudaMipmappedArray_t& mipmap, cudaTextureObject_t& texObj) {
 
@@ -446,6 +335,123 @@ void fromVulkanImageToCudaSurface(VkPhysicalDevice vkPhysicalDevice, MyImage& vk
     resDesc.res.array.array = cuArray;
 
     CHECK(cudaCreateSurfaceObject(&surfObj, &resDesc));
+
+}
+
+//-------------------------------------------------------------信号量---------------------------------------------------------
+/*
+A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_FD_BITcan be imported into CUDA using the file descriptor associated with that object as shown below.
+Note that CUDA assumes ownership of the file descriptor once it is imported.
+Using the file descriptor after a successful import results in undefined behavior.
+*/
+cudaExternalSemaphore_t importVulkanSemaphoreObjectFromFileDescriptor(int fd) {
+
+    cudaExternalSemaphore_t extSem = NULL;
+    cudaExternalSemaphoreHandleDesc desc = {};
+
+    memset(&desc, 0, sizeof(desc));
+
+    desc.type = cudaExternalSemaphoreHandleTypeOpaqueFd;
+    desc.handle.fd = fd;
+
+    cudaImportExternalSemaphore(&extSem, &desc);
+
+    // Input parameter 'fd' should not be used beyond this point as CUDA has assumed ownership of it
+    return extSem;
+
+}
+
+/*
+A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT can be imported into CUDA using the NT handle associated with that object as shown below.
+Note that CUDA does not assume ownership of the NT handle and it is the application’s responsibility to close the handle when it is not required anymore.
+The NT handle holds a reference to the resource, so it must be explicitly freed before the underlying semaphore can be freed.
+*/
+cudaExternalSemaphore_t importVulkanSemaphoreObjectFromNTHandle(HANDLE handle) {
+
+    cudaExternalSemaphore_t extSem = NULL;
+    cudaExternalSemaphoreHandleDesc desc = {};
+
+    memset(&desc, 0, sizeof(desc));
+
+    desc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
+    desc.handle.win32.handle = handle;
+
+    cudaImportExternalSemaphore(&extSem, &desc);
+
+    // Input parameter 'handle' should be closed if it's not needed anymore
+    //CloseHandle(handle);
+
+    return extSem;
+}
+
+/*
+A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_BIT can also be imported using a named handle if one exists as shown below.
+*/
+cudaExternalSemaphore_t importVulkanSemaphoreObjectFromNamedNTHandle(LPCWSTR name) {
+
+    cudaExternalSemaphore_t extSem = NULL;
+    cudaExternalSemaphoreHandleDesc desc = {};
+
+    memset(&desc, 0, sizeof(desc));
+
+    desc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
+    desc.handle.win32.name = (void*)name;
+
+    cudaImportExternalSemaphore(&extSem, &desc);
+
+    return extSem;
+}
+
+/*
+A Vulkan semaphore object exported using VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT can be imported into CUDA using the globally shared D3DKMT handle
+associated with that object as shown below.
+Since a globally shared D3DKMT handle does not hold a reference to the underlying semaphore it is automatically destroyed when all other references to the resource are destroyed.
+*/
+cudaExternalSemaphore_t importVulkanSemaphoreObjectFromKMTHandle(HANDLE handle) {
+
+    cudaExternalSemaphore_t extSem = NULL;
+    cudaExternalSemaphoreHandleDesc desc = {};
+
+    memset(&desc, 0, sizeof(desc));
+
+    desc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32Kmt;
+    desc.handle.win32.handle = (void*)handle;
+
+    cudaImportExternalSemaphore(&extSem, &desc);
+
+    return extSem;
+
+}
+
+/*
+An imported Vulkan semaphore object can be signaled as shown below.
+Signaling such a semaphore object sets it to the signaled state.
+The corresponding wait that waits on this signal must be issued in Vulkan.
+Additionally, the wait that waits on this signal must be issued after this signal has been issued.
+*/
+void signalExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
+
+    cudaExternalSemaphoreSignalParams params = {};
+
+    memset(&params, 0, sizeof(params));
+
+    cudaSignalExternalSemaphoresAsync(&extSem, &params, 1, stream);
+
+}
+
+/*
+An imported Vulkan semaphore object can be waited on as shown below.
+Waiting on such a semaphore object waits until it reaches the signaled state and then resets it back to the unsignaled state.
+The corresponding signal that this wait is waiting on must be issued in Vulkan.
+Additionally, the signal must be issued before this wait can be issued.
+*/
+void waitExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
+
+    cudaExternalSemaphoreWaitParams params = {};
+
+    memset(&params, 0, sizeof(params));
+
+    cudaWaitExternalSemaphoresAsync(&extSem, &params, 1, stream);
 
 }
 

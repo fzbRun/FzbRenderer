@@ -15,6 +15,7 @@
 
 #include <cuda_runtime.h> 
 #include <device_launch_parameters.h>
+#include <vector_types.h>
 
 #ifndef VULKAN_CUDA_INTEROP_CUH
 #define VULKAN_CUDA_INTEROP_CUH

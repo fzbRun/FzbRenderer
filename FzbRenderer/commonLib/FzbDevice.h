@@ -221,7 +221,7 @@ public:
 		return VK_SAMPLE_COUNT_1_BIT;
 	}
 
-	void createLogicalDevice(std::vector<const char*> deviceExtensions = deviceExtensions_default, VkPhysicalDeviceFeatures* deviceFeatures = nullptr, const void* pNextFeatures = nullptr, std::vector<const char*> validationLayers = validationLayers_default) {
+	void createLogicalDevice(VkPhysicalDeviceFeatures* deviceFeatures = nullptr, std::vector<const char*> deviceExtensions = deviceExtensions_default, const void* pNextFeatures = nullptr, std::vector<const char*> validationLayers = validationLayers_default) {
 
 		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 		std::set<uint32_t> uniqueQueueFamilies = { queueFamilyIndices.graphicsAndComputeFamily.value(), queueFamilyIndices.presentFamily.value() };
