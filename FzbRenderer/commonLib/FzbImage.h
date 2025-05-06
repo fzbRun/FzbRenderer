@@ -407,7 +407,7 @@ public:
 
 		}
 
-		createImage(myImage, fzbBuffer);
+		createImage(myImage, fzbBuffer, UseExternal);
 		createImageView(myImage);
 		createImageSampler(myImage);
 

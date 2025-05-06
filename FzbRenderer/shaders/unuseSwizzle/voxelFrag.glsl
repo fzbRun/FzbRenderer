@@ -13,14 +13,14 @@ layout(set = 0, binding = 0) uniform cameraUniformBufferObject{
 	vec4 swapChainExtent;
 } cubo;
 
-layout(set = 0, binding = 1) uniform voxelBufferObject{
+layout(set = 1, binding = 0) uniform voxelBufferObject{
 	mat4 model;
 	mat4 VP[3];
 	vec4 voxelSize_Num;
 	vec4 voxelStartPos;
 }vubo;
 
-layout(set = 1, binding = 0, r32ui) uniform coherent volatile uimage3D voxelMap;
+layout(set = 1, binding = 1, r32ui) uniform coherent volatile uimage3D voxelMap;
 
 //const float depthDigit = 65536.0f;	//4294967295 = 2µÄ32´Î·½-1
 

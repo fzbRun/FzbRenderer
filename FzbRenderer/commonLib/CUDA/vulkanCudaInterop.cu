@@ -289,7 +289,7 @@ void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, MyImage& vk
     //将纹理映射到外部内存对象
     cudaChannelFormatDesc format = getCudaChannelFormatDescForVulkanFormat(vkImage.format);
     cudaExtent extent = getCudaExtentForVulkanExtent({ vkImage.width, vkImage.height, vkImage.depth }, vkImage.layerNum, vkImage.viewType);
-    unsigned int flags = getCudaMipmappedArrayFlagsForVulkanImage(vkImage.viewType, vkImage.usage, true);   //cudaArraySurfaceLoadStore表示是否可写
+    unsigned int flags = getCudaMipmappedArrayFlagsForVulkanImage(vkImage.viewType, vkImage.usage, false);   //cudaArraySurfaceLoadStore表示是否可写
     mipmap = mapMipmappedArrayOntoExternalMemory(extMem, 0, &format, &extent, flags, vkImage.mipLevels);    //cudaMipmappedArray_t是只读的
 
     cudaResourceDesc resDesc;
@@ -299,9 +299,9 @@ void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, MyImage& vk
 
     cudaTextureDesc texDesc;
     memset(&texDesc, 0, sizeof(texDesc));
-    texDesc.addressMode[0] = cudaAddressModeWrap;
-    texDesc.addressMode[1] = cudaAddressModeWrap;
-    texDesc.addressMode[2] = cudaAddressModeWrap;
+    texDesc.addressMode[0] = cudaAddressModeClamp;
+    texDesc.addressMode[1] = cudaAddressModeClamp;
+    texDesc.addressMode[2] = cudaAddressModeClamp;
     texDesc.filterMode = cudaFilterModePoint;
     texDesc.readMode = cudaReadModeElementType;
     texDesc.normalizedCoords = 0;

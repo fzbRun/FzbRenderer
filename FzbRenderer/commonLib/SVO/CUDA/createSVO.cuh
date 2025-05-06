@@ -17,15 +17,14 @@ struct FzbSVONode {
 	//是否是叶节点的判断依据是hasSubNode是否为0x00
 	uint32_t subsequentIndex;
 	uint32_t hasSubNode;
-	glm::vec4 nodePos;	//当前node左下角坐标，每个分量占10位
-	float nodeSize;
+	glm::vec4 nodePos_Size;	//当前node左下角坐标，每个分量占10位
 
 	FzbSVONode() {
 		nodeIndex = 0;
 		voxelNum = 0;
 		subsequentIndex = 0;
 		hasSubNode = 0;
-		nodePos = glm::vec4(0.0f);
+		nodePos_Size = glm::vec4();
 		hasSubNode = 0.0f;
 	}
 
@@ -46,14 +45,9 @@ public:
 	FzbSVONode* nodePool;	//后续所需要的节点数组
 	FzbVoxelValue* svoVoxelValueCompressedArray;	//后续所需要的体素数据
 
-	HANDLE voxelValueArrayHanlde;
-	HANDLE nodePoolHandle;
-	cudaExternalMemory_t voxelValueArrayExtMem;
-	cudaExternalMemory_t nodePoolExtMem;
-
 	SVOCuda() {};
 
-	void createSVOCuda(VkPhysicalDevice vkPhysicalDevice, MyImage& voxelGridMap, HANDLE vgmSemaphoreHandle, HANDLE svoSemaphoreHandle);
+	void createSVOCuda(VkPhysicalDevice vkPhysicalDevice, MyImage& voxelGridMap, HANDLE vgmSemaphoreHandle, HANDLE svoSemaphoreHandle, glm::vec4 vgmStartPos, float voxelSize);
 	void getSVOCuda(VkPhysicalDevice vkPhysicalDevice, HANDLE nodePoolHandle, HANDLE voxelValueArrayHandle);
 	void clean();
 

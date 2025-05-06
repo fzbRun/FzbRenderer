@@ -27,8 +27,7 @@ struct FzbSVONode {
 	uint voxelNum;	//该节点所包含的叶子节点数
 	uint subsequentIndex;
 	uint hasSubNode;
-	vec4 nodePos;
-	float nodeSize;
+	vec4 nodePos_Size;
 };
 
 layout(set = 1, binding = 0, std430) readonly buffer FzbSVONodes{
@@ -39,19 +38,17 @@ layout(set = 1, binding = 0, std430) readonly buffer FzbSVONodes{
 void main() {
 
 	vec3 p0 = gl_in[0].gl_Position.xyz;
+	vec3 p1 = gl_in[1].gl_Position.xyz;
+
 	FzbSVONode node = fzbSVONodes[voxelIndex[0]];
 	if (node.voxelNum > 0) {
-		gl_Position = cubo.proj * cubo.view * vec4(p0 * node.nodeSize + node.nodePos.xyz, 1.0f);
+		gl_Position = cubo.proj * cubo.view * cubo.model * vec4(p0 * node.nodePos_Size.w + node.nodePos_Size.xyz, 1.0f);
 		EmitVertex();
-	}
 
-	vec3 p1 = gl_in[1].gl_Position.xyz;
-	node = fzbSVONodes[voxelIndex[1]];
-	if (node.voxelNum > 0) {
-		gl_Position = cubo.proj * cubo.view * vec4(p1 * node.nodeSize + node.nodePos.xyz, 1.0f);
+		gl_Position = cubo.proj * cubo.view * cubo.model * vec4(p1 * node.nodePos_Size.w + node.nodePos_Size.xyz, 1.0f);
 		EmitVertex();
-	}
 
-	EndPrimitive();
+		EndPrimitive();
+	}
 
 }

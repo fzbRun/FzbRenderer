@@ -14,7 +14,7 @@ layout(location = 0) out uint voxelIndex;
 
 void main() {
 
-	gl_Position = cubo.model * vec4(pos_in, 1.0f);
+	gl_Position = vec4(pos_in, 1.0f);
 	voxelIndex = gl_InstanceIndex;
 
 }

@@ -1,4 +1,3 @@
-C:/D/Vulkan/Bin/glslc.exe -fshader-stage=vertex wireFrameVert.glsl -o spv/vert.spv
-C:/D/Vulkan/Bin/glslc.exe -fshader-stage=geometry wireFrameGemo.glsl -o spv/gemo.spv
-C:/D/Vulkan/Bin/glslc.exe -fshader-stage=fragment wireFrameFrag.glsl -o spv/frag.spv
+C:/D/Vulkan/Bin/glslc.exe -fshader-stage=vertex presentVert.glsl -o spv/presentVert.spv
+C:/D/Vulkan/Bin/glslc.exe -fshader-stage=fragment presentFrag.glsl -o spv/presentFrag.spv
 pause

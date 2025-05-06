@@ -178,13 +178,13 @@ public:
 			framebufferInfo.height = swapChainExtent.height;
 			framebufferInfo.layers = 1;
 
-			if (vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, frameBuffers.data()) != VK_SUCCESS) {
+			if (vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, &frameBuffers[i]) != VK_SUCCESS) {
 				throw std::runtime_error("failed to create framebuffer!");
 			}
 
-			this->framebuffers.push_back(frameBuffers);
-
 		}
+
+		this->framebuffers.push_back(frameBuffers);
 
 	}
 
@@ -308,6 +308,12 @@ public:
 
 		for (int i = 0; i < storageBufferHandles.size(); i++) {
 			CloseHandle(storageBufferHandles[i]);
+		}
+
+		for (int i = 0; i < framebuffers.size(); i++) {
+			for (int j = 0; j < framebuffers[i].size(); j++) {
+				vkDestroyFramebuffer(logicalDevice, framebuffers[i][j], nullptr);
+			}
 		}
 
 		//vkDestroyCommandPool(logicalDevice, commandPool, nullptr);	//交给主程序销毁

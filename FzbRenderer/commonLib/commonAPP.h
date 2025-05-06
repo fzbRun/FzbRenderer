@@ -86,6 +86,8 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 //	VK_KHR_SWAPCHAIN_EXTENSION_NAME
 //};
 
+const std::vector<const char*> instanceExtensions_default = { VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME };
+
 const uint32_t WIDTH = 512;
 const uint32_t HEIGHT = 512;
 Camera camera(glm::vec3(0.0f, 5.0f, 18.0f));
@@ -154,6 +156,8 @@ public:
 	VkDebugUtilsMessengerEXT debugMessenger;	//消息传递者
 	VkSurfaceKHR surface;
 
+	std::vector<const char*> instanceExtensions = instanceExtensions_default;
+
 	void initWindow(uint32_t width = WIDTH, uint32_t height = HEIGHT, const char* windowName = "未命名", VkBool32 windowResizable = VK_FALSE) {
 
 		glfwInit();
@@ -185,7 +189,19 @@ public:
 		fzbCreateInstance();
 	}
 
-	void fzbCreateInstance(const char* appName = "未命名", vector<const char*> instanceExtence = vector<const char*>(), vector<const char*> validationLayers = validationLayers_default) {
+	void removeRedundant(std::vector<const char*>& vec) {
+		std::unordered_set<std::string> seen;
+		std::vector<const char*> result;
+		for (const char* str : vec) {
+			std::string s(str); // 确保str是合法C字符串
+			if (seen.insert(s).second) {
+				result.push_back(str);
+			}
+		}
+		vec = std::move(result);
+	}
+
+	void fzbCreateInstance(const char* appName = "未命名", vector<const char*> instanceExtences = instanceExtensions_default, vector<const char*> validationLayers = validationLayers_default) {
 
 		//检测layer
 		if (enableValidationLayers && !checkValidationLayerSupport()) {
@@ -205,7 +221,7 @@ public:
 		createInfo.pApplicationInfo = &appInfo;
 
 		//扩展就是Vulkan本身没有实现，但被程序员封装后的功能函数，如跨平台的各种函数，把它当成普通函数即可，别被名字唬到了
-		auto extensions = getRequiredExtensions(instanceExtence);
+		auto extensions = getRequiredExtensions(instanceExtences);
 		createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
 		createInfo.ppEnabledExtensionNames = extensions.data();	//将扩展的具体信息的指针存储在该结构体中
 
@@ -273,7 +289,7 @@ public:
 		return true;
 	}
 
-	std::vector<const char*> getRequiredExtensions(vector<const char*> instanceExtence) {
+	std::vector<const char*> getRequiredExtensions(vector<const char*> instanceExtences) {
 
 		uint32_t glfwExtensionCount = 0;
 		const char** glfwExtensions;
@@ -283,8 +299,8 @@ public:
 		if (enableValidationLayers) {
 			extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);	//这个扩展是为了打印校验层反映的错误，所以需要知道是否需要校验层
 		}
-		if(instanceExtence.size() > 0)
-			extensions.insert(extensions.end(), instanceExtence.begin(), instanceExtence.end());
+		if(instanceExtences.size() > 0)
+			extensions.insert(extensions.end(), instanceExtences.begin(), instanceExtences.end());
 
 		return extensions;
 	}
@@ -336,6 +352,9 @@ public:
 	QueueFamilyIndices queueFamilyIndices;
 
 	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+
+	std::vector<const char*> deviceExtensions = deviceExtensions_default;
+	VkPhysicalDeviceFeatures deviceFeatures;
 
 	/*
 	void createDevice() {
@@ -884,13 +903,13 @@ public:
 			framebufferInfo.height = swapChainExtent.height;
 			framebufferInfo.layers = 1;
 
-			if (vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, frameBuffers.data()) != VK_SUCCESS) {
+			if (vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, &frameBuffers[i]) != VK_SUCCESS) {
 				throw std::runtime_error("failed to create framebuffer!");
 			}
 
-			this->framebuffers.push_back(frameBuffers);
-
 		}
+
+		this->framebuffers.push_back(frameBuffers);
 
 	}
 

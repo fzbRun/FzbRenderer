@@ -13,7 +13,7 @@ layout(set = 0, binding = 0) uniform cameraUniformBufferObject{
 	vec4 swapChainExtent;
 } cubo;
 
-layout(set = 0, binding = 1) uniform voxelBufferObject{
+layout(set = 1, binding = 0) uniform voxelBufferObject{
 	mat4 model;
 	mat4 VP[3];
 	vec4 voxelSize_Num;

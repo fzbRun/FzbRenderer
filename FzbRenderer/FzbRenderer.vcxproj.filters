@@ -59,6 +59,9 @@
     <ClInclude Include="commonLib\CUDA\vulkanCudaInterop.cuh">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="commonLib\Component.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="commonLib\SVO\CUDA\createSVO.cu">

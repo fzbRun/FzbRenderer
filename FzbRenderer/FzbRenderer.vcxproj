@@ -152,6 +152,7 @@
   <ItemGroup>
     <ClInclude Include="commonLib\Camera.h" />
     <ClInclude Include="commonLib\commonAPP.h" />
+    <ClInclude Include="commonLib\Component.h" />
     <ClInclude Include="commonLib\CUDA\vulkanCudaInterop.cuh" />
     <ClInclude Include="commonLib\FzbBuffer.h" />
     <ClInclude Include="commonLib\FzbDescriptor.h" />
