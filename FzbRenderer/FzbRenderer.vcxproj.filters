@@ -13,62 +13,106 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="资源文件\core">
+      <UniqueIdentifier>{9afb9b32-5f7b-47a0-9087-0d7d5c37c82e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO">
+      <UniqueIdentifier>{0fd8f4a1-2cb5-48d9-8789-58781c127022}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO\shaders">
+      <UniqueIdentifier>{e6128b5c-5cb6-4d1f-9a53-b5317027ad89}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO\shaders\present">
+      <UniqueIdentifier>{ce2f6f30-c4f2-40c9-b611-e20c1f537b6b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO\shaders\present_SVO">
+      <UniqueIdentifier>{a28d295f-509e-4ac2-a872-ea8e709b97a4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO\shaders\present_VGM">
+      <UniqueIdentifier>{3e54d113-e040-4ad7-aa3d-4d3ea9aa167c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO\shaders\unuseSwizzle">
+      <UniqueIdentifier>{1ffd885e-5178-47fb-9032-30413bc7a0be}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO\shaders\useSwizzle">
+      <UniqueIdentifier>{ed6ae2d4-c6d0-4eaa-b738-66cac45ec65f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SVO\CUDA">
+      <UniqueIdentifier>{33f49e9b-6362-4349-98a0-2961cddf2eb8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\CUDA">
+      <UniqueIdentifier>{9a6689f7-6cd1-436c-b939-8643de3b0d18}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="core\FzbCamera.h">
+      <Filter>资源文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\StructSet.h">
+      <Filter>资源文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\FzbComponent.h">
+      <Filter>资源文件\core</Filter>
+    </ClInclude>
+    <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
+      <Filter>资源文件\core\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\SVO\CUDA\createSVO.cuh">
+      <Filter>资源文件\core\SVO\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\SVO\SVO.h">
+      <Filter>资源文件\core\SVO</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="core\SVO\shaders\present\presentFrag.glsl">
+      <Filter>资源文件\core\SVO\shaders\present</Filter>
+    </None>
+    <None Include="core\SVO\shaders\present\presentVert.glsl">
+      <Filter>资源文件\core\SVO\shaders\present</Filter>
+    </None>
+    <None Include="core\SVO\shaders\present_SVO\wireFrameFrag.glsl">
+      <Filter>资源文件\core\SVO\shaders\present_SVO</Filter>
+    </None>
+    <None Include="core\SVO\shaders\present_SVO\wireFrameGemo.glsl">
+      <Filter>资源文件\core\SVO\shaders\present_SVO</Filter>
+    </None>
+    <None Include="core\SVO\shaders\present_SVO\wireFrameVert.glsl">
+      <Filter>资源文件\core\SVO\shaders\present_SVO</Filter>
+    </None>
+    <None Include="core\SVO\shaders\present_VGM\presentFrag_Block.glsl">
+      <Filter>资源文件\core\SVO\shaders\present_VGM</Filter>
+    </None>
+    <None Include="core\SVO\shaders\present_VGM\presentVert_Block.glsl">
+      <Filter>资源文件\core\SVO\shaders\present_VGM</Filter>
+    </None>
+    <None Include="core\SVO\shaders\unuseSwizzle\voxelFrag.glsl">
+      <Filter>资源文件\core\SVO\shaders\unuseSwizzle</Filter>
+    </None>
+    <None Include="core\SVO\shaders\unuseSwizzle\voxelGemo.glsl">
+      <Filter>资源文件\core\SVO\shaders\unuseSwizzle</Filter>
+    </None>
+    <None Include="core\SVO\shaders\unuseSwizzle\voxelVert.glsl">
+      <Filter>资源文件\core\SVO\shaders\unuseSwizzle</Filter>
+    </None>
+    <None Include="core\SVO\shaders\useSwizzle\voxelFrag.glsl">
+      <Filter>资源文件\core\SVO\shaders\useSwizzle</Filter>
+    </None>
+    <None Include="core\SVO\shaders\useSwizzle\voxelVert.glsl">
+      <Filter>资源文件\core\SVO\shaders\useSwizzle</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="core\SVO\CUDA\createSVO.cu">
+      <Filter>资源文件\core\SVO\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
+      <Filter>资源文件\core\CUDA</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FzbRenderer.cpp">
-      <Filter>源文件</Filter>
+      <Filter>资源文件</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="commonLib\Camera.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\commonAPP.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\FzbBuffer.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\FzbDescriptor.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\FzbDevice.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\FzbImage.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\FzbPipeline.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\FzbSwapchain.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\FzbSync.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\StructSet.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\SVO\CUDA\createSVO.cuh">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\SVO\SVO.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\CUDA\vulkanCudaInterop.cuh">
-      <Filter>头文件</Filter>
-    </ClInclude>
-    <ClInclude Include="commonLib\Component.h">
-      <Filter>头文件</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <CudaCompile Include="commonLib\SVO\CUDA\createSVO.cu">
-      <Filter>源文件</Filter>
-    </CudaCompile>
-    <CudaCompile Include="commonLib\CUDA\vulkanCudaInterop.cu">
-      <Filter>源文件</Filter>
-    </CudaCompile>
   </ItemGroup>
 </Project>

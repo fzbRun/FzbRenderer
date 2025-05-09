@@ -147,27 +147,48 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="core\FzbCamera.h" />
+    <ClInclude Include="core\FzbComponent.h" />
+    <ClInclude Include="core\StructSet.h" />
+    <ClInclude Include="core\SVO\CUDA\createSVO.cuh">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="core\SVO\SVO.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="FzbRenderer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="commonLib\Camera.h" />
-    <ClInclude Include="commonLib\commonAPP.h" />
-    <ClInclude Include="commonLib\Component.h" />
-    <ClInclude Include="commonLib\CUDA\vulkanCudaInterop.cuh" />
-    <ClInclude Include="commonLib\FzbBuffer.h" />
-    <ClInclude Include="commonLib\FzbDescriptor.h" />
-    <ClInclude Include="commonLib\FzbDevice.h" />
-    <ClInclude Include="commonLib\FzbImage.h" />
-    <ClInclude Include="commonLib\FzbPipeline.h" />
-    <ClInclude Include="commonLib\FzbSwapchain.h" />
-    <ClInclude Include="commonLib\FzbSync.h" />
-    <ClInclude Include="commonLib\StructSet.h" />
-    <ClInclude Include="commonLib\SVO\CUDA\createSVO.cuh" />
-    <ClInclude Include="commonLib\SVO\SVO.h" />
+    <None Include="core\SVO\shaders\present\presentFrag.glsl" />
+    <None Include="core\SVO\shaders\present\presentVert.glsl" />
+    <None Include="core\SVO\shaders\present_SVO\wireFrameFrag.glsl" />
+    <None Include="core\SVO\shaders\present_SVO\wireFrameGemo.glsl" />
+    <None Include="core\SVO\shaders\present_SVO\wireFrameVert.glsl" />
+    <None Include="core\SVO\shaders\present_VGM\presentFrag_Block.glsl" />
+    <None Include="core\SVO\shaders\present_VGM\presentVert_Block.glsl" />
+    <None Include="core\SVO\shaders\unuseSwizzle\voxelFrag.glsl" />
+    <None Include="core\SVO\shaders\unuseSwizzle\voxelGemo.glsl" />
+    <None Include="core\SVO\shaders\unuseSwizzle\voxelVert.glsl" />
+    <None Include="core\SVO\shaders\useSwizzle\voxelFrag.glsl" />
+    <None Include="core\SVO\shaders\useSwizzle\voxelVert.glsl" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="commonLib\CUDA\vulkanCudaInterop.cu" />
-    <CudaCompile Include="commonLib\SVO\CUDA\createSVO.cu" />
+    <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </CudaCompile>
+    <CudaCompile Include="core\SVO\CUDA\createSVO.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
+    </CudaCompile>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
