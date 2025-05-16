@@ -5,6 +5,11 @@
 #ifndef VULKAN_CUDA_INTEROP_CU
 #define VULKAN_CUDA_INTEROP_CU
 
+double cpuSecond() {
+    auto now = std::chrono::high_resolution_clock::now();
+    return std::chrono::duration<double>(now.time_since_epoch()).count();
+}
+
 //------------------------------------------------------------Vulkan½»»¥»ù´¡º¯Êý-----------------------------------------------------------------
 
 /*

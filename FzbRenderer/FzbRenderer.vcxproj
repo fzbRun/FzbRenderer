@@ -147,48 +147,50 @@
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="core\common\FzbBuffer.h" />
+    <ClInclude Include="core\common\FzbCamera.h" />
+    <ClInclude Include="core\common\FzbComponent.h" />
+    <ClInclude Include="core\common\FzbImage.h" />
+    <ClInclude Include="core\common\FzbMesh.h" />
+    <ClInclude Include="core\common\FzbPipeline.h" />
+    <ClInclude Include="core\common\FzbRenderPass.h" />
+    <ClInclude Include="core\common\FzbScene.h" />
+    <ClInclude Include="core\common\StructSet.h" />
     <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
-    <ClInclude Include="core\FzbCamera.h" />
-    <ClInclude Include="core\FzbComponent.h" />
-    <ClInclude Include="core\StructSet.h" />
-    <ClInclude Include="core\SVO\CUDA\createSVO.cuh">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClInclude>
-    <ClInclude Include="core\SVO\SVO.h">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClInclude>
+    <ClInclude Include="core\RayTracing\PathTracing\AccelerationStructure\accelerationStructure.h" />
+    <ClInclude Include="core\RayTracing\PathTracing\pathTracing.h" />
+    <ClInclude Include="core\SceneDivision\BVH\BVH.h" />
+    <ClInclude Include="core\SceneDivision\SVO\CUDA\createSVO.cuh" />
+    <ClInclude Include="core\SceneDivision\SVO\SVO.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="core\common\FzbBuffer.cpp" />
+    <ClCompile Include="core\common\FzbImage.cpp" />
     <ClCompile Include="FzbRenderer.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="core\SVO\shaders\present\presentFrag.glsl" />
-    <None Include="core\SVO\shaders\present\presentVert.glsl" />
-    <None Include="core\SVO\shaders\present_SVO\wireFrameFrag.glsl" />
-    <None Include="core\SVO\shaders\present_SVO\wireFrameGemo.glsl" />
-    <None Include="core\SVO\shaders\present_SVO\wireFrameVert.glsl" />
-    <None Include="core\SVO\shaders\present_VGM\presentFrag_Block.glsl" />
-    <None Include="core\SVO\shaders\present_VGM\presentVert_Block.glsl" />
-    <None Include="core\SVO\shaders\unuseSwizzle\voxelFrag.glsl" />
-    <None Include="core\SVO\shaders\unuseSwizzle\voxelGemo.glsl" />
-    <None Include="core\SVO\shaders\unuseSwizzle\voxelVert.glsl" />
-    <None Include="core\SVO\shaders\useSwizzle\voxelFrag.glsl" />
-    <None Include="core\SVO\shaders\useSwizzle\voxelVert.glsl" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </CudaCompile>
-    <CudaCompile Include="core\SVO\CUDA\createSVO.cu">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </CudaCompile>
+    <CudaCompile Include="core\SceneDivision\SVO\CUDA\createSVO.cu" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="core\SceneDivision\SVO\shaders\present\presentFrag.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\present\presentVert.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\present_SVO\wireFrameFrag.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\present_SVO\wireFrameGemo.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\present_SVO\wireFrameVert.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\present_VGM\presentFrag_Block.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\present_VGM\presentVert_Block.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelFrag.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelGemo.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelVert.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelFrag.glsl" />
+    <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelVert.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

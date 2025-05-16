@@ -73,7 +73,7 @@ __global__ void getSVONum(cudaTextureObject_t voxelGridMap, uint32_t* voxelNum, 
 
 }
 
-__global__ void compressSVO(FzbSVONode* nodeArray, FzbSVONode* nodePool, uint32_t nodeStartIndex, uint32_t subArrayStartIndex, uint32_t* subArrayNum, glm::vec4 fatherNodePos_Size) {
+__global__ void compressSVO(FzbSVONode* nodeArray, FzbSVONode* nodePool, uint32_t nodeStartIndex, uint32_t subArrayStartIndex, uint32_t* subArrayNum, glm::vec4 fatherNodePos_Size, uint32_t recursionEnd) {
 
 	int threadIndex = blockDim.x * blockIdx.x + threadIdx.x;
 
@@ -95,16 +95,18 @@ __global__ void compressSVO(FzbSVONode* nodeArray, FzbSVONode* nodePool, uint32_
 	int nodePoolIndex = subArrayStartIndex + threadIndex;
 	nodePool[nodePoolIndex] = node;
 
-	int subNodeNum = 0;
-	for (int i = 0; i < 8; i++) {
-		if (node.hasSubNode & (1u << i))
-			subNodeNum++;
-	}
-	if (subNodeNum == 0)
+	//int subNodeNum = 0;
+	//for (int i = 0; i < 8; i++) {
+	//	if (node.hasSubNode & (1u << i))
+	//		subNodeNum++;
+	//}
+	//if (subNodeNum == 0)
+	//	return;
+	if (nodeStartIndex > recursionEnd)
 		return;
 	int subArrayIndex = atomicAdd(subArrayNum, 1);
 	nodePool[nodePoolIndex].subsequentIndex = subArrayIndex * 8;
-	compressSVO << <1, 8 >> > (nodeArray, nodePool, nodeIndex * 8 + 1, subArrayIndex * 8, subArrayNum, nodePos_Size);
+	compressSVO << <1, 8 >> > (nodeArray, nodePool, nodeIndex * 8 + 1, subArrayIndex * 8, subArrayNum, nodePos_Size, recursionEnd);
 
 }
 /*
@@ -148,7 +150,8 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 	extVgmSemaphore = importVulkanSemaphoreObjectFromNTHandle(vgmSemaphoreHandle);
 	extSvoSemaphore = importVulkanSemaphoreObjectFromNTHandle(svoSemaphoreHandle);
 
-	cudaStream_t stream;
+	double start = cpuSecond();
+
 	CHECK(cudaStreamCreate(&stream));
 
 	dim3 gridSize(voxelGridMap.width / 8, voxelGridMap.height / 8, voxelGridMap.depth / 8);
@@ -172,19 +175,16 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 	CHECK(cudaMalloc((void**)&svoNodeArray, sizeof(FzbSVONode) * maxNodeNum));
 	CHECK(cudaMemset(svoNodeArray, 0, sizeof(FzbSVONode) * maxNodeNum));
 	//创造一个有值体素数据的数组
-	FzbVoxelValue* svoVoxelValueArray;
 	CHECK(cudaMalloc((void**)&svoVoxelValueArray, sizeof(FzbVoxelValue) * voxelGridMap.width * voxelGridMap.height * voxelGridMap.depth));
 	CHECK(cudaMemset(svoVoxelValueArray, 0, sizeof(FzbVoxelValue) * voxelGridMap.width * voxelGridMap.height * voxelGridMap.depth));
 
 	waitExternalSemaphore(extVgmSemaphore, stream);
 
 	getSVONum << <gridSize, blockSize, 0, stream >> > (vgm, voxelNum_p, svoNodeArray, svoDepth, svoVoxelValueArray);
-	CHECK(cudaStreamSynchronize(stream));
+	//CHECK(cudaStreamSynchronize(stream));
 
 	//创建压缩后的体素数据数组
 	CHECK(cudaMemcpy(&this->voxelNum, voxelNum_p, sizeof(uint32_t), cudaMemcpyDeviceToHost));
-	CHECK(cudaMalloc((void**)&svoVoxelValueCompressedArray, sizeof(FzbVoxelValue) * this->voxelNum));
-	CHECK(cudaMemcpy(svoVoxelValueCompressedArray, svoVoxelValueArray, sizeof(FzbVoxelValue) * this->voxelNum, cudaMemcpyDeviceToDevice));
 
 	uint32_t* subArrayNum_host = (uint32_t*)malloc(sizeof(uint32_t));
 	*subArrayNum_host = 1;
@@ -196,16 +196,16 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 	CHECK(cudaMemset(nodePool, 0, sizeof(FzbSVONode) * maxNodeNum));
 
 	glm::vec4 nodePos_Size = glm::vec4(vgmStartPos.x, vgmStartPos.y, vgmStartPos.z, voxelSize * 2.0f);
-	compressSVO << <1, 1, 0, stream >> > (svoNodeArray, nodePool, 0, 0, subArrayNum, nodePos_Size);
-	CHECK(cudaStreamSynchronize(stream));
+	uint32_t recursionEnd = uint32_t((pow(8, svoDepth - 1) - 1) / 7) - 1;
+	compressSVO << <1, 1, 0, stream >> > (svoNodeArray, nodePool, 0, 0, subArrayNum, nodePos_Size, recursionEnd);
+	//CHECK(cudaStreamSynchronize(stream));
 	CHECK(cudaMemcpy(&this->nodeArrayNum, subArrayNum, sizeof(uint32_t), cudaMemcpyDeviceToHost));
 
 	//CHECK(cudaStreamSynchronize(stream));
-	signalExternalSemaphore(extSvoSemaphore, stream);
 	//CHECK(cudaStreamAddCallback(stream, cleanTempData, this, 0));
 
 	CHECK(cudaDestroyExternalSemaphore(this->extVgmSemaphore));
-	CHECK(cudaDestroyExternalSemaphore(this->extSvoSemaphore));
+	//CHECK(cudaDestroyExternalSemaphore(this->extSvoSemaphore));
 
 	CHECK(cudaDestroyTextureObject(this->vgm));
 	CHECK(cudaFreeMipmappedArray(this->vgmMipmap));
@@ -213,10 +213,10 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 
 	CHECK(cudaFree(voxelNum_p));
 	CHECK(cudaFree(svoNodeArray));
-	CHECK(cudaFree(svoVoxelValueArray));
 	CHECK(cudaFree(subArrayNum));
 	free(subArrayNum_host);
-	CHECK(cudaStreamDestroy(stream));
+
+	std::cout << cpuSecond() - start << std::endl;
 
 }
 
@@ -225,18 +225,25 @@ void SVOCuda::getSVOCuda(VkPhysicalDevice vkPhysicalDevice, HANDLE nodePoolHandl
 	if (getCudaDeviceForVulkanPhysicalDevice(vkPhysicalDevice) == cudaInvalidDeviceId) {
 		throw std::runtime_error("CUDA与Vulkan用的不是同一个GPU！！！");
 	}
+
+	//waitExternalSemaphore(extSvoSemaphore);
+
 	cudaExternalMemory_t nodePoolExtMem = importVulkanMemoryObjectFromNTHandle(nodePoolHandle, sizeof(FzbSVONode) * 8 * this->nodeArrayNum, false);
 	FzbSVONode* vkNodePool = (FzbSVONode*)mapBufferOntoExternalMemory(nodePoolExtMem, 0, sizeof(FzbSVONode) * 8 * this->nodeArrayNum);
 	CHECK(cudaMemcpy(vkNodePool, this->nodePool, sizeof(FzbSVONode) * 8 * this->nodeArrayNum, cudaMemcpyDeviceToDevice));
 
 	cudaExternalMemory_t voxelValueArrayExtMem = importVulkanMemoryObjectFromNTHandle(voxelValueArrayHandle, sizeof(FzbVoxelValue) * this->voxelNum, false);
 	FzbVoxelValue* vkVoxelValueArray = (FzbVoxelValue*)mapBufferOntoExternalMemory(voxelValueArrayExtMem, 0, sizeof(FzbVoxelValue) * this->voxelNum);
-	CHECK(cudaMemcpy(vkVoxelValueArray, this->svoVoxelValueCompressedArray, sizeof(FzbVoxelValue) * this->voxelNum, cudaMemcpyDeviceToDevice));
+	CHECK(cudaMemcpy(vkVoxelValueArray, this->svoVoxelValueArray, sizeof(FzbVoxelValue) * this->voxelNum, cudaMemcpyDeviceToDevice));
 
+	signalExternalSemaphore(extSvoSemaphore, stream);
+
+	CHECK(cudaDestroyExternalSemaphore(this->extSvoSemaphore));
 	CHECK(cudaDestroyExternalMemory(nodePoolExtMem));
 	CHECK(cudaDestroyExternalMemory(voxelValueArrayExtMem));
 	CHECK(cudaFree(nodePool));
-	CHECK(cudaFree(svoVoxelValueCompressedArray));
+	CHECK(cudaFree(svoVoxelValueArray));
+	CHECK(cudaStreamDestroy(stream));
 
 }
 

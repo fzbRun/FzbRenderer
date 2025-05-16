@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../../CUDA/vulkanCudaInterop.cuh"
+#include "../../../CUDA/vulkanCudaInterop.cuh"
 
 #ifndef CREATE_SVO_CUH
 #define CREATE_SVO_CUH
@@ -40,10 +40,12 @@ public:
 	cudaExternalSemaphore_t extVgmSemaphore;
 	cudaExternalSemaphore_t extSvoSemaphore;
 
+	cudaStream_t stream;
+
 	uint32_t nodeArrayNum;
 	uint32_t voxelNum;
 	FzbSVONode* nodePool;	//后续所需要的节点数组
-	FzbVoxelValue* svoVoxelValueCompressedArray;	//后续所需要的体素数据
+	FzbVoxelValue* svoVoxelValueArray;	//后续所需要的体素数据
 
 	SVOCuda() {};
 

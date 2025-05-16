@@ -2,7 +2,7 @@
 
 #include<iostream>
 #include <chrono>
-#include "../StructSet.h"
+#include "../common/FzbImage.h"
 
 //#ifndef __CUDACC__
 //#define __CUDACC__
@@ -30,6 +30,11 @@
       exit(1);\
   }\
 }
+
+/*
+clock()会计算CPU时间，而非挂钟时间。即若有3个线程并行运行，执行3秒，那么clock会返回3x3=9秒，并且挂起时间不算在内，因此无法得到核函数运行时间。
+*/
+double cpuSecond();
 
 int getCudaDeviceForVulkanPhysicalDevice(VkPhysicalDevice vkPhysicalDevice);
 cudaExternalMemory_t importVulkanMemoryObjectFromFileDescriptor(int fd, unsigned long long size, bool isDedicated);

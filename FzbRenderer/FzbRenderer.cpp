@@ -1,5 +1,5 @@
-#include "core/FzbComponent.h"
-#include "core/SVO/SVO.h"
+#include "core/common/FzbComponent.h"
+#include "core/SceneDivision/SVO/SVO.h"
 
 class FzbRenderer : public FzbMainComponent {
 
@@ -20,10 +20,12 @@ private:
 
 	FzbScene scene;
 	FzbModel model;
-	std::vector<FzbVertex> vertices;
-	std::vector<uint32_t> indices;
+	//std::vector<FzbVertex> vertices;
+	//std::vector<uint32_t> indices;
 
-	FzbImage depthMap;
+	FzbStorageBuffer<FzbVertex> sceneVertexBuffer;
+	FzbStorageBuffer<uint32_t> sceneIndexBuffer;
+	FzbUniformBuffer<FzbCameraUniformBufferObject> cameraUniformBuffer;
 
 	VkDescriptorSetLayout uniformDescriptorSetLayout;
 	VkDescriptorSet uniformDescriptorSet;
@@ -36,15 +38,15 @@ private:
 	std::unique_ptr<FzbSVO> fzbSVO;
 
 	void initVulkan() {
-		setComponent();
-		fzbCreateInstance("FzbRenderer", instanceExtensions);
+		createComponent();
+		fzbCreateInstance("FzbRenderer", instanceExtensions, validationLayers, apiVersion);
 		setupDebugMessenger();
 		fzbCreateSurface();
 		createDevice();
 		fzbCreateSwapChain();
 		initBuffers();
 		createModels();
-		addComponent();
+		initComponent();
 		activateComponent();
 		createBuffers();
 		createImages();
@@ -56,24 +58,26 @@ private:
 		createSyncObjects();
 	}
 
-	void setComponent() {
+	void createComponent() {
 
 		svoSetting.UseSVO = true;
-		svoSetting.UseSVO_OnlyVoxelGridMap = false;
-		svoSetting.UseBlock = false;
-		svoSetting.UseConservativeRasterization = false;
-		svoSetting.UseSwizzle = true;
-		svoSetting.Present = true;
-		svoSetting.voxelNum = 64;
-		FzbSVO::addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
-
+		if (svoSetting.UseSVO) {
+			fzbSVO = std::make_unique<FzbSVO>();
+			svoSetting.UseSVO_OnlyVoxelGridMap = false;
+			svoSetting.UseBlock = true;
+			svoSetting.UseConservativeRasterization = false;
+			svoSetting.UseSwizzle = true;
+			svoSetting.Present = true;
+			svoSetting.voxelNum = 64;
+			fzbSVO->addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
+		}
 	}
 
 	void createDevice() {
 		deviceFeatures.samplerAnisotropy = VK_TRUE;
 		deviceFeatures.geometryShader = VK_TRUE;
 		deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
-		fzbCreateDevice( &deviceFeatures, deviceExtensions);
+		fzbCreateDevice(&deviceFeatures, deviceExtensions, pNextFeatures, validationLayers);
 	}
 
 	void initBuffers() {
@@ -81,27 +85,30 @@ private:
 		fzbCreateCommandBuffers(1);
 	}
 
-
 	void createModels() {
 		model = fzbCreateModel("models/dragon.obj");
 		scene.sceneModels.push_back(&model);
 
 		fzbOptimizeScene(&scene, scene.sceneVertices, scene.sceneIndices);
-		this->vertices = scene.sceneVertices;
-		this->indices = scene.sceneIndices;
+		this->sceneVertexBuffer.data = scene.sceneVertices;
+		this->sceneIndexBuffer.data = scene.sceneIndices;
 		scene.AABB = fzbMakeAABB(scene.sceneVertices);
+
+
 	}
 
-	void addComponent() {
-		fzbSVO = std::make_unique<FzbSVO>(this, &scene, svoSetting);
+	void initComponent() {
+		if (svoSetting.UseSVO)
+			fzbSVO->init(this, &scene, svoSetting);
 	}
 
 	void activateComponent() {
-		fzbSVO->activate();
+		if (svoSetting.UseSVO)
+			fzbSVO->activate();
 	}
 
 	void createBuffers() {
-		fzbCreateUniformBuffers(sizeof(FzbCameraUniformBufferObject), false, 1);
+		cameraUniformBuffer = fzbCreateUniformBuffers<FzbCameraUniformBufferObject>();
 	}
 
 	void createImages() {
@@ -114,13 +121,13 @@ private:
 		fzbCreateDescriptorPool(bufferTypeAndNum);
 
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
-		std::vector<VkShaderStageFlagBits> descriptorShaderFlags = { VK_SHADER_STAGE_ALL };
+		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL };
 		uniformDescriptorSetLayout = fzbCreateDescriptLayout(1, descriptorTypes, descriptorShaderFlags);
 		uniformDescriptorSet = fzbCreateDescriptorSet(uniformDescriptorSetLayout);
 
 		std::array<VkWriteDescriptorSet, 1> uniformDescriptorWrites{};
 		VkDescriptorBufferInfo cameraUniformBufferInfo{};
-		cameraUniformBufferInfo.buffer = uniformBuffers[0];
+		cameraUniformBufferInfo.buffer = cameraUniformBuffer.buffer;
 		cameraUniformBufferInfo.offset = 0;
 		cameraUniformBufferInfo.range = sizeof(FzbCameraUniformBufferObject);
 		uniformDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -136,7 +143,8 @@ private:
 	}
 
 	void prepareComponentPresent() {
-		fzbSVO->presentPrepare(uniformDescriptorSetLayout);
+		if (svoSetting.UseSVO)
+			fzbSVO->presentPrepare(uniformDescriptorSetLayout);
 	}
 
 	void createRenderPass() {
@@ -179,7 +187,8 @@ private:
 		updateUniformBuffer();
 
 		vkResetFences(logicalDevice, 1, &fence);
-		fzbSVO->present(uniformDescriptorSet, imageIndex, imageAvailableSemaphores.semaphore, fence);
+		if (svoSetting.UseSVO)
+			fzbSVO->present(uniformDescriptorSet, imageIndex, imageAvailableSemaphores.semaphore, fence);
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -226,15 +235,15 @@ private:
 
 		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		VkBuffer vertexBuffers[] = { storageBuffers[0] };
+		VkBuffer vertexBuffers[] = { sceneVertexBuffer.buffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(commandBuffer, storageBuffers[1], 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindIndexBuffer(commandBuffer, sceneIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipeline);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
 
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->indices.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->sceneIndexBuffer.data.size()), 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(commandBuffer);
 
@@ -261,17 +270,20 @@ private:
 		ubo.proj[1][1] *= -1;
 		ubo.cameraPos = glm::vec4(camera.Position, 0.0f);
 
-		memcpy(uniformBuffersMappeds[0], &ubo, sizeof(ubo));
+		memcpy(cameraUniformBuffer.mapped, &ubo, sizeof(ubo));
 
 	}
 
 	void cleanupImages() {
-		fzbCleanImage(depthMap);
+
 	}
 
 	void clean() {
 
 		fzbSVO->clean();
+		sceneVertexBuffer.clean();
+		sceneIndexBuffer.clean();
+		cameraUniformBuffer.clean();
 
 		cleanupSwapChain();
 
@@ -287,7 +299,7 @@ private:
 		vkDestroySemaphore(logicalDevice, renderFinishedSemaphores.semaphore, nullptr);
 		vkDestroyFence(logicalDevice, fence, nullptr);
 
-		fzbCleanupBuffers();
+		vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
 		vkDestroyDevice(logicalDevice, nullptr);
 

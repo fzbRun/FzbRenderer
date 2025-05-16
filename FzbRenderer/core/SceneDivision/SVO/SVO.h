@@ -1,8 +1,7 @@
 #pragma once
 
 #include "./CUDA/createSVO.cuh"
-#include "../StructSet.h"
-#include "../FzbComponent.h"
+#include "../../common/FzbComponent.h"
 
 
 #ifndef SVO_H	//Sparse voxel octree
@@ -30,16 +29,19 @@ class FzbSVO : public FzbComponent {
 public:
 
 	FzbSVOSetting svoSetting;
-	SVOUniform svoUniform;
 	FzbImage voxelGridMap;
 	VkDescriptorSetLayout voxelGridMapDescriptorSetLayout;
 	VkDescriptorSet voxelGridMapDescriptorSet;
 
 	FzbScene* scene;
-	std::vector<FzbVertex> vertices;
-	std::vector<uint32_t> indices;
-	std::vector<FzbVertex> cubeVertices;
-	std::vector<uint32_t> cubeIndices;
+
+	FzbStorageBuffer<FzbVertex> sceneVertexBuffer;
+	FzbStorageBuffer<uint32_t> sceneIndexBuffer;
+	FzbStorageBuffer<FzbVertex> sceneCubeVertexBuffer;
+	FzbStorageBuffer<uint32_t> sceneCubeIndexBuffer;
+	FzbStorageBuffer<FzbVertex> sceneWireframeVertexBuffer;
+	FzbStorageBuffer<uint32_t> sceneWireframeIndexBuffer;
+	FzbUniformBuffer<SVOUniform> svoUniformBuffer;
 
 	VkRenderPass voxelGridMapRenderPass;
 	VkPipeline voxelGridMapPipeline;
@@ -55,8 +57,8 @@ public:
 	FzbImage depthMap;
 
 	std::unique_ptr<SVOCuda> svoCuda;
-	std::vector<FzbSVONode> nodePool;
-	std::vector<FzbVoxelValue> voxelValueBuffer;
+	FzbStorageBuffer<FzbSVONode> nodePool;
+	FzbStorageBuffer<FzbVoxelValue> voxelValueBuffer;
 
 	VkDescriptorSetLayout svoDescriptorSetLayout;
 	VkDescriptorSet svoDescriptorSet;
@@ -67,7 +69,7 @@ public:
 
 	VkFence fence;
 
-	static void addExtensions(FzbSVOSetting svoSetting, std::vector<const char*>& instanceExtensions, std::vector<const char*>& deviceExtensions, VkPhysicalDeviceFeatures& deviceFeatures) {
+	void addExtensions(FzbSVOSetting svoSetting, std::vector<const char*>& instanceExtensions, std::vector<const char*>& deviceExtensions, VkPhysicalDeviceFeatures& deviceFeatures) {
 
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			instanceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
@@ -98,7 +100,7 @@ public:
 		}
 	}
 
-	FzbSVO(FzbMainComponent* renderer, FzbScene* scene, FzbSVOSetting setting) {
+	void init(FzbMainComponent* renderer, FzbScene* scene, FzbSVOSetting setting) {
 		
 		this->physicalDevice = renderer->physicalDevice;
 		this->logicalDevice = renderer->logicalDevice;
@@ -179,39 +181,39 @@ public:
 		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 		if (svoSetting.UseBlock && svoSetting.UseSVO_OnlyVoxelGridMap) {
-			VkBuffer cube_vertexBuffers[] = { storageBuffers[2] };
+			VkBuffer cube_vertexBuffers[] = { sceneCubeVertexBuffer.buffer };
 			VkDeviceSize cube_offsets[] = { 0 };
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, cube_vertexBuffers, cube_offsets);
-			vkCmdBindIndexBuffer(commandBuffer, storageBuffers[3], 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(commandBuffer, sceneCubeIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 		}
 		else {
-			VkBuffer vertexBuffers[] = { storageBuffers[0] };
+			VkBuffer vertexBuffers[] = { sceneVertexBuffer.buffer };
 			VkDeviceSize offsets[] = { 0 };
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-			vkCmdBindIndexBuffer(commandBuffer, storageBuffers[1], 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(commandBuffer, sceneIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 		}
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipeline);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipelineLayout, 1, 1, &voxelGridMapDescriptorSet, 0, nullptr);
 		if (svoSetting.UseBlock && svoSetting.UseSVO_OnlyVoxelGridMap) {
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->cubeIndices.size()), std::pow(svoSetting.voxelNum, 3), 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneCubeIndexBuffer.size), std::pow(svoSetting.voxelNum, 3), 0, 0, 0);
 		}
 		else {
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->indices.size()), 1, 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneIndexBuffer.data.size()), 1, 0, 0, 0);
 		}
 
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 
-			VkBuffer cube_vertexBuffers[] = { storageBuffers[4] };
+			VkBuffer cube_vertexBuffers[] = { sceneWireframeVertexBuffer.buffer };
 			VkDeviceSize cube_offsets[] = { 0 };
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, cube_vertexBuffers, cube_offsets);
-			vkCmdBindIndexBuffer(commandBuffer, storageBuffers[5], 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(commandBuffer, sceneWireframeIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipeline);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 1, 1, &svoDescriptorSet, 0, nullptr);
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->cubeIndices.size()), this->svoCuda->nodeArrayNum * 8, 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneWireframeIndexBuffer.data.size()), this->svoCuda->nodeArrayNum * 8, 0, 0, 0);
 		}
 
 		vkCmdEndRenderPass(commandBuffer);
@@ -243,8 +245,8 @@ public:
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			svoCuda->clean();
 		}
-		fzbCleanImage(voxelGridMap);
-		fzbCleanImage(depthMap);
+		voxelGridMap.clean();
+		depthMap.clean();
 
 		//清理管线
 		vkDestroyPipeline(logicalDevice, voxelGridMapPipeline, nullptr);
@@ -266,7 +268,20 @@ public:
 		fzbCleanSemaphore(presentSemaphore);
 		fzbCleanFence(fence);
 
-		fzbCleanupBuffers();
+		sceneVertexBuffer.clean();
+		sceneIndexBuffer.clean();
+		sceneCubeVertexBuffer.clean();
+		sceneCubeIndexBuffer.clean();
+		sceneWireframeVertexBuffer.clean();
+		sceneWireframeIndexBuffer.clean();
+		svoUniformBuffer.clean();
+		nodePool.clean();
+		voxelValueBuffer.clean();
+		for (int i = 0; i < framebuffers.size(); i++) {
+			for (int j = 0; j < framebuffers[i].size(); j++) {
+				vkDestroyFramebuffer(logicalDevice, framebuffers[i][j], nullptr);
+			}
+		}
 
 	}
 
@@ -276,13 +291,11 @@ private:
 
 		fzbCreateCommandBuffers(2);
 
-		this->vertices = scene->sceneVertices;
-		this->indices = scene->sceneIndices;
+		sceneVertexBuffer = fzbCreateStorageBuffer<FzbVertex>(&scene->sceneVertices);
+		sceneIndexBuffer = fzbCreateStorageBuffer<uint32_t>(&scene->sceneIndices);
 
-		fzbCreateStorageBuffer<FzbVertex>(vertices.size() * sizeof(FzbVertex), &vertices);
-		fzbCreateStorageBuffer<uint32_t>(indices.size() * sizeof(uint32_t), &indices);
-
-		fzbCreateUniformBuffers(sizeof(SVOUniform), true, 1);
+		svoUniformBuffer = fzbCreateUniformBuffers<SVOUniform>();
+		SVOUniform svoUniform;
 		svoUniform.modelMatrix = glm::mat4(1.0f);
 
 		float distanceX = scene->AABB.rightX - scene->AABB.leftX;
@@ -317,7 +330,8 @@ private:
 		svoUniform.voxelSize_Num = glm::vec4(distance / svoSetting.voxelNum, svoSetting.voxelNum, distance, 0.0f);
 		svoUniform.voxelStartPos = glm::vec4(centerX - distance * 0.5f, centerY - distance * 0.5f, centerZ - distance * 0.5f, 0.0f);
 
-		memcpy(uniformBuffersMappedsStatic[0], &svoUniform, sizeof(SVOUniform));
+		svoUniformBuffer.data = svoUniform;
+		memcpy(svoUniformBuffer.mapped, &svoUniform, sizeof(SVOUniform));
 
 	}
 
@@ -330,7 +344,8 @@ private:
 		voxelGridMap.viewType = VK_IMAGE_VIEW_TYPE_3D;
 		voxelGridMap.format = VK_FORMAT_R32_UINT;
 		voxelGridMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
-		fzbCreateImage(voxelGridMap, !svoSetting.UseSVO_OnlyVoxelGridMap);
+		voxelGridMap.UseExternal = !svoSetting.UseSVO_OnlyVoxelGridMap;
+		voxelGridMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
 
 	void createDescriptorPool() {
@@ -346,13 +361,13 @@ private:
 	void createVoxelGridMapDescriptor() {
 
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
-		std::vector<VkShaderStageFlagBits> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_FRAGMENT_BIT };
+		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_FRAGMENT_BIT };
 		voxelGridMapDescriptorSetLayout = fzbCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
 		voxelGridMapDescriptorSet = fzbCreateDescriptorSet(voxelGridMapDescriptorSetLayout);
 
 		std::array<VkWriteDescriptorSet, 2> voxelGridMapDescriptorWrites{};
 		VkDescriptorBufferInfo voxelGridMapUniformBufferInfo{};
-		voxelGridMapUniformBufferInfo.buffer = uniformBuffersStatic[0];
+		voxelGridMapUniformBufferInfo.buffer = svoUniformBuffer.buffer;
 		voxelGridMapUniformBufferInfo.offset = 0;
 		voxelGridMapUniformBufferInfo.range = sizeof(SVOUniform);
 		voxelGridMapDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -420,19 +435,19 @@ private:
 	void createVoxelGridMapPipeline() {
 		std::map<VkShaderStageFlagBits, std::string> shaders;
 		if (svoSetting.UseSwizzle) {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SVO/shaders/useSwizzle/spv/voxelVert.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SVO/shaders/useSwizzle/spv/voxelFrag.spv" });
+			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelVert.spv" });
+			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelFrag.spv" });
 		}
 		else {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SVO/shaders/unuseSwizzle/spv/voxelVert.spv" });
-			shaders.insert({ VK_SHADER_STAGE_GEOMETRY_BIT, "core/SVO/shaders/unuseSwizzle/spv/voxelGemo.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SVO/shaders/unuseSwizzle/spv/voxelFrag.spv" });
+			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelVert.spv" });
+			shaders.insert({ VK_SHADER_STAGE_GEOMETRY_BIT, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelGemo.spv" });
+			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelFrag.spv" });
 		}
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(shaders);
+		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(logicalDevice, shaders);
 
 		VkVertexInputBindingDescription inputBindingDescriptor = FzbVertex::getBindingDescription();
 		auto inputAttributeDescription = FzbVertex::getAttributeDescriptions();
-		VkPipelineVertexInputStateCreateInfo vertexInputInfo = fzbCreateVertexInputCreateInfo<FzbVertex>(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
+		VkPipelineVertexInputStateCreateInfo vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
 		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
 		VkPipelineRasterizationStateCreateInfo rasterizer = {};
@@ -560,7 +575,7 @@ private:
 		//dynamicState.pDynamicStates = dynamicStates.data();
 
 		std::vector< VkDescriptorSetLayout> descriptorSetLayouts = { voxelGridMapDescriptorSetLayout };
-		voxelGridMapPipelineLayout = fzbCreatePipelineLayout(&descriptorSetLayouts);
+		voxelGridMapPipelineLayout = fzbCreatePipelineLayout(logicalDevice, &descriptorSetLayouts);
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -624,7 +639,7 @@ private:
 		voxel_clearColor.uint32[1] = 0;
 		voxel_clearColor.uint32[2] = 0;
 		voxel_clearColor.uint32[3] = 0;
-		fzbClearTexture(commandBuffer, voxelGridMap, voxel_clearColor, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		voxelGridMap.fzbClearTexture(commandBuffer, voxel_clearColor, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
 		VkRenderPassBeginInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -635,14 +650,14 @@ private:
 
 		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		VkBuffer vertexBuffers[] = {storageBuffers[0] };
+		VkBuffer vertexBuffers[] = { sceneVertexBuffer.buffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(commandBuffer, storageBuffers[1], 0, VK_INDEX_TYPE_UINT32);
+		vkCmdBindIndexBuffer(commandBuffer, sceneIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, voxelGridMapPipeline);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, voxelGridMapPipelineLayout, 0, 1, &voxelGridMapDescriptorSet, 0, nullptr);
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->indices.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneIndexBuffer.data.size()), 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(commandBuffer);
 
@@ -669,27 +684,25 @@ private:
 
 	void createSVOCuda() {
 
-		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle, svoUniform.voxelStartPos, svoUniform.voxelSize_Num.z);
+		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle, svoUniformBuffer.data.voxelStartPos, svoUniformBuffer.data.voxelSize_Num.z);
 
 		//由于不能从cuda中直接导出数组的handle，因此我们需要先创建一个buffer，然后在cuda中将数据copy进去
-		nodePool.resize(svoCuda->nodeArrayNum * 8);
-		fzbCreateStorageBuffer<FzbSVONode>(svoCuda->nodeArrayNum * 8 * sizeof(FzbSVONode), &nodePool, true);
-		voxelValueBuffer.resize(svoCuda->voxelNum);
-		fzbCreateStorageBuffer<FzbVoxelValue>(svoCuda->voxelNum * sizeof(FzbVoxelValue), &voxelValueBuffer, true);
+		nodePool = fzbCreateStorageBuffer<FzbSVONode>(sizeof(FzbSVONode) * svoCuda->nodeArrayNum * 8, true);
+		voxelValueBuffer = fzbCreateStorageBuffer<FzbVoxelValue>(sizeof(FzbVoxelValue) * svoCuda->voxelNum, true);
 
-		svoCuda->getSVOCuda(physicalDevice, storageBufferHandles[0], storageBufferHandles[1]);
+		svoCuda->getSVOCuda(physicalDevice, nodePool.handle, voxelValueBuffer.handle);
 
 	}
 
 	void createSVODescriptor() {
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
-		std::vector<VkShaderStageFlagBits> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
+		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
 		svoDescriptorSetLayout = fzbCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
 		svoDescriptorSet = fzbCreateDescriptorSet(svoDescriptorSetLayout);
 
 		std::array<VkWriteDescriptorSet, 2> svoDescriptorWrites{};
 		VkDescriptorBufferInfo nodePoolBufferInfo{};
-		nodePoolBufferInfo.buffer = storageBuffers[2];
+		nodePoolBufferInfo.buffer = nodePool.buffer;
 		nodePoolBufferInfo.offset = 0;
 		nodePoolBufferInfo.range = sizeof(FzbSVONode) * this->svoCuda->nodeArrayNum * 8;
 		svoDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -701,7 +714,7 @@ private:
 		svoDescriptorWrites[0].pBufferInfo = &nodePoolBufferInfo;
 
 		VkDescriptorBufferInfo voxelValueBufferInfo{};
-		voxelValueBufferInfo.buffer = storageBuffers[3];
+		voxelValueBufferInfo.buffer = voxelValueBuffer.buffer;
 		voxelValueBufferInfo.offset = 0;
 		voxelValueBufferInfo.range = sizeof(FzbVoxelValue) * this->svoCuda->voxelNum;
 		svoDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -730,11 +743,12 @@ private:
 				float centerY = (scene->AABB.rightY + scene->AABB.leftY) * 0.5f;
 				float centerZ = (scene->AABB.rightZ + scene->AABB.leftZ) * 0.5f;
 
-				this->cubeVertices.resize(8);
+				std::vector<FzbVertex> cubeVertices;
+				cubeVertices.resize(8);
 				for (int i = 0; i < 8; i++) {
-					this->cubeVertices[i].pos = cubeVertexOffset[i] * voxelSize + glm::vec3(centerX - distance * 0.5f, centerY - distance * 0.5f, centerZ - distance * 0.5f);
+					cubeVertices[i].pos = cubeVertexOffset[i] * voxelSize + glm::vec3(centerX - distance * 0.5f, centerY - distance * 0.5f, centerZ - distance * 0.5f);
 				}
-				this->cubeIndices = {
+				std::vector<uint32_t> cubeIndices  = {
 					1, 0, 3, 1, 3, 2,
 					4, 5, 6, 4, 6, 7,
 					5, 1, 2, 5, 2, 6,
@@ -742,22 +756,23 @@ private:
 					7, 6, 2, 7, 2, 3,
 					0, 1, 5, 0, 5, 4
 				};
-				fzbCreateStorageBuffer<FzbVertex>(cubeVertices.size() * sizeof(FzbVertex), &cubeVertices);
-				fzbCreateStorageBuffer<uint32_t>(cubeIndices.size() * sizeof(uint32_t), &cubeIndices);
+				sceneCubeVertexBuffer = fzbCreateStorageBuffer<FzbVertex>(&cubeVertices);
+				sceneCubeIndexBuffer = fzbCreateStorageBuffer<uint32_t>(&cubeIndices);
 			}
 		}
 		else {
-			this->cubeVertices.resize(8);
+			std::vector<FzbVertex> cubeVertices;
+			cubeVertices.resize(8);
 			for (int i = 0; i < 8; i++) {
-				this->cubeVertices[i].pos = cubeVertexOffset[i];
+				cubeVertices[i].pos = cubeVertexOffset[i];
 			}
-			this->cubeIndices = {
+			std::vector<uint32_t> cubeIndices = {
 				0, 1, 1, 2, 2, 3, 3, 0,
 				4, 5, 5, 6, 6, 7, 7, 4,
 				0, 4, 1, 5, 2, 6, 3, 7
 			};
-			fzbCreateStorageBuffer<FzbVertex>(cubeVertices.size() * sizeof(FzbVertex), &cubeVertices);
-			fzbCreateStorageBuffer<uint32_t>(cubeIndices.size() * sizeof(uint32_t), &cubeIndices);
+			sceneWireframeVertexBuffer = fzbCreateStorageBuffer<FzbVertex>(&cubeVertices);
+			sceneWireframeIndexBuffer = fzbCreateStorageBuffer<uint32_t>(&cubeIndices);
 		}
 	}
 
@@ -770,7 +785,7 @@ private:
 		depthMap.format = fzbFindDepthFormat(physicalDevice);
 		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-		fzbCreateImage(depthMap, false);
+		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
 
 	void createPresentRenderPass(VkFormat swapChainImageFormat) {
@@ -788,7 +803,7 @@ private:
 		colorAttachmentResolveRef.attachment = 0;
 		colorAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-		std::vector< VkAttachmentDescription> attachments = { colorAttachmentResolve };
+		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve };
 
 		VkAttachmentDescription depthMapAttachment{};
 		depthMapAttachment.format = fzbFindDepthFormat(physicalDevice);
@@ -870,19 +885,19 @@ private:
 	void createVGMPresentPipeline(VkDescriptorSetLayout uniformDescriptorSetLayout) {
 		std::map<VkShaderStageFlagBits, std::string> shaders;
 		if (svoSetting.UseBlock) {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SVO/shaders/present_VGM/spv/presentVert_Block.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SVO/shaders/present_VGM/spv/presentFrag_Block.spv" });
+			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present_VGM/spv/presentVert_Block.spv" });
+			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present_VGM/spv/presentFrag_Block.spv" });
 		}
 		else {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SVO/shaders/present/spv/presentVert.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SVO/shaders/present/spv/presentFrag.spv" });
+			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" });
+			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" });
 		}
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(shaders);
+		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(logicalDevice, shaders);
 
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
 		VkVertexInputBindingDescription inputBindingDescriptor = FzbVertex::getBindingDescription();
 		auto inputAttributeDescription = FzbVertex::getAttributeDescriptions();
-		vertexInputInfo = fzbCreateVertexInputCreateInfo<FzbVertex>(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
+		vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
 		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
 		VkPipelineRasterizationStateCreateInfo rasterizer = fzbCreateRasterizationStateCreateInfo(VK_CULL_MODE_NONE);
@@ -908,7 +923,7 @@ private:
 		viewportState.pScissors = &scissor;
 
 		std::vector< VkDescriptorSetLayout> presentDescriptorSetLayouts = { uniformDescriptorSetLayout, voxelGridMapDescriptorSetLayout };
-		presentPipelineLayout = fzbCreatePipelineLayout(&presentDescriptorSetLayouts);
+		presentPipelineLayout = fzbCreatePipelineLayout(logicalDevice, &presentDescriptorSetLayouts);
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -939,14 +954,14 @@ private:
 
 	void createSVOPresentPipeline(VkDescriptorSetLayout uniformDescriptorSetLayout) {
 		std::map<VkShaderStageFlagBits, std::string> shaders;
-		shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SVO/shaders/present/spv/presentVert.spv" });
-		shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SVO/shaders/present/spv/presentFrag.spv" });
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(shaders);
+		shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" });
+		shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" });
+		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(logicalDevice, shaders);
 
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
 		VkVertexInputBindingDescription inputBindingDescriptor = FzbVertex::getBindingDescription();
 		auto inputAttributeDescription = FzbVertex::getAttributeDescriptions();
-		vertexInputInfo = fzbCreateVertexInputCreateInfo<FzbVertex>(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
+		vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
 		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
 
 		VkPipelineRasterizationStateCreateInfo rasterizer = fzbCreateRasterizationStateCreateInfo(VK_CULL_MODE_NONE);
@@ -972,7 +987,7 @@ private:
 		viewportState.pScissors = &scissor;
 
 		std::vector< VkDescriptorSetLayout> presentDescriptorSetLayouts = { uniformDescriptorSetLayout, voxelGridMapDescriptorSetLayout };
-		presentPipelineLayout = fzbCreatePipelineLayout(&presentDescriptorSetLayouts);
+		presentPipelineLayout = fzbCreatePipelineLayout(logicalDevice, &presentDescriptorSetLayouts);
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
 		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
@@ -1001,10 +1016,10 @@ private:
 		}
 
 		shaders = std::map<VkShaderStageFlagBits, std::string>();
-		shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SVO/shaders/present_SVO/spv/vert.spv" });
-		shaders.insert({ VK_SHADER_STAGE_GEOMETRY_BIT, "core/SVO/shaders/present_SVO/spv/gemo.spv" });
-		shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SVO/shaders/present_SVO/spv/frag.spv" });
-		shaderStages = fzbCreateShader(shaders);
+		shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present_SVO/spv/vert.spv" });
+		shaders.insert({ VK_SHADER_STAGE_GEOMETRY_BIT, "core/SceneDivision/SVO/shaders/present_SVO/spv/gemo.spv" });
+		shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present_SVO/spv/frag.spv" });
+		shaderStages = fzbCreateShader(logicalDevice, shaders);
 
 		inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
 
@@ -1012,7 +1027,7 @@ private:
 		rasterizer.lineWidth = 1.0f;
 
 		presentDescriptorSetLayouts = { uniformDescriptorSetLayout, svoDescriptorSetLayout };
-		presentWireframePipelineLayout = fzbCreatePipelineLayout(&presentDescriptorSetLayouts);
+		presentWireframePipelineLayout = fzbCreatePipelineLayout(logicalDevice, &presentDescriptorSetLayouts);
 
 		pipelineInfo.stageCount = shaderStages.size();
 		pipelineInfo.pStages = shaderStages.data();

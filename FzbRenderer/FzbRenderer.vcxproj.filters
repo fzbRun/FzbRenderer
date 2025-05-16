@@ -16,103 +16,160 @@
     <Filter Include="资源文件\core">
       <UniqueIdentifier>{9afb9b32-5f7b-47a0-9087-0d7d5c37c82e}</UniqueIdentifier>
     </Filter>
-    <Filter Include="资源文件\core\SVO">
-      <UniqueIdentifier>{0fd8f4a1-2cb5-48d9-8789-58781c127022}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\SVO\shaders">
-      <UniqueIdentifier>{e6128b5c-5cb6-4d1f-9a53-b5317027ad89}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\SVO\shaders\present">
-      <UniqueIdentifier>{ce2f6f30-c4f2-40c9-b611-e20c1f537b6b}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\SVO\shaders\present_SVO">
-      <UniqueIdentifier>{a28d295f-509e-4ac2-a872-ea8e709b97a4}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\SVO\shaders\present_VGM">
-      <UniqueIdentifier>{3e54d113-e040-4ad7-aa3d-4d3ea9aa167c}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\SVO\shaders\unuseSwizzle">
-      <UniqueIdentifier>{1ffd885e-5178-47fb-9032-30413bc7a0be}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\SVO\shaders\useSwizzle">
-      <UniqueIdentifier>{ed6ae2d4-c6d0-4eaa-b738-66cac45ec65f}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\SVO\CUDA">
-      <UniqueIdentifier>{33f49e9b-6362-4349-98a0-2961cddf2eb8}</UniqueIdentifier>
-    </Filter>
     <Filter Include="资源文件\core\CUDA">
       <UniqueIdentifier>{9a6689f7-6cd1-436c-b939-8643de3b0d18}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\core\RayTracing">
+      <UniqueIdentifier>{77d33d71-a697-49dd-905d-d35d62c6d758}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\RayTracing\PathTracing">
+      <UniqueIdentifier>{6eaa7482-8467-41b7-af85-e2684e13e45d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision">
+      <UniqueIdentifier>{237a401b-6c9a-4dbe-8d0e-384c2e535b05}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO">
+      <UniqueIdentifier>{0fd8f4a1-2cb5-48d9-8789-58781c127022}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO\CUDA">
+      <UniqueIdentifier>{33f49e9b-6362-4349-98a0-2961cddf2eb8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO\shaders">
+      <UniqueIdentifier>{cad83eea-f52a-4596-9303-88763a5e9e79}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO\shaders\present">
+      <UniqueIdentifier>{af32a1f7-617c-4576-892f-b86652e47380}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO\shaders\present_SVO">
+      <UniqueIdentifier>{1b35f283-ce07-4de4-92dd-6303cd90e811}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO\shaders\present_VGM">
+      <UniqueIdentifier>{4da44f90-fe1a-4cf9-8a1c-ce6a5040577d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO\shaders\unuseSwizzle">
+      <UniqueIdentifier>{80ae804b-0df0-4d09-b3f7-f912ad830dfc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\SVO\shaders\useSwizzle">
+      <UniqueIdentifier>{31d08a0e-ae39-4abd-8341-ea387f4b3560}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\BVH">
+      <UniqueIdentifier>{c9ec0da5-a06a-49c0-a4e4-e29f067ceb8d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\BVH\shaders">
+      <UniqueIdentifier>{18a6396d-a9a8-48e0-acee-6ec94fac8fa9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\RayTracing\PathTracing\AccelerationStructure">
+      <UniqueIdentifier>{c7b8ff14-c673-44fd-8870-9f088d48d32d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common">
+      <UniqueIdentifier>{89563cab-b963-4ff8-90bf-7550d25f7354}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\RayTracing\PathTracing\shaders">
+      <UniqueIdentifier>{f58eb839-8c92-4ba7-927a-80d7094f5339}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="core\FzbCamera.h">
-      <Filter>资源文件\core</Filter>
-    </ClInclude>
-    <ClInclude Include="core\StructSet.h">
-      <Filter>资源文件\core</Filter>
-    </ClInclude>
-    <ClInclude Include="core\FzbComponent.h">
-      <Filter>资源文件\core</Filter>
-    </ClInclude>
     <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
       <Filter>资源文件\core\CUDA</Filter>
     </ClInclude>
-    <ClInclude Include="core\SVO\CUDA\createSVO.cuh">
-      <Filter>资源文件\core\SVO\CUDA</Filter>
+    <ClInclude Include="core\RayTracing\PathTracing\pathTracing.h">
+      <Filter>资源文件\core\RayTracing\PathTracing</Filter>
     </ClInclude>
-    <ClInclude Include="core\SVO\SVO.h">
-      <Filter>资源文件\core\SVO</Filter>
+    <ClInclude Include="core\SceneDivision\SVO\SVO.h">
+      <Filter>资源文件\core\SceneDivision\SVO</Filter>
+    </ClInclude>
+    <ClInclude Include="core\SceneDivision\SVO\CUDA\createSVO.cuh">
+      <Filter>资源文件\core\SceneDivision\SVO\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\SceneDivision\BVH\BVH.h">
+      <Filter>资源文件\core\SceneDivision\BVH</Filter>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\PathTracing\AccelerationStructure\accelerationStructure.h">
+      <Filter>资源文件\core\RayTracing\PathTracing\AccelerationStructure</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbBuffer.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbCamera.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbComponent.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\StructSet.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbScene.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbMesh.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbPipeline.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbRenderPass.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbImage.h">
+      <Filter>资源文件\core\common</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="core\SVO\shaders\present\presentFrag.glsl">
-      <Filter>资源文件\core\SVO\shaders\present</Filter>
-    </None>
-    <None Include="core\SVO\shaders\present\presentVert.glsl">
-      <Filter>资源文件\core\SVO\shaders\present</Filter>
-    </None>
-    <None Include="core\SVO\shaders\present_SVO\wireFrameFrag.glsl">
-      <Filter>资源文件\core\SVO\shaders\present_SVO</Filter>
-    </None>
-    <None Include="core\SVO\shaders\present_SVO\wireFrameGemo.glsl">
-      <Filter>资源文件\core\SVO\shaders\present_SVO</Filter>
-    </None>
-    <None Include="core\SVO\shaders\present_SVO\wireFrameVert.glsl">
-      <Filter>资源文件\core\SVO\shaders\present_SVO</Filter>
-    </None>
-    <None Include="core\SVO\shaders\present_VGM\presentFrag_Block.glsl">
-      <Filter>资源文件\core\SVO\shaders\present_VGM</Filter>
-    </None>
-    <None Include="core\SVO\shaders\present_VGM\presentVert_Block.glsl">
-      <Filter>资源文件\core\SVO\shaders\present_VGM</Filter>
-    </None>
-    <None Include="core\SVO\shaders\unuseSwizzle\voxelFrag.glsl">
-      <Filter>资源文件\core\SVO\shaders\unuseSwizzle</Filter>
-    </None>
-    <None Include="core\SVO\shaders\unuseSwizzle\voxelGemo.glsl">
-      <Filter>资源文件\core\SVO\shaders\unuseSwizzle</Filter>
-    </None>
-    <None Include="core\SVO\shaders\unuseSwizzle\voxelVert.glsl">
-      <Filter>资源文件\core\SVO\shaders\unuseSwizzle</Filter>
-    </None>
-    <None Include="core\SVO\shaders\useSwizzle\voxelFrag.glsl">
-      <Filter>资源文件\core\SVO\shaders\useSwizzle</Filter>
-    </None>
-    <None Include="core\SVO\shaders\useSwizzle\voxelVert.glsl">
-      <Filter>资源文件\core\SVO\shaders\useSwizzle</Filter>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <CudaCompile Include="core\SVO\CUDA\createSVO.cu">
-      <Filter>资源文件\core\SVO\CUDA</Filter>
-    </CudaCompile>
     <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
       <Filter>资源文件\core\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\SceneDivision\SVO\CUDA\createSVO.cu">
+      <Filter>资源文件\core\SceneDivision\SVO\CUDA</Filter>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="FzbRenderer.cpp">
       <Filter>资源文件</Filter>
     </ClCompile>
+    <ClCompile Include="core\common\FzbImage.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbBuffer.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="core\SceneDivision\SVO\shaders\present\presentFrag.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\present\presentVert.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\present_SVO\wireFrameFrag.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present_SVO</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\present_SVO\wireFrameGemo.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present_SVO</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\present_SVO\wireFrameVert.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present_SVO</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\present_VGM\presentFrag_Block.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present_VGM</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\present_VGM\presentVert_Block.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present_VGM</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelFrag.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\unuseSwizzle</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelGemo.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\unuseSwizzle</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelVert.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\unuseSwizzle</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelFrag.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\useSwizzle</Filter>
+    </None>
+    <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelVert.glsl">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\useSwizzle</Filter>
+    </None>
   </ItemGroup>
 </Project>
