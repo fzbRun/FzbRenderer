@@ -87,4 +87,3 @@ void FzbBuffer::fzbGetBufferDeviceAddress() {
 	addressInfo.buffer = buffer;
 	deviceAddress = getBufferDeviceAddressKHR(logicalDevice, &addressInfo);
 }
-

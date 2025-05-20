@@ -213,7 +213,7 @@ public:
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipeline);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 1, 1, &svoDescriptorSet, 0, nullptr);
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneWireframeIndexBuffer.data.size()), this->svoCuda->nodeArrayNum * 8, 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneWireframeIndexBuffer.data.size()), svoCuda->nodeArrayNum * 8, 0, 0, 0);
 		}
 
 		vkCmdEndRenderPass(commandBuffer);
@@ -483,8 +483,11 @@ private:
 		viewportState.pViewports = &viewport;
 		viewportState.pScissors = &scissor;
 
+		std::array< VkViewport, 3> viewports = {};
+		std::array< VkRect2D, 3> scissors = {};
+		std::array<VkViewportSwizzleNV, 3> swizzles = {};
+		VkPipelineViewportSwizzleStateCreateInfoNV viewportSwizzleInfo{};
 		if (svoSetting.UseSwizzle) {
-
 			//std::array< VkViewport, 4> viewports = {};
 			//std::array< VkRect2D, 4> scissors = {};
 			//for (int y = 0; y < 2; y++) {
@@ -508,9 +511,6 @@ private:
 			//		VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV /* w */
 			//	};
 			//}
-
-			std::array< VkViewport, 3> viewports = {};
-			std::array< VkRect2D, 3> scissors = {};
 			for (int i = 0; i < viewports.size(); i++) {
 				viewports[i].x = 0;
 				viewports[i].y = 0;
@@ -529,7 +529,7 @@ private:
 			而对于swizzle[2]来说，反转后的y变成了它的z，这就导致原本是从下向上看的，编程了从上向下看，并且由于NEGATIVE_Z没有反转，因此图像变到了上方
 			因此想要正确显示就必须样swizzle[2]的y变为VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Z_NV，z变为VK_VIEWPORT_COORDINATE_SWIZZLE_NEGATIVE_Y_NV
 			*/
-			std::array<VkViewportSwizzleNV, 3> swizzles = {};
+			
 			swizzles[0] = {		//前面
 				VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV,
 				VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Y_NV,
@@ -555,7 +555,7 @@ private:
 			viewportState.scissorCount = scissors.size();
 			viewportState.pScissors = scissors.data();
 
-			VkPipelineViewportSwizzleStateCreateInfoNV viewportSwizzleInfo{};
+			
 			viewportSwizzleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_SWIZZLE_STATE_CREATE_INFO_NV;
 			viewportSwizzleInfo.pViewportSwizzles = swizzles.data();
 			viewportSwizzleInfo.viewportCount = swizzles.size();
@@ -704,7 +704,7 @@ private:
 		VkDescriptorBufferInfo nodePoolBufferInfo{};
 		nodePoolBufferInfo.buffer = nodePool.buffer;
 		nodePoolBufferInfo.offset = 0;
-		nodePoolBufferInfo.range = sizeof(FzbSVONode) * this->svoCuda->nodeArrayNum * 8;
+		nodePoolBufferInfo.range = sizeof(FzbSVONode) * svoCuda->nodeArrayNum * 8;
 		svoDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		svoDescriptorWrites[0].dstSet = svoDescriptorSet;
 		svoDescriptorWrites[0].dstBinding = 0;
@@ -716,7 +716,7 @@ private:
 		VkDescriptorBufferInfo voxelValueBufferInfo{};
 		voxelValueBufferInfo.buffer = voxelValueBuffer.buffer;
 		voxelValueBufferInfo.offset = 0;
-		voxelValueBufferInfo.range = sizeof(FzbVoxelValue) * this->svoCuda->voxelNum;
+		voxelValueBufferInfo.range = sizeof(FzbVoxelValue) * svoCuda->voxelNum;
 		svoDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		svoDescriptorWrites[1].dstSet = svoDescriptorSet;
 		svoDescriptorWrites[1].dstBinding = 1;

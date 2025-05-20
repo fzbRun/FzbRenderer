@@ -10,6 +10,24 @@ double cpuSecond() {
     return std::chrono::duration<double>(now.time_since_epoch()).count();
 }
 
+__device__ int warpReduce(int localSum)
+{
+    localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 16);
+    localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 8);
+    localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 4);
+    localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 2);
+    localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 1);
+    return localSum;
+}
+
+__device__ uint32_t packUint3(uint3 valueU3) {
+    return ((valueU3.x & 0x3FF) << 20) | ((valueU3.y & 0x3FF) << 10) | (valueU3.z & 0x3FF);
+}
+
+__device__ uint3 unpackUint(uint32_t value) {
+    return make_uint3((value >> 20) & 0x3FF, (value >> 10) & 0x3FF, value & 0x3FF);
+}
+
 //------------------------------------------------------------Vulkan½»»¥»ù´¡º¯Êý-----------------------------------------------------------------
 
 /*

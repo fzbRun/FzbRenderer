@@ -36,6 +36,11 @@ clock()ª·º∆À„CPU ±º‰£¨∂¯∑«π“÷” ±º‰°£º¥»Ù”–3∏ˆœﬂ≥Ã≤¢––‘À––£¨÷¥––3√Î£¨ƒ«√¥clockª·∑
 */
 double cpuSecond();
 
+__device__ int warpReduce(int localSum);
+
+__device__ uint32_t packUint3(uint3 valueU3);
+__device__ uint3 unpackUint(uint32_t value);
+
 int getCudaDeviceForVulkanPhysicalDevice(VkPhysicalDevice vkPhysicalDevice);
 cudaExternalMemory_t importVulkanMemoryObjectFromFileDescriptor(int fd, unsigned long long size, bool isDedicated);
 cudaExternalMemory_t importVulkanMemoryObjectFromNTHandle(HANDLE handle, unsigned long long size, bool isDedicated);

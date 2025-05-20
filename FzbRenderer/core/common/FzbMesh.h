@@ -1,35 +1,9 @@
 #pragma once
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
-//必须在vulkan.h前定义VK_USE_PLATFORM_WIN32_KHR，但是vulkan.h是通过glfw3.h导入的，但是我在#include <GLFW/glfw3.h>前定义VK_USE_PLATFORM_WIN32_KHR没用
-//但是，我打开vulkan.h发现，定义VK_USE_PLATFORM_WIN32_KHR只会包含如下两个h文件，因此直接手动导入也是一样的。
-#define NOMINMAX	//windows.h中max与std和glm的max有冲突
-#include <windows.h>
-#include <vulkan/vulkan_win32.h>
-
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_ENABLE_EXPERIMENTAL
-#define GLM_FUNC_QUALIFIER //用于cuda核函数
-#include<glm/glm.hpp>
-
-#include <iostream>
-#include <unordered_map>
-#include <glm/ext/matrix_transform.hpp>
-
-#include <optional>
-
 #include "FzbPipeline.h"
 
 #ifndef FZB_MESH_H
 #define FZB_MESH_H
-
-//用作屏幕空间处理
-struct FzbVertex_NULL {
-
-};
 
 struct FzbVertex {
 	glm::vec3 pos;
@@ -268,50 +242,48 @@ struct FzbTexture {
 	std::string path;
 };
 
-/*
-全部存的都是偏移量，指向场景中存储的实际数据的索引
-mesh包含：
-1. 顶点、索引数组以及变换矩阵索引
-2. 纹理索引（指向scene的纹理集合）
-3. 材质索引
-*/
+struct FzbMeshMaterialUniformObject {
+	uint32_t materialIndex;	//当前draw的mesh的材质在材质buffer中的索引
+
+};
+
 struct FzbMesh {
 public:
-	uint32_t vertexIndex;
-	uint32_t indexIndex;
-	uint32_t transformsIndex;
+	uint32_t vertexBufferOffset;	//在顶点缓冲中的偏移
+	uint32_t vertexBufferSize;	//在顶点缓冲中的大小
+	glm::mat4 transforms;	//一个mesh对应一种变换
 	std::vector<uint32_t> texturesIndex;
 	uint32_t materialIndex;
 	FzbAABBBox AABB;
 
 	FzbMesh() {};
 
-	FzbMesh(uint32_t vertexIndex, uint32_t indexIndex, uint32_t transformsIndex, std::vector<uint32_t> texturesIndex, uint32_t materialIndex) {
-		this->vertexIndex = vertexIndex;
-		this->indexIndex = indexIndex;
-		this->transformsIndex = transformsIndex;
+	FzbMesh(uint32_t vertexBufferOffset, uint32_t vertexBufferSize, uint32_t transformsIndex, glm::mat4 transforms, uint32_t materialIndex) {
+		this->vertexBufferOffset = vertexBufferOffset;
+		this->vertexBufferSize = vertexBufferSize;
+		this->transforms = transforms;
 		this->texturesIndex = texturesIndex;
 		this->materialIndex = materialIndex;
 	}
 };
 
+//批应该分为两种，一种是批内mesh都相同，可以当作一个大的mesh；另一种就是shader相同，但是数据不同
 //一个batch中的mesh的shader相同，即顶点格式、所用纹理数量、类型什么的都相同。
 template<typename T>
 struct FzbMeshBatch {
 public:
 	VkDevice logicalDevice;
-	std::vector<FzbMesh> meshBatch;
 	T vertexType;
-
+	std::vector<FzbMesh> meshBatch;
+	std::vector<FzbPipeline> pipeline;
+	FzbStorageBuffer indexBuffer;
 	
 	FzbMeshBatch(VkDevice logicalDevice, T vertexType) {
 		this->logicalDevice = logicalDevice;
 		this->vertexType = vertexType;
 	}
 
-	void createPipeline(VkRenderPass renderPass) {
 
-	}
 };
 
 #endif

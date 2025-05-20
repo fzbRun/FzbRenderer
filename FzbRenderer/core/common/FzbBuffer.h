@@ -34,6 +34,10 @@ public:
 	uint64_t deviceAddress;
 	uint32_t size;
 
+	VkBufferUsageFlags usage;
+	VkMemoryPropertyFlags properties;
+	bool UseExternal = false;
+
 	//这里的buffer一定要CPU可见，即VkMemoryPropertyFlags要有VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 	void fzbFillBuffer(void* bufferData) {
 		void* data;	//得到一个指针
@@ -64,10 +68,15 @@ struct FzbUniformBuffer : public FzbBuffer {
 		this->physicalDevice = physicalDevice;
 		this->logicalDevice = logicalDevice;
 		this->size = bufferSize;
+		this->usage = usage;
+		this->properties = properties;
+		this->UseExternal = UseExternal;
+	}
 
+	void fzbCreateUniformBuffer() {
 		VkBufferCreateInfo bufferInfo{};
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferInfo.size = bufferSize;
+		bufferInfo.size = size;
 		bufferInfo.usage = usage;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
@@ -134,10 +143,15 @@ struct FzbStorageBuffer : public FzbBuffer {
 		this->physicalDevice = physicalDevice;
 		this->logicalDevice = logicalDevice;
 		this->size = bufferSize;
+		this->usage = usage;
+		this->properties = properties;
+		this->UseExternal = UseExternal;
+	}
 
+	void fzbCreateStorageBuffer() {
 		VkBufferCreateInfo bufferInfo{};
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferInfo.size = bufferSize;
+		bufferInfo.size = size;
 		bufferInfo.usage = usage;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
