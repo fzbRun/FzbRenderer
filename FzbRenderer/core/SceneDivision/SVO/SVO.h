@@ -212,8 +212,9 @@ public:
 
 			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipeline);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 1, 1, &svoDescriptorSet, 0, nullptr);
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneWireframeIndexBuffer.data.size()), svoCuda->nodeArrayNum * 8, 0, 0, 0);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 1, 1, &voxelGridMapDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 2, 1, &svoDescriptorSet, 0, nullptr);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneWireframeIndexBuffer.data.size()), svoCuda->nodeBlockNum * 8 + 1, 0, 0, 0);
 		}
 
 		vkCmdEndRenderPass(commandBuffer);
@@ -684,10 +685,10 @@ private:
 
 	void createSVOCuda() {
 
-		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle, svoUniformBuffer.data.voxelStartPos, svoUniformBuffer.data.voxelSize_Num.z);
+		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle);
 
 		//由于不能从cuda中直接导出数组的handle，因此我们需要先创建一个buffer，然后在cuda中将数据copy进去
-		nodePool = fzbCreateStorageBuffer<FzbSVONode>(sizeof(FzbSVONode) * svoCuda->nodeArrayNum * 8, true);
+		nodePool = fzbCreateStorageBuffer<FzbSVONode>(sizeof(FzbSVONode) * (8 * svoCuda->nodeBlockNum + 1), true);
 		voxelValueBuffer = fzbCreateStorageBuffer<FzbVoxelValue>(sizeof(FzbVoxelValue) * svoCuda->voxelNum, true);
 
 		svoCuda->getSVOCuda(physicalDevice, nodePool.handle, voxelValueBuffer.handle);
@@ -704,7 +705,7 @@ private:
 		VkDescriptorBufferInfo nodePoolBufferInfo{};
 		nodePoolBufferInfo.buffer = nodePool.buffer;
 		nodePoolBufferInfo.offset = 0;
-		nodePoolBufferInfo.range = sizeof(FzbSVONode) * svoCuda->nodeArrayNum * 8;
+		nodePoolBufferInfo.range = sizeof(FzbSVONode) * (svoCuda->nodeBlockNum * 8 + 1);
 		svoDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		svoDescriptorWrites[0].dstSet = svoDescriptorSet;
 		svoDescriptorWrites[0].dstBinding = 0;
@@ -1026,7 +1027,7 @@ private:
 		rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
 		rasterizer.lineWidth = 1.0f;
 
-		presentDescriptorSetLayouts = { uniformDescriptorSetLayout, svoDescriptorSetLayout };
+		presentDescriptorSetLayouts = { uniformDescriptorSetLayout, voxelGridMapDescriptorSetLayout, svoDescriptorSetLayout };
 		presentWireframePipelineLayout = fzbCreatePipelineLayout(logicalDevice, &presentDescriptorSetLayouts);
 
 		pipelineInfo.stageCount = shaderStages.size();
