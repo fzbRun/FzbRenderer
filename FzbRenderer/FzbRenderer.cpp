@@ -1,5 +1,5 @@
 #include "core/common/FzbComponent.h"
-#include "core/SceneDivision/SVO/SVO.h"
+//#include "core/SceneDivision/SVO/SVO.h"
 
 class FzbRenderer : public FzbMainComponent {
 
@@ -14,70 +14,63 @@ public:
 	}
 
 private:
-	VkRenderPass renderPass;
-	VkPipeline presentPipeline;
-	VkPipelineLayout presentPipelineLayout;
 
 	FzbScene scene;
-	FzbModel model;
-	//std::vector<FzbVertex> vertices;
-	//std::vector<uint32_t> indices;
 
-	FzbStorageBuffer<FzbVertex> sceneVertexBuffer;
-	FzbStorageBuffer<uint32_t> sceneIndexBuffer;
-	FzbUniformBuffer<FzbCameraUniformBufferObject> cameraUniformBuffer;
+	FzbBuffer cameraUniformBuffer;
+	FzbImage depthMap;
 
 	VkDescriptorSetLayout uniformDescriptorSetLayout;
 	VkDescriptorSet uniformDescriptorSet;
+
+	FzbRenderPass renderPass;
 
 	FzbSemaphore imageAvailableSemaphores;
 	FzbSemaphore renderFinishedSemaphores;
 	VkFence fence;
 
-	FzbSVOSetting svoSetting = {};
-	std::unique_ptr<FzbSVO> fzbSVO;
+	//FzbSVOSetting svoSetting = {};
+	//std::unique_ptr<FzbSVO> fzbSVO;
 
 	void initVulkan() {
-		createComponent();
-		fzbCreateInstance("FzbRenderer", instanceExtensions, validationLayers, apiVersion);
-		setupDebugMessenger();
-		fzbCreateSurface();
-		createDevice();
-		fzbCreateSwapChain();
-		initBuffers();
-		createModels();
-		initComponent();
-		activateComponent();
-		createBuffers();
-		createImages();
-		createDescriptor();
-		prepareComponentPresent();
-		createRenderPass();
-		createFramebuffers();
-		createPipeline();
-		createSyncObjects();
+		initSetting();
+		createScene();
+		createAppRenderPass();
 	}
-
+	//---------------------------------------------------------------------------------------------------
 	void createComponent() {
 
-		svoSetting.UseSVO = true;
-		if (svoSetting.UseSVO) {
-			fzbSVO = std::make_unique<FzbSVO>();
-			svoSetting.UseSVO_OnlyVoxelGridMap = false;
-			svoSetting.UseBlock = true;
-			svoSetting.UseConservativeRasterization = false;
-			svoSetting.UseSwizzle = true;
-			svoSetting.Present = true;
-			svoSetting.voxelNum = 64;
-			fzbSVO->addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
-		}
+		//svoSetting.UseSVO = false;
+		//if (svoSetting.UseSVO) {
+		//	fzbSVO = std::make_unique<FzbSVO>();
+		//	svoSetting.UseSVO_OnlyVoxelGridMap = false;
+		//	svoSetting.UseBlock = true;
+		//	svoSetting.UseConservativeRasterization = false;
+		//	svoSetting.UseSwizzle = true;
+		//	svoSetting.Present = true;
+		//	svoSetting.voxelNum = 64;
+		//	fzbSVO->addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
+		//}
 	}
 
 	void createDevice() {
 		deviceFeatures.samplerAnisotropy = VK_TRUE;
 		deviceFeatures.geometryShader = VK_TRUE;
 		deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
-		fzbCreateDevice(&deviceFeatures, deviceExtensions, pNextFeatures, validationLayers);
+		deviceFeatures.multiDrawIndirect = VK_TRUE;
+
+		VkPhysicalDeviceVulkan11Features vk11Features{};
+		vk11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+		vk11Features.shaderDrawParameters = VK_TRUE;
+
+		VkPhysicalDeviceVulkan12Features vk12Features{};
+		vk12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+		vk12Features.drawIndirectCount = VK_TRUE;
+		vk12Features.descriptorIndexing = VK_TRUE;
+
+		VkPhysicalDeviceFeatures2 feature2 = createPhysicalDeviceFeatures(deviceFeatures, &vk11Features, &vk12Features);
+
+		fzbCreateDevice(nullptr, deviceExtensions, &feature2);
 	}
 
 	void initBuffers() {
@@ -85,45 +78,60 @@ private:
 		fzbCreateCommandBuffers(1);
 	}
 
-	void createModels() {
-		model = fzbCreateModel("models/dragon.obj");
-		scene.sceneModels.push_back(&model);
-
-		fzbOptimizeScene(&scene, scene.sceneVertices, scene.sceneIndices);
-		this->sceneVertexBuffer.data = scene.sceneVertices;
-		this->sceneIndexBuffer.data = scene.sceneIndices;
-		scene.AABB = fzbMakeAABB(scene.sceneVertices);
-
-
+	void initSetting() {
+		fzbCreateInstance("FzbRenderer", instanceExtensions, validationLayers);
+		fzbCetupDebugMessenger();
+		fzbCreateSurface();
+		createDevice();
+		fzbCreateSwapChain();
+		initBuffers();
 	}
+//---------------------------------------------------------------------------------------------------
+	void createScene() {
+		scene = FzbScene(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 
-	void initComponent() {
-		if (svoSetting.UseSVO)
-			fzbSVO->init(this, &scene, svoSetting);
+		//如果有GUI这里实际上不需要我去手动放置shader以及相关的贴图什么的
+		FzbMesh mesh = getMeshFromOBJ("./models/dragon.obj", FzbVertexFormat(true))[0];
+		mesh.shader = FzbShader(logicalDevice, true, false, false);
+		scene.addMeshToScene(mesh);
+
+		FzbMesh cube;
+		fzbCreateCube(cube.vertices, cube.indices);
+		cube.transforms = glm::scale(glm::mat4(1.0f), glm::vec3(20.0f, 1.0f, 1.0f));
+		cube.shader = FzbShader(logicalDevice, false, false, false);
+		scene.addMeshToScene(cube);
+
+		scene.getSceneVertics(false);
+		scene.createBufferAndTexture();
+		scene.createDescriptor();
 	}
-
-	void activateComponent() {
-		if (svoSetting.UseSVO)
-			fzbSVO->activate();
-	}
-
+//---------------------------------------------------------------------------------------------------
 	void createBuffers() {
-		cameraUniformBuffer = fzbCreateUniformBuffers<FzbCameraUniformBufferObject>();
+		cameraUniformBuffer = fzbComponentCreateUniformBuffers<FzbCameraUniformBufferObject>();
 	}
 
 	void createImages() {
+		depthMap = {};
+		depthMap.width = swapChainExtent.width;
+		depthMap.height = swapChainExtent.height;
+		depthMap.type = VK_IMAGE_TYPE_2D;
+		depthMap.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		depthMap.format = fzbFindDepthFormat(physicalDevice);
+		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
 
 	void createDescriptor() {
 
 		std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
-		fzbCreateDescriptorPool(bufferTypeAndNum);
+		fzbComponentCreateDescriptorPool(bufferTypeAndNum);
 
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
 		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL };
-		uniformDescriptorSetLayout = fzbCreateDescriptLayout(1, descriptorTypes, descriptorShaderFlags);
-		uniformDescriptorSet = fzbCreateDescriptorSet(uniformDescriptorSetLayout);
+		uniformDescriptorSetLayout = fzbComponentCreateDescriptLayout(1, descriptorTypes, descriptorShaderFlags);
+		uniformDescriptorSet = fzbComponentCreateDescriptorSet(uniformDescriptorSetLayout);
 
 		std::array<VkWriteDescriptorSet, 1> uniformDescriptorWrites{};
 		VkDescriptorBufferInfo cameraUniformBufferInfo{};
@@ -142,26 +150,58 @@ private:
 
 	}
 
-	void prepareComponentPresent() {
-		if (svoSetting.UseSVO)
-			fzbSVO->presentPrepare(uniformDescriptorSetLayout);
-	}
-
 	void createRenderPass() {
 
-	}
+		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
+		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment(physicalDevice);
+		VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve, depthMapAttachment };
 
-	void createFramebuffers() {
-	}
+		VkSubpassDescription presentSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef);
+		std::vector<VkSubpassDescription> subpasses = { presentSubpass };
 
-	void createPipeline() {
+		std::vector<VkSubpassDependency> dependencies = { fzbCreateSubpassDependency() };
 
+		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true};
+		renderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
+		renderPass.images.push_back(&depthMap);
+		renderPass.createRenderPass(attachments, subpasses, dependencies);
+		renderPass.createFramebuffers(swapChainImageViews);
+
+		FzbPipelineCreateInfo pipelineCreateInfo(renderPass.renderPass, renderPass.setting.extent);
+		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		presentSubPass.createMeshBatch(scene, pipelineCreateInfo, uniformDescriptorSetLayout);
+		renderPass.subPasses.push_back(presentSubPass);
 	}
 
 	void createSyncObjects() {
 		imageAvailableSemaphores = fzbCreateSemaphore(false);
 		renderFinishedSemaphores = fzbCreateSemaphore(false);
 		fence = fzbCreateFence();
+	}
+
+	void createAppRenderPass() {
+		createBuffers();
+		createImages();
+		createDescriptor();
+		createRenderPass();
+		createSyncObjects();
+	}
+
+	void initComponent() {
+		//if (svoSetting.UseSVO)
+		//	fzbSVO->init(this, &scene, svoSetting);
+	}
+
+	void activateComponent() {
+		//if (svoSetting.UseSVO)
+		//	fzbSVO->activate();
+	}
+
+	void prepareComponentPresent() {
+		//if (svoSetting.UseSVO)
+		//	fzbSVO->presentPrepare(uniformDescriptorSetLayout);
 	}
 
 	void drawFrame() {
@@ -176,7 +216,7 @@ private:
 		//VK_SUBOPTIMAL_KHR：交换链仍可用于成功呈现到表面，但表面属性不再完全匹配。
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
 			framebufferResized = false;
-			recreateSwapChain();
+			recreateSwapChain({renderPass});
 			return;
 		}
 		else if (result != VK_SUCCESS) {
@@ -187,13 +227,31 @@ private:
 		updateUniformBuffer();
 
 		vkResetFences(logicalDevice, 1, &fence);
-		if (svoSetting.UseSVO)
-			fzbSVO->present(uniformDescriptorSet, imageIndex, imageAvailableSemaphores.semaphore, fence);
+		VkCommandBuffer commandBuffer = commandBuffers[0];
+		vkResetCommandBuffer(commandBuffer, 0);
+		renderPass.render(commandBuffer, imageIndex, scene, uniformDescriptorSet);
+		//if (svoSetting.UseSVO)
+		//	fzbSVO->present(uniformDescriptorSet, imageIndex, imageAvailableSemaphores.semaphore, fence);
+
+		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores.semaphore };
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = waitSemaphores;
+		submitInfo.pWaitDstStageMask = waitStages;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &renderFinishedSemaphores.semaphore;
+
+		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+			throw std::runtime_error("failed to submit draw command buffer!");
+		}
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &fzbSVO->presentSemaphore.semaphore;
+		presentInfo.pWaitSemaphores = &renderFinishedSemaphores.semaphore;	// svoSetting.UseSVO ? &fzbSVO->presentSemaphore.semaphore : nullptr;
 
 		VkSwapchainKHR swapChains[] = { swapChain };
 		presentInfo.swapchainCount = 1;
@@ -201,14 +259,14 @@ private:
 		presentInfo.pImageIndices = &imageIndex;
 		result = vkQueuePresentKHR(presentQueue, &presentInfo);
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-			recreateSwapChain();
+			recreateSwapChain({ renderPass });
 		}
 		else if (result != VK_SUCCESS) {
 			throw std::runtime_error("failed to present swap chain image!");
 		}
 
 	}
-
+	/*
 	void presentDrawCall(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
 
 		VkCommandBufferBeginInfo beginInfo{};
@@ -235,15 +293,10 @@ private:
 
 		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-		VkBuffer vertexBuffers[] = { sceneVertexBuffer.buffer };
+		VkBuffer vertexBuffers[] = { scene.vertexBuffer.buffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(commandBuffer, sceneIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipeline);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
-
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(this->sceneIndexBuffer.data.size()), 1, 0, 0, 0);
+		presentSubPass.render(commandBuffer, uniformDescriptorSet, scene.descriptorSet);
 
 		vkCmdEndRenderPass(commandBuffer);
 
@@ -252,7 +305,7 @@ private:
 		}
 
 	}
-
+	*/
 	void updateUniformBuffer() {
 
 		float currentTime = static_cast<float>(glfwGetTime());
@@ -275,22 +328,19 @@ private:
 	}
 
 	void cleanupImages() {
-
+		depthMap.clean();
 	}
 
 	void clean() {
 
-		fzbSVO->clean();
-		sceneVertexBuffer.clean();
-		sceneIndexBuffer.clean();
+		scene.clean();
+		//presentSubPass.clean();
+		renderPass.clean();
 		cameraUniformBuffer.clean();
 
-		cleanupSwapChain();
+		fzbCleanupSwapChain();
 
-		vkDestroyPipeline(logicalDevice, presentPipeline, nullptr);
-		vkDestroyPipelineLayout(logicalDevice, presentPipelineLayout, nullptr);
-
-		vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
+		//vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
 		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(logicalDevice, uniformDescriptorSetLayout, nullptr);

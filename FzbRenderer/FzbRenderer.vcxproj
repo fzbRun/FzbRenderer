@@ -150,11 +150,13 @@
     <ClInclude Include="core\common\FzbBuffer.h" />
     <ClInclude Include="core\common\FzbCamera.h" />
     <ClInclude Include="core\common\FzbComponent.h" />
+    <ClInclude Include="core\common\FzbDescriptor.h" />
     <ClInclude Include="core\common\FzbImage.h" />
     <ClInclude Include="core\common\FzbMesh.h" />
     <ClInclude Include="core\common\FzbPipeline.h" />
     <ClInclude Include="core\common\FzbRenderPass.h" />
     <ClInclude Include="core\common\FzbScene.h" />
+    <ClInclude Include="core\common\FzbShader.h" />
     <ClInclude Include="core\common\StructSet.h" />
     <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
@@ -191,6 +193,8 @@
     <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelVert.glsl" />
     <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelFrag.glsl" />
     <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelVert.glsl" />
+    <None Include="shaders\LitFragShader.glsl" />
+    <None Include="shaders\LitVertShader.glsl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

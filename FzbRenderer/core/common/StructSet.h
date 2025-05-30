@@ -43,7 +43,7 @@ struct FzbSwapChainSupportDetails {
 	std::vector<VkSurfaceFormatKHR> formats;
 	std::vector<VkPresentModeKHR> presentModes;
 };
-
+/*
 struct FzbVertex {
 	glm::vec3 pos;
 	glm::vec2 texCoord;
@@ -318,7 +318,7 @@ struct FzbScene {
 	std::vector<FzbVertex> sceneVertices;
 	std::vector<uint32_t> sceneIndices;
 };
-
+*/
 /*
 struct FzbImage {
 
@@ -352,6 +352,92 @@ struct FzbImage {
 
 };
 */
+
+struct FzbVertexFormat {
+	bool useNormal;
+	bool useTexCoord;
+	bool useTangent;
+
+	FzbVertexFormat() {
+		this->useNormal = false;
+		this->useTexCoord = false;
+		this->useTangent = false;
+	}
+
+	FzbVertexFormat(bool useNormal, bool useTexCoord = false, bool useTangent = false) {
+		this->useNormal = useNormal;
+		this->useTexCoord = useTexCoord;
+		this->useTangent = useTangent;
+	}
+
+	uint32_t getVertexSize() const {
+		uint32_t attributeNum = 3 + useNormal * 3 + useTexCoord * 2 + useTangent * 3;
+		return attributeNum * sizeof(float);
+	}
+
+	VkVertexInputBindingDescription getBindingDescription() {
+
+		VkVertexInputBindingDescription bindingDescription{};
+		bindingDescription.binding = 0;
+		bindingDescription.stride = getVertexSize();
+		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		return bindingDescription;
+
+	}
+
+	std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions() {
+
+		//VAO
+		std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
+		VkVertexInputAttributeDescription posDescriptor{};
+		VkVertexInputAttributeDescription normalDescriptor{};
+		VkVertexInputAttributeDescription texCoordDescriptor{};
+		VkVertexInputAttributeDescription tangentDescriptor{};
+
+		posDescriptor.binding = 0;
+		posDescriptor.location = 0;
+		posDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
+		posDescriptor.offset = 0;	//ÕÒposÔÚVertexÖÐµÄÆ«ÒÆ
+		attributeDescriptions.push_back(posDescriptor);
+
+		uint32_t attributeOffset = 0;
+		if (useNormal) {
+			normalDescriptor.binding = 0;
+			normalDescriptor.location = 1;
+			normalDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
+			attributeOffset += 3 * sizeof(float);
+			normalDescriptor.offset = attributeOffset;
+			attributeDescriptions.push_back(normalDescriptor);
+		}
+		if (useTexCoord) {
+			texCoordDescriptor.binding = 0;
+			texCoordDescriptor.location = 2;
+			texCoordDescriptor.format = VK_FORMAT_R32G32_SFLOAT;
+			attributeOffset += 2 * sizeof(float);
+			texCoordDescriptor.offset = attributeOffset;
+			attributeDescriptions.push_back(texCoordDescriptor);
+		}
+		if (useTangent) {
+			tangentDescriptor.binding = 0;
+			tangentDescriptor.location = 3;
+			tangentDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
+			attributeOffset += 3 * sizeof(float);
+			tangentDescriptor.offset = attributeOffset;
+			attributeDescriptions.push_back(tangentDescriptor);
+		}
+
+		return attributeDescriptions;
+	}
+
+	bool operator==(const FzbVertexFormat& other) const {
+		if (!(useNormal == other.useNormal && useTexCoord == other.useTexCoord && useTangent == other.useTangent)) {
+			return false;
+		}
+		return true;
+	}
+
+};
+
 struct FzbGlobalUniformBufferObject {
 	glm::vec4 swapChainExtent;
 };

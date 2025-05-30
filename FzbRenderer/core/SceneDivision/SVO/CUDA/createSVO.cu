@@ -634,7 +634,6 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 	waitExternalSemaphore(extVgmSemaphore, stream);
 	
 	getSVONum_step1 << < gridSize, blockSize, 0, stream >> > (vgm, svoDepth, nonLeafNodeNum, voxelNum_p, svoNodeArray, svoVoxelValueArray);
-	//创建压缩后的体素数据数组
 	CHECK(cudaMemcpy(&voxelNum, voxelNum_p, sizeof(uint32_t), cudaMemcpyDeviceToHost));
 	uint32_t blockNum = std::ceil((float)voxelNum / 512);
 	getSVONum_step2 << < blockNum, 512, 0, stream >> > (voxelNum, svoDepth, nonLeafNodeNum, voxelGridMap.width, svoNodeArray);

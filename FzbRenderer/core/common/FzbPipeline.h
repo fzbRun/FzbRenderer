@@ -224,11 +224,8 @@ VkPipelineLayout fzbCreatePipelineLayout(VkDevice logicalDevice, std::vector<VkD
 	return pipelineLayout;
 }
 
-struct FzbPipeline {
+struct FzbPipelineCreateInfo {
 
-	VkDevice logicalDevice;
-
-	std::map<VkShaderStageFlagBits, std::string> shaders;
 	bool screenSpace = false;
 	VkPrimitiveTopology primitiveTopology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 	VkCullModeFlagBits cullMode = VK_CULL_MODE_BACK_BIT;
@@ -241,80 +238,20 @@ struct FzbPipeline {
 	VkBool32 depthWriteEnable = VK_TRUE;
 	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
 	bool dynamicView = false;
+	std::vector<VkDynamicState> dynamicStates;
+	VkExtent2D extent;
 	std::vector<VkViewport> viewports;
 	std::vector<VkRect2D> scissors;
 	const void* viewportExtensions = nullptr;
 
 	VkRenderPass renderPass;
 	uint32_t subPassIndex = 0;
-	std::vector<VkDescriptorSetLayout>* descriptorSetLayouts;
-	std::vector<VkDescriptorSet>* descriptorSets;
-	VkPipelineLayout pipelienLayout;
-	VkPipeline pipeline;
 
-	template<typename T>
-	void fzbCreatePipeline() {
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(logicalDevice, shaders);
-
-		VkPipelineVertexInputStateCreateInfo vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_FALSE);
-		if (!screenSpace) {
-			VkVertexInputBindingDescription inputBindingDescriptor = T::getBindingDescription();
-			auto inputAttributeDescription = T::getAttributeDescriptions();
-			vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
-		}
-
-		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(primitiveTopology);
-
-		VkPipelineRasterizationStateCreateInfo rasterizer = fzbCreateRasterizationStateCreateInfo(cullMode, frontFace, rasterizerExtensions);
-
-		VkPipelineMultisampleStateCreateInfo multisampling = fzbCreateMultisampleStateCreateInfo(sampleShadingEnable, sampleCount);
-		VkPipelineColorBlendStateCreateInfo colorBlending = fzbCreateColorBlendStateCreateInfo(colorBlendAttachments);
-		VkPipelineDepthStencilStateCreateInfo depthStencil = fzbCreateDepthStencilStateCreateInfo(depthTestEnable, depthWriteEnable, depthCompareOp);
-
-		VkPipelineViewportStateCreateInfo viewportState = fzbCreateViewStateCreateInfo(viewports.data(), scissors.data(), viewportExtensions);
-		VkPipelineDynamicStateCreateInfo dynamicState{};
-		if (dynamicView) {
-			std::vector<VkDynamicState> dynamicStates = {
-				VK_DYNAMIC_STATE_VIEWPORT,
-				VK_DYNAMIC_STATE_SCISSOR
-			};
-
-			dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-			dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-			dynamicState.pDynamicStates = dynamicStates.data();
-		}
-
-		pipelienLayout = fzbCreatePipelineLayout(logicalDevice, descriptorSetLayouts);
-
-		VkGraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineInfo.stageCount = shaderStages.size();
-		pipelineInfo.pStages = shaderStages.data();
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = &depthStencil;
-		pipelineInfo.pColorBlendState = &colorBlending;
-		if (dynamicView) {
-			pipelineInfo.pDynamicState = &dynamicState;
-		}
-		else {
-			pipelineInfo.pViewportState = &viewportState;
-		}
-		pipelineInfo.layout = pipelienLayout;
-		pipelineInfo.renderPass = renderPass;	//先建立连接，获得索引
-		pipelineInfo.subpass = subPassIndex;	//对应renderpass的哪个子部分
-		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;	//可以直接使用现有pipeline
-		pipelineInfo.basePipelineIndex = -1;
-
-		if (vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline!");
-		}
-
-		for (VkPipelineShaderStageCreateInfo shaderModule : shaderStages) {
-			vkDestroyShaderModule(logicalDevice, shaderModule.module, nullptr);
-		}
+	FzbPipelineCreateInfo() {};
+	FzbPipelineCreateInfo(VkRenderPass renderPass, VkExtent2D extent) {
+		this->colorBlendAttachments = { fzbCreateColorBlendAttachmentState() };
+		this->renderPass = renderPass;
+		this->extent = extent;
 	}
 
 };

@@ -25,7 +25,10 @@
 #include <glm/gtx/hash.hpp>
 
 #include "FzbImage.h"
+#include "FzbRenderPass.h"
 #include "FzbPipeline.h"
+#include "FzbDescriptor.h"
+#include "FzbScene.h"
 #include "FzbCamera.h"
 
 
@@ -59,19 +62,19 @@ void GetSemaphoreWin32HandleKHR(VkDevice device, VkSemaphoreGetWin32HandleInfoKH
 	}
 }
 
-namespace std {
-	template<> struct hash<FzbVertex> {
-		size_t operator()(FzbVertex const& vertex) const {
-			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
-	}
-};
-	template<> struct hash<FzbVertex_OnlyPos> {
-		size_t operator()(FzbVertex_OnlyPos const& vertex) const {
-			// 仅计算 pos 的哈希值
-			return hash<glm::vec3>()(vertex.pos);
-		}
-	};
-}
+//namespace std {
+//	template<> struct hash<FzbVertex> {
+//		size_t operator()(FzbVertex const& vertex) const {
+//			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
+//	}
+//};
+//	template<> struct hash<FzbVertex_OnlyPos> {
+//		size_t operator()(FzbVertex_OnlyPos const& vertex) const {
+//			// 仅计算 pos 的哈希值
+//			return hash<glm::vec3>()(vertex.pos);
+//		}
+//	};
+//}
 
 //------------------------------------------------常量----------------------------------------------------
 //如果不调试，则关闭校验层
@@ -83,7 +86,7 @@ const bool enableValidationLayers = true;
 
 const std::vector<const char*> instanceExtensions_default = { VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME };
 const std::vector<const char*> validationLayers_default = { "VK_LAYER_KHRONOS_validation" };
-const std::vector<const char*> deviceExtensions_default = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+const std::vector<const char*> deviceExtensions_default = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME };
 const uint32_t apiVersion_default = VK_API_VERSION_1_2;
 
 //------------------------------------------------------------------类-----------------------------------------------------
@@ -116,7 +119,7 @@ public:
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
 
-	std::vector<std::vector<VkFramebuffer>> framebuffers;
+	//std::vector<std::vector<VkFramebuffer>> framebuffers;
 
 	void fzbCreateCommandBuffers(uint32_t bufferNum = 1) {
 
@@ -143,6 +146,7 @@ public:
 	都对应于同一个color和depth附件，这就会导致上一帧还在读，而下一帧就在改了，这就会发生脏读啊。
 	但是这是创建帧缓冲的问题吗，这应该是同步没有做好的问题啊，如果每个pass都依赖于上一个pass，那么确实不能使用流水线，除非有多个color或depth缓冲，但是还是同步的问题。
 	*/
+	/*
 	void fzbCreateFramebuffer(uint32_t swapChainImageViewsSize, VkExtent2D swapChainExtent, uint32_t attachmentSize, std::vector<std::vector<VkImageView>>& attachmentImageViews, VkRenderPass renderPass) {
 
 		std::vector<VkFramebuffer> frameBuffers;
@@ -167,59 +171,27 @@ public:
 		this->framebuffers.push_back(frameBuffers);
 
 	}
-
+	*/
 	template<typename T>
-	FzbStorageBuffer<T> fzbCreateStorageBuffer(std::vector<T>* bufferData, bool UseExternal = false) {
-
-		uint32_t bufferSize = bufferData->size() * sizeof(T);
-
-		FzbStorageBuffer<uint32_t> stagingBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		stagingBuffer.fzbCreateStorageBuffer();
-		stagingBuffer.fzbFillBuffer(bufferData->data());
-
-		FzbStorageBuffer<T> fzbBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, UseExternal);
-		fzbBuffer.data = *bufferData;
-		fzbBuffer.fzbCreateStorageBuffer();
-
-		copyBuffer(logicalDevice, commandPool, graphicsQueue, stagingBuffer.buffer, fzbBuffer.buffer, bufferSize);
-
-		stagingBuffer.clean();
-
-		return fzbBuffer;
-
+	FzbBuffer fzbComponentCreateStorageBuffer(std::vector<T>* bufferData, bool UseExternal = false) {
+		return fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, bufferData->data(), bufferData->size() * sizeof(T), UseExternal);
 	}
 
 	//创造一个空的buffer
-	template<typename T>
-	FzbStorageBuffer<T> fzbCreateStorageBuffer(uint32_t bufferSize, bool UseExternal = false) {
-		 FzbStorageBuffer<T> fzbBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, UseExternal);
-		 fzbBuffer.fzbCreateStorageBuffer();
-		 return fzbBuffer;
+	FzbBuffer fzbComponentCreateStorageBuffer(uint32_t bufferSize, bool UseExternal = false) {
+		return fzbCreateStorageBuffer(physicalDevice, logicalDevice, bufferSize, UseExternal);
 	}
 
 	template<typename T>
-	FzbUniformBuffer<T> fzbCreateUniformBuffers() {
-		FzbUniformBuffer<T> fzbBuffer(physicalDevice, logicalDevice, sizeof(T), VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		fzbBuffer.fzbCreateUniformBuffer();
-		vkMapMemory(logicalDevice, fzbBuffer.memory, 0, sizeof(T), 0, &fzbBuffer.mapped);
-		return fzbBuffer;
+	FzbBuffer fzbComponentCreateUniformBuffers() {
+		return fzbCreateUniformBuffers(physicalDevice, logicalDevice, sizeof(T));
 	}
 
 //------------------------------------------------------------------模型-------------------------------------------------------------------------
 
-
+	/*
 	void modelChange(FzbModel& myModel) {
 
-		/*
-		glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(5.0f, 5.0f, 5.0f));
-		for (int i = 0; i < this->meshs.size(); i++) {
-			for (int j = 0; j < this->meshs[i].vertices.size(); j++) {
-				glm::vec3 pos = this->meshs[i].vertices[j].pos;
-				glm::vec4 changePos = model * glm::vec4(pos, 1.0f);
-				this->meshs[i].vertices[j].pos = glm::vec3(changePos.x, changePos.y, changePos.z);
-			}
-		}
-		*/
 
 		for (int i = 0; i < myModel.meshs.size(); i++) {
 			if (myModel.meshs[i].vertices.size() > 100) {
@@ -311,70 +283,22 @@ public:
 		return AABB;
 
 	}
-
+	*/
 //------------------------------------------------------------------图像-------------------------------------------------------------------------
 //-----------------------------------------------------------------描述符-------------------------------------------------------------------------
 	VkDescriptorPool descriptorPool;
 
-	void fzbCreateDescriptorPool(std::map<VkDescriptorType, uint32_t> bufferTypeAndNum) {
+	void fzbComponentCreateDescriptorPool(std::map<VkDescriptorType, uint32_t> bufferTypeAndNum) {
+		this->descriptorPool = fzbCreateDescriptorPool(logicalDevice, bufferTypeAndNum);
+	}
 
-		std::vector<VkDescriptorPoolSize> poolSizes{};
-		VkDescriptorPoolSize poolSize;
-
-		for (const auto& pair : bufferTypeAndNum) {
-			poolSize.type = pair.first;
-			poolSize.descriptorCount = pair.second;
-			poolSizes.push_back(poolSize);
-		}
-
-		VkDescriptorPoolCreateInfo poolInfo{};
-		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-		poolInfo.pPoolSizes = poolSizes.data();
-		poolInfo.maxSets = static_cast<uint32_t>(32);
-
-		if (vkCreateDescriptorPool(logicalDevice, &poolInfo, nullptr, &this->descriptorPool) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create descriptor pool!");
-		}
+	VkDescriptorSetLayout fzbComponentCreateDescriptLayout(uint32_t descriptorNum, std::vector<VkDescriptorType> descriptorTypes, std::vector<VkShaderStageFlags> descriptorShaderFlags, std::vector<uint32_t> descriptorCounts = std::vector<uint32_t>()) {
+		return fzbCreateDescriptLayout(logicalDevice, descriptorNum, descriptorTypes, descriptorShaderFlags, descriptorCounts);
 
 	}
 
-	VkDescriptorSetLayout fzbCreateDescriptLayout(uint32_t descriptorNum, std::vector<VkDescriptorType> descriptorTypes, std::vector<VkShaderStageFlags> descriptorShaderFlags, std::vector<uint32_t> descriptorCounts = std::vector<uint32_t>()) {
-		VkDescriptorSetLayout descriptorSetLayout;
-		std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
-		layoutBindings.resize(descriptorNum);
-		for (int i = 0; i < descriptorNum; i++) {
-			layoutBindings[i].binding = i;
-			layoutBindings[i].descriptorCount = 1;
-			layoutBindings[i].descriptorType = descriptorTypes[i];
-			layoutBindings[i].pImmutableSamplers = nullptr;
-			layoutBindings[i].stageFlags = descriptorShaderFlags[i];
-		}
-
-		VkDescriptorSetLayoutCreateInfo layoutInfo{};
-		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		layoutInfo.bindingCount = layoutBindings.size();
-		layoutInfo.pBindings = layoutBindings.data();
-		if (vkCreateDescriptorSetLayout(logicalDevice, &layoutInfo, nullptr, &descriptorSetLayout) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create compute descriptor set layout!");
-		}
-
-		return descriptorSetLayout;
-
-	}
-
-	VkDescriptorSet fzbCreateDescriptorSet(VkDescriptorSetLayout& descriptorSetLayout) {
-		VkDescriptorSetAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = &descriptorSetLayout;
-
-		VkDescriptorSet descriptorSet;
-		if (vkAllocateDescriptorSets(logicalDevice, &allocInfo, &descriptorSet) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate descriptor sets!");
-		}
-		return descriptorSet;
+	VkDescriptorSet fzbComponentCreateDescriptorSet(VkDescriptorSetLayout& descriptorSetLayout) {
+		return fzbCreateDescriptorSet(logicalDevice, descriptorPool, descriptorSetLayout);
 	}
 
 //-------------------------------------------------------------------管线---------------------------------------------------------------------
@@ -610,7 +534,7 @@ public:
 		return VK_FALSE;
 	}
 
-	void setupDebugMessenger() {
+	void fzbCetupDebugMessenger() {
 
 		if (!enableValidationLayers)
 			return;
@@ -845,7 +769,6 @@ public:
 		if (!deviceFeatures) {
 			deviceFeatures_default.samplerAnisotropy = VK_TRUE;
 		}
-		//deviceFeatures.sampleRateShading = VK_TRUE;
 
 		VkDeviceCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -1036,269 +959,9 @@ public:
 		}
 	}
 
-	void fzbCreateFramebuffers() {};
+	//void fzbCreateFramebuffers() {};
 
 //------------------------------------------------------场景与模型-----------------------------------------------------------------
-	FzbModel fzbCreateModel(std::string path) {
-
-		FzbModel myModel;
-
-		Assimp::Importer import;
-		const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace);
-
-		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-			std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
-			throw std::runtime_error("ERROR::ASSIMP::" + (std::string)import.GetErrorString());
-		}
-
-		myModel.directory = path.substr(0, path.find_last_of('/'));
-		processNode(scene->mRootNode, scene, myModel);
-
-		return myModel;
-
-	}
-
-	//一个node含有mesh和子node，所以需要递归，将所有的mesh都拿出来
-	//所有的实际数据都在scene中，而node中存储的是scene的索引
-	void processNode(aiNode* node, const aiScene* scene, FzbModel& myModel) {
-
-		for (uint32_t i = 0; i < node->mNumMeshes; i++) {
-			aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-			myModel.meshs.push_back(processMesh(mesh, scene, myModel));
-		}
-
-		for (uint32_t i = 0; i < node->mNumChildren; i++) {
-			processNode(node->mChildren[i], scene, myModel);
-		}
-
-	}
-
-	FzbMesh processMesh(aiMesh* mesh, const aiScene* scene, FzbModel& myModel) {
-
-		std::vector<FzbVertex> vertices;
-		std::vector<uint32_t> indices;
-		std::vector<FzbTexture> textures;
-
-		for (uint32_t i = 0; i < mesh->mNumVertices; i++) {
-
-			FzbVertex vertex;
-			glm::vec3 vector;
-
-			vector.x = mesh->mVertices[i].x;
-			vector.y = mesh->mVertices[i].y;
-			vector.z = mesh->mVertices[i].z;
-			vertex.pos = vector;
-
-			if (mesh->HasNormals()) {
-
-				vector.x = mesh->mNormals[i].x;
-				vector.y = mesh->mNormals[i].y;
-				vector.z = mesh->mNormals[i].z;
-				vertex.normal = vector;
-
-			}
-
-			if (mesh->HasTangentsAndBitangents()) {
-
-				vector.x = mesh->mTangents[i].x;
-				vector.y = mesh->mTangents[i].y;
-				vector.z = mesh->mTangents[i].z;
-				vertex.tangent = vector;
-
-			}
-
-			if (mesh->mTextureCoords[0]) // 网格是否有纹理坐标？
-			{
-				glm::vec2 vec;
-				vec.x = mesh->mTextureCoords[0][i].x;
-				vec.y = mesh->mTextureCoords[0][i].y;
-				vertex.texCoord = vec;
-			}
-			else {
-				vertex.texCoord = glm::vec2(0.0f, 0.0f);
-			}
-
-			vertices.push_back(vertex);
-
-		}
-
-		for (uint32_t i = 0; i < mesh->mNumFaces; i++) {
-			aiFace face = mesh->mFaces[i];
-			for (uint32_t j = 0; j < face.mNumIndices; j++) {
-				indices.push_back(face.mIndices[j]);
-			}
-		}
-
-		FzbMaterial mat;
-		if (mesh->mMaterialIndex >= 0) {
-
-			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-			aiColor3D color;
-			material->Get(AI_MATKEY_COLOR_AMBIENT, color);
-			mat.ka = glm::vec4(color.r, color.g, color.b, 1.0);
-			material->Get(AI_MATKEY_COLOR_DIFFUSE, color);
-			mat.kd = glm::vec4(color.r, color.g, color.b, 1.0);
-			material->Get(AI_MATKEY_COLOR_SPECULAR, color);
-			mat.ks = glm::vec4(color.r, color.g, color.b, 1.0);
-			material->Get(AI_MATKEY_COLOR_EMISSIVE, color);
-			mat.ke = glm::vec4(color.r, color.g, color.b, 1.0);
-
-			std::vector<FzbTexture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "texture_albedo", myModel);
-			textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
-
-			//std::vector<Texture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular", myModel);
-			//textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-
-			std::vector<FzbTexture> normalMaps = loadMaterialTextures(material, aiTextureType_HEIGHT, "texture_normal", myModel);
-			textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
-
-		}
-
-		return FzbMesh(vertices, indices, textures, mat);
-
-	}
-
-	std::vector<FzbTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName, FzbModel& myModel) {
-
-		std::vector<FzbTexture> textures;
-		for (unsigned int i = 0; i < mat->GetTextureCount(type); i++)
-		{
-			aiString str;
-			mat->GetTexture(type, i, &str);
-			bool skip = false;
-			for (unsigned int j = 0; j < myModel.textures_loaded.size(); j++)
-			{
-				if (std::strcmp(myModel.textures_loaded[j].path.data(), str.C_Str()) == 0)
-				{
-					textures.push_back(myModel.textures_loaded[j]);
-					skip = true;
-					break;
-				}
-			}
-			if (!skip)
-			{   // 如果纹理还没有被加载，则加载它
-				FzbTexture texture;
-				//texture.id = TextureFromFile(str.C_Str(), directory);
-				texture.type = typeName;
-				texture.path = myModel.directory + '/' + str.C_Str();
-				textures.push_back(texture);
-				myModel.textures_loaded.push_back(texture); // 添加到已加载的纹理中
-			}
-		}
-
-		return textures;
-
-	}
-
-	void simplify(FzbModel& myModel) {
-
-		std::vector<FzbMesh> simpleMeshs;
-		for (int i = 0; i < myModel.meshs.size(); i++) {
-			if (myModel.meshs[i].indices.size() < 100) {	//2950
-				simpleMeshs.push_back(myModel.meshs[i]);
-			}
-		}
-		myModel.meshs = simpleMeshs;
-	}
-
-	//将一个mesh的冗余顶点删除
-	void fzbOptimizeMesh(FzbMesh* mesh) {
-		std::unordered_map<FzbVertex, uint32_t> uniqueVerticesMap{};
-		std::vector<FzbVertex> uniqueVertices;
-		std::vector<uint32_t> uniqueIndices;
-		for (uint32_t j = 0; j < mesh->indices.size(); j++) {
-			FzbVertex vertex = mesh->vertices[mesh->indices[j]];
-			if (uniqueVerticesMap.count(vertex) == 0) {
-				uniqueVerticesMap[vertex] = static_cast<uint32_t>(uniqueVertices.size());
-				uniqueVertices.push_back(vertex);
-			}
-			uniqueIndices.push_back(uniqueVerticesMap[vertex]);
-		}
-		mesh->vertices = uniqueVertices;
-		mesh->indices = uniqueIndices;
-	}
-
-	//将一个模型的所有mesh的顶点和索引存入一个数组，并删除冗余顶点
-	template<typename T>
-	void fzbOptimizeModel(FzbModel* myModel, std::vector<T>& vertices, std::vector<uint32_t>& indices) {
-		uint32_t indexOffset = 0;
-		for (uint32_t meshIndex = 0; meshIndex < myModel->meshs.size(); meshIndex++) {
-
-			FzbMesh* mesh = &myModel->meshs[meshIndex];
-			fzbOptimizeMesh(mesh);
-			vertices.insert(vertices.end(), mesh->vertices.begin(), mesh->vertices.end());
-
-			//因为assimp是按一个mesh一个mesh的存，所以每个indices都是相对一个mesh的，当我们将每个mesh的顶点存到一起时，indices就会出错，我们需要增加索引
-			for (uint32_t index = 0; index < mesh->indices.size(); index++) {
-				mesh->indices[index] += indexOffset;
-			}
-			//meshIndexInIndices.push_back(this->indices.size());
-			indexOffset += mesh->vertices.size();
-			indices.insert(indices.end(), mesh->indices.begin(), mesh->indices.end());
-		}
-
-		std::unordered_map<T, uint32_t> uniqueVerticesMap{};
-		std::vector<T> uniqueVertices;
-		std::vector<uint32_t> uniqueIndices;
-		for (uint32_t j = 0; j < indices.size(); j++) {
-			T vertex = std::is_same_v<T, FzbVertex> ? vertices[indices[j]] : T(vertices[indices[j]]);
-			//if constexpr (std::is_same_v<T, Vertex>) {
-			//	vertex = vertices[indices[j]];
-			//}
-			//else {
-			//	vertex = T(vertices[indices[j]]);
-			//}
-			if (uniqueVerticesMap.count(vertex) == 0) {
-				uniqueVerticesMap[vertex] = static_cast<uint32_t>(uniqueVertices.size());
-				uniqueVertices.push_back(vertex);
-			}
-			uniqueIndices.push_back(uniqueVerticesMap[vertex]);
-		}
-		vertices = uniqueVertices;
-		indices = uniqueIndices;
-
-	}
-
-	template<typename T>
-	void fzbOptimizeScene(FzbScene* myScene, std::vector<T>& vertices, std::vector<uint32_t>& indices) {
-		uint32_t indexOffset = 0;
-		for (uint32_t meshIndex = 0; meshIndex < myScene->sceneModels.size(); meshIndex++) {
-
-			FzbModel* model = myScene->sceneModels[meshIndex];
-			std::vector<T> modelVertices;
-			std::vector<uint32_t> modelIndices;
-			fzbOptimizeModel<T>(model, modelVertices, modelIndices);
-			vertices.insert(vertices.end(), modelVertices.begin(), modelVertices.end());
-
-			//因为assimp是按一个mesh一个mesh的存，所以每个indices都是相对一个mesh的，当我们将每个mesh的顶点存到一起时，indices就会出错，我们需要增加索引
-			for (uint32_t index = 0; index < modelIndices.size(); index++) {
-				modelIndices[index] += indexOffset;
-			}
-			//meshIndexInIndices.push_back(this->indices.size());
-			indexOffset += modelVertices.size();
-			indices.insert(indices.end(), modelIndices.begin(), modelIndices.end());
-		}
-
-		std::unordered_map<T, uint32_t> uniqueVerticesMap{};
-		std::vector<T> uniqueVertices;
-		std::vector<uint32_t> uniqueIndices;
-		for (uint32_t j = 0; j < indices.size(); j++) {
-			T vertex = std::is_same_v<T, FzbVertex> ? vertices[indices[j]] : T(vertices[indices[j]]);
-			//if constexpr (std::is_same_v<T, Vertex>) {
-			//	vertex = vertices[indices[j]];
-			//}
-			//else {
-			//	vertex = T(vertices[indices[j]]);
-			//}
-			if (uniqueVerticesMap.count(vertex) == 0) {
-				uniqueVerticesMap[vertex] = static_cast<uint32_t>(uniqueVertices.size());
-				uniqueVertices.push_back(vertex);
-			}
-			uniqueIndices.push_back(uniqueVerticesMap[vertex]);
-		}
-		vertices = uniqueVertices;
-		indices = uniqueIndices;
-	}
 //--------------------------------------------------------------图像-----------------------------------------------------------------
 	virtual void createImages() {};
 
@@ -1331,7 +994,7 @@ public:
 
 	virtual void drawFrame() = 0;
 
-	void recreateSwapChain() {
+	void recreateSwapChain(std::vector<FzbRenderPass> renderPasses) {
 
 		int width = 0, height = 0;
 		//获得当前window的大小
@@ -1342,24 +1005,30 @@ public:
 		}
 
 		vkDeviceWaitIdle(logicalDevice);
-		cleanupSwapChain();
+		for (int i = 0; i < renderPasses.size(); i++) {
+			if (renderPasses[i].setting.extent.width == swapChainExtent.width && renderPasses[i].setting.extent.height == swapChainExtent.height) {
+				for (int j = 0; j < renderPasses[i].framebuffers.size(); j++) {
+					vkDestroyFramebuffer(logicalDevice, renderPasses[i].framebuffers[j], nullptr);
+				}
+			}
+		}
+		fzbCleanupSwapChain();
 		fzbCreateSwapChain();
 		createImages();
-		fzbCreateFramebuffers();
+		for (int i = 0; i < renderPasses.size(); i++) {
+			if (renderPasses[i].setting.extent.width == swapChainExtent.width && renderPasses[i].setting.extent.height == swapChainExtent.height) {
+				renderPasses[i].createFramebuffers(swapChainImageViews);
+			}
+		}
 	}
 
 	virtual void cleanupImages() {
 
 	}
 
-	void cleanupSwapChain() {
+	void fzbCleanupSwapChain() {
 
 		cleanupImages();
-		for (size_t i = 0; i < framebuffers.size(); i++) {
-			for (int j = 0; j < framebuffers[i].size(); j++) {
-				vkDestroyFramebuffer(logicalDevice, framebuffers[i][j], nullptr);
-			}
-		}
 		for (size_t i = 0; i < swapChainImageViews.size(); i++) {
 			vkDestroyImageView(logicalDevice, swapChainImageViews[i], nullptr);
 		}

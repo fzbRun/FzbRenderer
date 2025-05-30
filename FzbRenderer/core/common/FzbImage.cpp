@@ -23,8 +23,8 @@ void FzbImage::fzbCreateImage(VkPhysicalDevice physicalDevice, VkDevice logicalD
 		this->height = texHeight;
 
 		//着色器中采样的纹理同样只需要GPU可见，所以和顶点缓冲区一样，我们先将数据存到暂存缓冲区才存到GPU的纹理缓冲中
-		FzbStorageBuffer<uint32_t> stagingBuffer(physicalDevice, logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		stagingBuffer.fzbCreateStorageBuffer();
+		FzbBuffer stagingBuffer(physicalDevice, logicalDevice, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		stagingBuffer.fzbCreateBuffer();
 		stagingBuffer.fzbFillBuffer(pixels);
 
 		stbi_image_free(pixels);

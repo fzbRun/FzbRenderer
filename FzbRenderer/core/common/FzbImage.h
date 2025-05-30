@@ -43,6 +43,8 @@ struct FzbImage {
 	bool UseExternal = false;
 	HANDLE handle = INVALID_HANDLE_VALUE;
 
+	FzbImage() {};
+
 	void fzbCreateImage(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue);
 
 	void createImage();

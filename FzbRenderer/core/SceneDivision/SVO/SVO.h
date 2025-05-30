@@ -34,14 +34,16 @@ public:
 	VkDescriptorSet voxelGridMapDescriptorSet;
 
 	FzbScene* scene;
+	std::vector<FzbVertex> cubeVertices;
+	std::vector<uint32_t> cubeIndices;
 
-	FzbStorageBuffer<FzbVertex> sceneVertexBuffer;
-	FzbStorageBuffer<uint32_t> sceneIndexBuffer;
-	FzbStorageBuffer<FzbVertex> sceneCubeVertexBuffer;
-	FzbStorageBuffer<uint32_t> sceneCubeIndexBuffer;
-	FzbStorageBuffer<FzbVertex> sceneWireframeVertexBuffer;
-	FzbStorageBuffer<uint32_t> sceneWireframeIndexBuffer;
-	FzbUniformBuffer<SVOUniform> svoUniformBuffer;
+	FzbBuffer sceneVertexBuffer;
+	FzbBuffer sceneIndexBuffer;
+	FzbBuffer sceneCubeVertexBuffer;
+	FzbBuffer sceneCubeIndexBuffer;
+	FzbBuffer sceneWireframeVertexBuffer;
+	FzbBuffer sceneWireframeIndexBuffer;
+	FzbBuffer svoUniformBuffer;
 
 	VkRenderPass voxelGridMapRenderPass;
 	VkPipeline voxelGridMapPipeline;
@@ -57,8 +59,8 @@ public:
 	FzbImage depthMap;
 
 	std::unique_ptr<SVOCuda> svoCuda;
-	FzbStorageBuffer<FzbSVONode> nodePool;
-	FzbStorageBuffer<FzbVoxelValue> voxelValueBuffer;
+	FzbBuffer nodePool;
+	FzbBuffer voxelValueBuffer;
 
 	VkDescriptorSetLayout svoDescriptorSetLayout;
 	VkDescriptorSet svoDescriptorSet;
@@ -199,7 +201,7 @@ public:
 			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneCubeIndexBuffer.size), std::pow(svoSetting.voxelNum, 3), 0, 0, 0);
 		}
 		else {
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneIndexBuffer.data.size()), 1, 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(scene->sceneIndices.size()), 1, 0, 0, 0);
 		}
 
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
@@ -214,7 +216,7 @@ public:
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 1, 1, &voxelGridMapDescriptorSet, 0, nullptr);
 			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 2, 1, &svoDescriptorSet, 0, nullptr);
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneWireframeIndexBuffer.data.size()), svoCuda->nodeBlockNum * 8 + 1, 0, 0, 0);
+			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(cubeIndices.size()), svoCuda->nodeBlockNum * 8 + 1, 0, 0, 0);
 		}
 
 		vkCmdEndRenderPass(commandBuffer);
@@ -292,10 +294,10 @@ private:
 
 		fzbCreateCommandBuffers(2);
 
-		sceneVertexBuffer = fzbCreateStorageBuffer<FzbVertex>(&scene->sceneVertices);
-		sceneIndexBuffer = fzbCreateStorageBuffer<uint32_t>(&scene->sceneIndices);
+		sceneVertexBuffer = fzbComponentCreateStorageBuffer<FzbVertex>(&scene->sceneVertices);
+		sceneIndexBuffer = fzbComponentCreateStorageBuffer<uint32_t>(&scene->sceneIndices);
 
-		svoUniformBuffer = fzbCreateUniformBuffers<SVOUniform>();
+		svoUniformBuffer = fzbComponentCreateUniformBuffers<SVOUniform>();
 		SVOUniform svoUniform;
 		svoUniform.modelMatrix = glm::mat4(1.0f);
 
@@ -331,7 +333,6 @@ private:
 		svoUniform.voxelSize_Num = glm::vec4(distance / svoSetting.voxelNum, svoSetting.voxelNum, distance, 0.0f);
 		svoUniform.voxelStartPos = glm::vec4(centerX - distance * 0.5f, centerY - distance * 0.5f, centerZ - distance * 0.5f, 0.0f);
 
-		svoUniformBuffer.data = svoUniform;
 		memcpy(svoUniformBuffer.mapped, &svoUniform, sizeof(SVOUniform));
 
 	}
@@ -356,15 +357,15 @@ private:
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 });
 		}
-		fzbCreateDescriptorPool(bufferTypeAndNum);
+		fzbComponentCreateDescriptorPool(bufferTypeAndNum);
 	}
 
 	void createVoxelGridMapDescriptor() {
 
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
 		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_FRAGMENT_BIT };
-		voxelGridMapDescriptorSetLayout = fzbCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
-		voxelGridMapDescriptorSet = fzbCreateDescriptorSet(voxelGridMapDescriptorSetLayout);
+		voxelGridMapDescriptorSetLayout = fzbComponentCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
+		voxelGridMapDescriptorSet = fzbComponentCreateDescriptorSet(voxelGridMapDescriptorSetLayout);
 
 		std::array<VkWriteDescriptorSet, 2> voxelGridMapDescriptorWrites{};
 		VkDescriptorBufferInfo voxelGridMapUniformBufferInfo{};
@@ -401,13 +402,7 @@ private:
 		VkSubpassDescription voxelGridMapSubpass{};
 		voxelGridMapSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
-		VkSubpassDependency dependency{};
-		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-		dependency.dstSubpass = 0;
-		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.srcAccessMask = 0;
-		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		VkSubpassDependency dependency = fzbCreateSubpassDependency();
 
 		VkRenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -658,7 +653,7 @@ private:
 
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, voxelGridMapPipeline);
 		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, voxelGridMapPipelineLayout, 0, 1, &voxelGridMapDescriptorSet, 0, nullptr);
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneIndexBuffer.data.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(scene->sceneIndices.size()), 1, 0, 0, 0);
 
 		vkCmdEndRenderPass(commandBuffer);
 
@@ -688,8 +683,8 @@ private:
 		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle);
 
 		//由于不能从cuda中直接导出数组的handle，因此我们需要先创建一个buffer，然后在cuda中将数据copy进去
-		nodePool = fzbCreateStorageBuffer<FzbSVONode>(sizeof(FzbSVONode) * (8 * svoCuda->nodeBlockNum + 1), true);
-		voxelValueBuffer = fzbCreateStorageBuffer<FzbVoxelValue>(sizeof(FzbVoxelValue) * svoCuda->voxelNum, true);
+		nodePool = fzbComponentCreateStorageBuffer(sizeof(FzbSVONode) * (8 * svoCuda->nodeBlockNum + 1), true);
+		voxelValueBuffer = fzbComponentCreateStorageBuffer(sizeof(FzbVoxelValue) * svoCuda->voxelNum, true);
 
 		svoCuda->getSVOCuda(physicalDevice, nodePool.handle, voxelValueBuffer.handle);
 
@@ -698,8 +693,8 @@ private:
 	void createSVODescriptor() {
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
 		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
-		svoDescriptorSetLayout = fzbCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
-		svoDescriptorSet = fzbCreateDescriptorSet(svoDescriptorSetLayout);
+		svoDescriptorSetLayout = fzbComponentCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
+		svoDescriptorSet = fzbComponentCreateDescriptorSet(svoDescriptorSetLayout);
 
 		std::array<VkWriteDescriptorSet, 2> svoDescriptorWrites{};
 		VkDescriptorBufferInfo nodePoolBufferInfo{};
@@ -744,12 +739,11 @@ private:
 				float centerY = (scene->AABB.rightY + scene->AABB.leftY) * 0.5f;
 				float centerZ = (scene->AABB.rightZ + scene->AABB.leftZ) * 0.5f;
 
-				std::vector<FzbVertex> cubeVertices;
 				cubeVertices.resize(8);
 				for (int i = 0; i < 8; i++) {
 					cubeVertices[i].pos = cubeVertexOffset[i] * voxelSize + glm::vec3(centerX - distance * 0.5f, centerY - distance * 0.5f, centerZ - distance * 0.5f);
 				}
-				std::vector<uint32_t> cubeIndices  = {
+				cubeIndices  = {
 					1, 0, 3, 1, 3, 2,
 					4, 5, 6, 4, 6, 7,
 					5, 1, 2, 5, 2, 6,
@@ -757,23 +751,23 @@ private:
 					7, 6, 2, 7, 2, 3,
 					0, 1, 5, 0, 5, 4
 				};
-				sceneCubeVertexBuffer = fzbCreateStorageBuffer<FzbVertex>(&cubeVertices);
-				sceneCubeIndexBuffer = fzbCreateStorageBuffer<uint32_t>(&cubeIndices);
+				sceneCubeVertexBuffer = fzbComponentCreateStorageBuffer<FzbVertex>(&cubeVertices);
+				sceneCubeIndexBuffer = fzbComponentCreateStorageBuffer<uint32_t>(&cubeIndices);
 			}
 		}
 		else {
-			std::vector<FzbVertex> cubeVertices;
+			cubeVertices;
 			cubeVertices.resize(8);
 			for (int i = 0; i < 8; i++) {
 				cubeVertices[i].pos = cubeVertexOffset[i];
 			}
-			std::vector<uint32_t> cubeIndices = {
+			cubeIndices = {
 				0, 1, 1, 2, 2, 3, 3, 0,
 				4, 5, 5, 6, 6, 7, 7, 4,
 				0, 4, 1, 5, 2, 6, 3, 7
 			};
-			sceneWireframeVertexBuffer = fzbCreateStorageBuffer<FzbVertex>(&cubeVertices);
-			sceneWireframeIndexBuffer = fzbCreateStorageBuffer<uint32_t>(&cubeIndices);
+			sceneWireframeVertexBuffer = fzbComponentCreateStorageBuffer<FzbVertex>(&cubeVertices);
+			sceneWireframeIndexBuffer = fzbComponentCreateStorageBuffer<uint32_t>(&cubeIndices);
 		}
 	}
 
@@ -790,72 +784,32 @@ private:
 	}
 
 	void createPresentRenderPass(VkFormat swapChainImageFormat) {
-		VkAttachmentDescription colorAttachmentResolve{};
-		colorAttachmentResolve.format = swapChainImageFormat;
-		colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
-		colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		colorAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		colorAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-		VkAttachmentReference colorAttachmentResolveRef{};
-		colorAttachmentResolveRef.attachment = 0;
-		colorAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
+		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve };
 
-		VkAttachmentDescription depthMapAttachment{};
-		depthMapAttachment.format = fzbFindDepthFormat(physicalDevice);
-		depthMapAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-		depthMapAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		depthMapAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		depthMapAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		depthMapAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		depthMapAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		depthMapAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-
-		VkAttachmentReference depthMapAttachmentResolveRef{};
-		depthMapAttachmentResolveRef.attachment = 1;
-		depthMapAttachmentResolveRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment(physicalDevice);
+		VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
 		if(!svoSetting.UseSVO_OnlyVoxelGridMap)
 			attachments.push_back(depthMapAttachment);
 
 		std::vector<VkSubpassDescription> subpasses;
-		VkSubpassDescription presentSubpass{};
-		presentSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-		presentSubpass.colorAttachmentCount = 1;
-		presentSubpass.pColorAttachments = &colorAttachmentResolveRef;
+		VkSubpassDescription presentSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, nullptr);
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap)
 			presentSubpass.pDepthStencilAttachment = &depthMapAttachmentResolveRef;
 		subpasses.push_back(presentSubpass);
 
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			VkSubpassDescription presentWireframeSubpass{};
-			presentWireframeSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-			presentWireframeSubpass.colorAttachmentCount = 1;
-			presentWireframeSubpass.pColorAttachments = &colorAttachmentResolveRef;
-			presentWireframeSubpass.pDepthStencilAttachment = &depthMapAttachmentResolveRef;
+			VkSubpassDescription presentWireframeSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef);
 			subpasses.push_back(presentWireframeSubpass);
 		}
 
-		VkSubpassDependency dependency{};
-		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-		dependency.dstSubpass = 0;
-		dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.srcAccessMask = 0;
-		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+		VkSubpassDependency dependency = fzbCreateSubpassDependency();
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			dependency.srcSubpass = 0;
-			dependency.dstSubpass = 1;
-			dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-			dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-			dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+			dependency = fzbCreateSubpassDependency(0, 1, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 		}
-
 		std::array< VkSubpassDependency, 1> dependencies = { dependency };
 
 		VkRenderPassCreateInfo renderPassInfo{};

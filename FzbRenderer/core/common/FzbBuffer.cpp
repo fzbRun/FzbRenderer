@@ -87,3 +87,50 @@ void FzbBuffer::fzbGetBufferDeviceAddress() {
 	addressInfo.buffer = buffer;
 	deviceAddress = getBufferDeviceAddressKHR(logicalDevice, &addressInfo);
 }
+
+FzbBuffer fzbCreateStorageBuffer(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, void* bufferData, uint32_t bufferSize, bool UseExternal) {
+
+	FzbBuffer stagingBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	stagingBuffer.fzbCreateBuffer();
+	stagingBuffer.fzbFillBuffer(bufferData);
+
+	FzbBuffer fzbBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, UseExternal);
+	fzbBuffer.fzbCreateBuffer();
+
+	copyBuffer(logicalDevice, commandPool, graphicsQueue, stagingBuffer.buffer, fzbBuffer.buffer, bufferSize);
+
+	stagingBuffer.clean();
+
+	return fzbBuffer;
+
+}
+
+FzbBuffer fzbCreateStorageBuffer(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, uint32_t bufferSize, bool UseExternal) {
+	FzbBuffer fzbBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, UseExternal);
+	fzbBuffer.fzbCreateBuffer();
+	return fzbBuffer;
+}
+
+FzbBuffer fzbCreateUniformBuffers(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, uint32_t bufferSize) {
+	FzbBuffer fzbBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	fzbBuffer.fzbCreateBuffer();
+	vkMapMemory(logicalDevice, fzbBuffer.memory, 0, bufferSize, 0, &fzbBuffer.mapped);
+	return fzbBuffer;
+}
+
+FzbBuffer fzbCreateIndirectCommandBuffer(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, void* bufferData, uint32_t bufferSize) {
+
+	FzbBuffer stagingBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	stagingBuffer.fzbCreateBuffer();
+	stagingBuffer.fzbFillBuffer(bufferData);
+
+	FzbBuffer fzbBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
+	fzbBuffer.fzbCreateBuffer();
+
+	copyBuffer(logicalDevice, commandPool, graphicsQueue, stagingBuffer.buffer, fzbBuffer.buffer, bufferSize);
+
+	stagingBuffer.clean();
+
+	return fzbBuffer;
+
+}
