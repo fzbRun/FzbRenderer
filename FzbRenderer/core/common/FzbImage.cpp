@@ -452,9 +452,11 @@ void FzbImage::clean() {
 	if (this->textureSampler) {
 		vkDestroySampler(logicalDevice, this->textureSampler, nullptr);
 	}
-	vkDestroyImageView(logicalDevice, this->imageView, nullptr);
-	vkDestroyImage(logicalDevice, this->image, nullptr);
-	vkFreeMemory(logicalDevice, this->imageMemory, nullptr);
+	if (this->image) {
+		vkDestroyImageView(logicalDevice, this->imageView, nullptr);
+		vkDestroyImage(logicalDevice, this->image, nullptr);
+		vkFreeMemory(logicalDevice, this->imageMemory, nullptr);
+	}
 }
 
 VkFormat fzbFindSupportedFormat(VkPhysicalDevice physicalDevice, const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {

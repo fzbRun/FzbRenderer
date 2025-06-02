@@ -1,3 +1,22 @@
+/*
+在这里说一下整个FzbScene的思路
+1. 首先，fzbScene维护整个场景的mesh信息，包括mesh的各种资源，如变换、材质和纹理
+2. fzbScene中的mesh来源于外部通过addMeshToScene函数传入fzbScene
+	2.1 不直接通过fzbScene的函数从OBJ文件中获取mesh，是为了能对mesh先做一些操作再传入fzbScene。实际上这应该是UI界面上该做的事情，但是由于现在还没有
+		搞UI，就先放在外部。
+	2.2 addMeshToScene会获取mesh的各种信息，然后存入fzbScene的数组中继续维护，mesh中只保留信息在数组中的索引；然后根据mesh的shader的顶点格式要求将mesh
+		存入differentVertexFormatMeshIndexs这个map中，方便我们后续去除冗余顶点
+3. 将所有的mesh存入fzbScene后，我们可以通过initScene来初始化场景，这包含4步
+	3.1 获取mesh的顶点和索引，并得到整个场景的顶点和索引数组。我们选择将所有的顶点信息都存于一个float数组中，这是为了方便我们用一个顶点缓冲存储所有不
+		同顶点格式的顶点，从而不需要频繁的换绑顶点缓冲。
+		3.1.1 我们通过将differentVertexFormatMeshIndexs的相同顶点格式的mesh进行压缩
+		3.1.2 然后，根据前面不同顶点格式顶点所占的字节数偏移后续的顶点索引的大小，从而使得每个mesh的顶点能正确对应正确的顶点
+	3.2 根据上一步创建的顶点数组，创建顶点缓冲.索引缓冲由meshBatch独立创建
+	3.3 根据之前mesh传入的变换、材质和纹理，创建相应的缓冲和image，这里我们先只搞反射率纹理和法线纹理
+	3.4 根据对上一步的缓冲和image创建描述符
+4. 后续meshBatch的缓冲创建以及pipeline中描述符集合的使用都需要用到场景信息。每个组件维护一个fzbScene和主组件的fzbScene
+*/
+
 #pragma once
 
 #include <glm/ext/matrix_transform.hpp>
@@ -16,31 +35,6 @@
 #ifndef FZB_SCENE_H
 #define FZB_SCENE_H
 
-/*
-namespace std {
-	template<> struct hash<FzbVertex> {
-		size_t operator()(FzbVertex const& vertex) const {
-			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1) ^ (hash<glm::vec3>()(vertex.tangent) << 1);
-		}
-	};
-	template<> struct hash<FzbVertex_OnlyPos> {
-		size_t operator()(FzbVertex_OnlyPos const& vertex) const {
-			// 仅计算 pos 的哈希值
-			return hash<glm::vec3>()(vertex.pos);
-		}
-	};
-	template<> struct hash<FzbVertex_PosNormal> {
-		size_t operator()(FzbVertex_PosNormal const& vertex) const {
-			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.normal) << 1)) >> 1);
-		}
-	};
-	template<> struct hash<FzbVertex_PosNormalTexCoord> {
-		size_t operator()(FzbVertex_PosNormalTexCoord const& vertex) const {
-			return ((hash<glm::vec3>()(vertex.pos) ^ (hash<glm::vec3>()(vertex.normal) << 1)) >> 1) ^ (hash<glm::vec2>()(vertex.texCoord) << 1);
-		}
-	};
-}
-*/
 struct VectorFloatHash {
 	size_t operator()(std::vector<float> const& v) const noexcept {
 		// 以向量长度作为初始种子
@@ -87,17 +81,7 @@ struct FzbVertexFormatLess {
 		return a.getVertexSize() < b.getVertexSize();
 	}
 };
-/*
-这里讲一下整个场景的构建流程
-1. 创建scene
-2. 通过addMeshToScene将mesh存入scene，然后得到mesh
-3. 对mesh设置shader，根据shader的要求，修改顶点格式以及顶点数据
-4. 将修改后的mesh存入differentVertexFormatMeshIndexs
-5. 根据differentVertexFormatMeshIndexs压缩相同顶点格式的mesh的顶点数据，然后存入sceneVertices和sceneIndices
-6. 根据mesh的shader创建meshBatch
-7. 每个shader创建pipeline
-8. 渲染。
-*/
+
 struct FzbScene {
 
 	VkPhysicalDevice physicalDevice;
@@ -124,8 +108,8 @@ struct FzbScene {
 	std::vector<FzbImage> albedoImages;
 	std::vector<FzbImage> normalImages;
 
-	VkDescriptorPool descriptorPool;
-	VkDescriptorSetLayout sceneDecriptorSetLayout;
+	VkDescriptorPool descriptorPool = nullptr;
+	VkDescriptorSetLayout sceneDecriptorSetLayout = nullptr;
 	VkDescriptorSet descriptorSet;
 
 	FzbAABBBox AABB;
@@ -142,6 +126,25 @@ struct FzbScene {
 	}
 
 	void clean() {
+		clearBufferAndDescriptor();
+		for (int i = 0; i < this->sceneMeshSet.size(); i++) {
+			sceneMeshSet[i].clean();
+		}
+	}
+
+	void clear() {
+		clean();
+		sceneMeshSet.clear();
+		differentVertexFormatMeshIndexs.clear();
+		sceneVertices.clear();
+		sceneIndices.clear();
+		sceneTransformMatrixs.clear();
+		sceneMaterials.clear();
+		sceneAlbedoTextures.clear();
+		sceneNormalTextures.clear();
+	}
+
+	void clearBufferAndDescriptor() {
 		vertexBuffer.clean();
 		materialBuffer.clean();
 		transformBuffer.clean();
@@ -153,166 +156,14 @@ struct FzbScene {
 			normalImages[i].clean();
 		}
 
-		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
-		vkDestroyDescriptorSetLayout(logicalDevice, sceneDecriptorSetLayout, nullptr);
-
-		for (int i = 0; i < this->sceneMeshSet.size(); i++) {
-			sceneMeshSet[i].clean();
-		}
-	}
-
-	/*
-	//一个node含有mesh和子node，所以需要递归，将所有的mesh都拿出来
-	//所有的实际数据都在scene中，而node中存储的是scene的索引
-	std::vector<uint32_t> addMeshToScene(std::string path) {
-
-		Assimp::Importer import;
-		const aiScene* scene = import.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace);
-
-		if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-			std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
-			throw std::runtime_error("ERROR::ASSIMP::" + (std::string)import.GetErrorString());
-		}
-
-		uint32_t lastMeshSize = this->sceneMeshSet.size();
-		meshPathDirectory = path.substr(0, path.find_last_of('/'));
-		processNode(scene->mRootNode, scene);
-		uint32_t curMeshSize = this->sceneMeshSet.size();
-
-		std::vector<uint32_t> meshIndexs;
-		for (int i = lastMeshSize; i < curMeshSize; i++) {
-			meshIndexs.push_back(i);
-		}
-		return meshIndexs;
-	}
-	void processNode(aiNode* node, const aiScene* scene) {
-
-		for (uint32_t i = 0; i < node->mNumMeshes; i++) {
-			aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-			processMesh(mesh, scene);
-		}
-
-		for (uint32_t i = 0; i < node->mNumChildren; i++) {
-			processNode(node->mChildren[i], scene);
+		if (descriptorPool) {
+			vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
+			vkDestroyDescriptorSetLayout(logicalDevice, sceneDecriptorSetLayout, nullptr);
 		}
 
 	}
-	void processMesh(aiMesh* mesh, const aiScene* scene) {
 
-		this->sceneMeshSet.push_back(FzbMesh());
-		FzbMesh& fzbMesh = this->sceneMeshSet[this->sceneMeshSet.size() - 1];
-		for (uint32_t i = 0; i < mesh->mNumVertices; i++) {
-
-			fzbMesh.vertices.push_back(mesh->mVertices[i].x);
-			fzbMesh.vertices.push_back(mesh->mVertices[i].y);
-			fzbMesh.vertices.push_back(mesh->mVertices[i].z);
-
-			if (mesh->HasNormals()) {
-				fzbMesh.vertexFormat.useNormal = true;
-				fzbMesh.vertices.push_back(mesh->mNormals[i].x);
-				fzbMesh.vertices.push_back(mesh->mNormals[i].y);
-				fzbMesh.vertices.push_back(mesh->mNormals[i].z);
-			}
-
-			if (mesh->mTextureCoords[0]) // 网格是否有纹理坐标？这里只处理一种纹理uv
-			{
-				fzbMesh.vertexFormat.useTexCoord = true;
-				fzbMesh.vertices.push_back(mesh->mTextureCoords[0][i].x);
-				fzbMesh.vertices.push_back(mesh->mTextureCoords[0][i].y);
-			}
-
-			if (mesh->HasTangentsAndBitangents()) {
-				fzbMesh.vertexFormat.useTangent = true;
-				fzbMesh.vertices.push_back(mesh->mTangents[i].x);
-				fzbMesh.vertices.push_back(mesh->mTangents[i].y);
-				fzbMesh.vertices.push_back(mesh->mTangents[i].z);
-			}
-		}
-		this->differentVertexFormatMeshIndexs[fzbMesh.vertexFormat].push_back(this->sceneMeshSet.size() - 1);
-
-		for (uint32_t i = 0; i < mesh->mNumFaces; i++) {
-			aiFace face = mesh->mFaces[i];
-			for (uint32_t j = 0; j < face.mNumIndices; j++) {
-				fzbMesh.indices.push_back(face.mIndices[j]);
-			}
-		}
-
-		FzbMaterial mat;
-		if (mesh->mMaterialIndex >= 0) {
-
-			aiMaterial* material = scene->mMaterials[mesh->mMaterialIndex];
-			aiColor3D color;
-			material->Get(AI_MATKEY_COLOR_AMBIENT, color);
-			mat.ka = glm::vec4(color.r, color.g, color.b, 1.0);
-			material->Get(AI_MATKEY_COLOR_DIFFUSE, color);
-			mat.kd = glm::vec4(color.r, color.g, color.b, 1.0);
-			material->Get(AI_MATKEY_COLOR_SPECULAR, color);
-			mat.ks = glm::vec4(color.r, color.g, color.b, 1.0);
-			material->Get(AI_MATKEY_COLOR_EMISSIVE, color);
-			mat.ke = glm::vec4(color.r, color.g, color.b, 1.0);
-
-			bool hasMaterial = false;
-			for (int i = 0; i < this->sceneMaterials.size(); i++) {
-				if (mat == this->sceneMaterials[i]) {
-					fzbMesh.materialUniformObject.materialIndex = i;
-					hasMaterial = true;
-					break;
-				}
-			}
-			if (!hasMaterial) {
-				fzbMesh.materialUniformObject.materialIndex = this->sceneMaterials.size();
-				this->sceneMaterials.push_back(mat);
-			}
-
-			std::vector<uint32_t> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "albedoTexture");
-			if(diffuseMaps.size() > 0)
-				fzbMesh.materialUniformObject.albedoTextureIndex = diffuseMaps[0];	//只取一个，多个很少见，有需求了再说
-
-			//std::vector<FzbTexture> specularMaps = loadMaterialTextures(material, aiTextureType_SPECULAR, "texture_specular");
-			//textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-
-			std::vector<uint32_t> normalMaps = loadMaterialTextures(material, aiTextureType_HEIGHT, "normalTexture");
-			if (normalMaps.size() > 0)
-				fzbMesh.materialUniformObject.normalTextureIndex = normalMaps[0];
-
-		}
-	}
-	std::vector<uint32_t> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName) {
-
-		std::vector<FzbTexture>* sceneTextures = typeName == "albedoTexture" ? &this->sceneAlbedoTextures : &this->sceneNormalTextures;
-
-		std::vector<uint32_t> textureIndexs;
-		for (unsigned int i = 0; i < mat->GetTextureCount(type); i++)
-		{
-			aiString str;
-			mat->GetTexture(type, i, &str);
-			bool skip = false;
-			for (unsigned int j = 0; j < sceneTextures->size(); j++)
-			{
-				if (std::strcmp((*sceneTextures)[j].path.data(), str.C_Str()) == 0)
-				{
-					textureIndexs.push_back(j);
-					skip = true;
-					break;
-				}
-			}
-			if (!skip)
-			{   // 如果纹理还没有被加载，则加载它
-				FzbTexture texture;
-				//texture.id = TextureFromFile(str.C_Str(), directory);
-				texture.type = typeName;
-				texture.path = meshPathDirectory + '/' + str.C_Str();
-				textureIndexs.push_back(sceneTextures->size());
-				sceneTextures->push_back(texture); // 添加到已加载的纹理中
-			}
-		}
-
-		return textureIndexs;
-
-	}
-	*/
-	void addMeshToScene(FzbMesh mesh) {
-		mesh.indeArraySize = mesh.indices.size();
+	void addMeshToScene(FzbMesh mesh, bool reAdd = false) {
 		mesh.indexArrayOffset = this->sceneIndices.size();
 
 		bool skip = true;
@@ -373,7 +224,17 @@ struct FzbScene {
 		}
 
 		this->differentVertexFormatMeshIndexs[mesh.shader.vertexFormat].push_back(this->sceneMeshSet.size());
-		this->sceneMeshSet.push_back(mesh);
+		if(!reAdd) this->sceneMeshSet.push_back(mesh);
+	}
+
+	void initScene(bool compress = true, bool vertex = true, bool transform = true, bool bufferAndTexture = true, bool descriptor = true) {
+		if (vertex) {
+			getSceneVertics(compress);
+			createVertexBuffer();
+		}
+		if (transform) createTransformBuffer();
+		if (bufferAndTexture) createBufferAndTexture();
+		if (descriptor) createDescriptor();
 	}
 
 	void compressSceneVertics(std::vector<float>& vertices, FzbVertexFormat vertexFormat, std::vector<uint32_t>& indices) {
@@ -401,15 +262,7 @@ struct FzbScene {
 		}
 		indices = uniqueIndices;
 	}
-	/*
-	这里说一下整体思路：由于我们为了少换绑顶点缓冲，因此我们将所有顶点都放在一个顶点缓冲中，即使顶带你格式不同，我们使用float作为单位，每个mesh记录步长和偏移
-	，即可正确获得顶点。
-	但是，由于绑定纹理缓冲时只能设置一次偏移，因此，我们不能为mesh记录顶点偏移，而顶点索引从0开始，我们需要顶点偏移为0（这样不需要重新设置偏移），对顶点索引缓冲
-	中的索引设置偏移。
-	但是现在问题是，可能前面顶点格式所占的字节数不能被当前的顶点格式字节数整除，因此导致全部出错。我们的解决方案是增加padding，使得前面的字节数能被整除，然后将
-	当前顶点对应的索引都增加相应的偏移，从而得到正确的结果
-	一般来说，padding占不了多少字节，一个顶点占52字节的话，最多也就多个51字节而已。
-	*/
+
 	void getSceneVertics(bool compress = true) {	//目前只处理静态mesh
 		uint32_t FzbVertexByteSize = 0;
 		FzbVertexFormat vertexFormat;
@@ -435,11 +288,14 @@ struct FzbScene {
 
 				sceneMeshSet[meshIndex].indexArrayOffset = this->sceneIndices.size() + compressIndices.size();
 				sceneMeshSet[meshIndex].indeArraySize = sceneMeshSet[meshIndex].indices.size();	//压缩顶点数据不会改变索引数组的大小和索引的偏移位置
+				for (int j = 0; j < sceneMeshSet[meshIndex].indices.size(); j++) {
+					sceneMeshSet[meshIndex].indices[j] += compressVertics.size() / (vertexSize / sizeof(float));
+				}
 
 				std::vector<float> meshVertices = sceneMeshSet[meshIndex].getVetices();
 				compressVertics.insert(compressVertics.end(), meshVertices.begin(), meshVertices.end());
 				compressIndices.insert(compressIndices.end(), sceneMeshSet[meshIndex].indices.begin(), sceneMeshSet[meshIndex].indices.end());
-				sceneMeshSet[meshIndex].indices.clear();
+				//sceneMeshSet[meshIndex].indices.clear();
 			}
 
 			//std::vector<float> testVertices = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f };
@@ -464,10 +320,16 @@ struct FzbScene {
 		}
 	}
 
-	void createBufferAndTexture() {
+	void createVertexBuffer() {
 		this->vertexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneVertices.data(), sceneVertices.size() * sizeof(float));
 		this->sceneVertices.clear();
+	}
+
+	void createTransformBuffer() {
 		this->transformBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneTransformMatrixs.data(), sceneTransformMatrixs.size() * sizeof(glm::mat4));
+	}
+
+	void createBufferAndTexture() {
 		this->materialBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneMaterials.data(), sceneMaterials.size() * sizeof(FzbMaterial));
 		for (int i = 0; i < this->sceneAlbedoTextures.size(); i++) {
 			FzbImage albedoImage;
@@ -482,6 +344,7 @@ struct FzbScene {
 			this->normalImages.push_back(normalImage);
 		}
 	}
+
 	void createDescriptor() {
 		std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2 });	//材质
@@ -561,21 +424,33 @@ struct FzbScene {
 		vkUpdateDescriptorSets(logicalDevice, sceneDescriptorWrites.size(), sceneDescriptorWrites.data(), 0, nullptr);
 	}
 
-
+	void createAABB() {
+		this->AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
+		for (int i = 0; i < this->sceneMeshSet.size(); i++) {
+			if (sceneMeshSet[i].AABB.isEmpty())
+				sceneMeshSet[i].createAABB();
+			FzbAABBBox meshAABB = sceneMeshSet[i].AABB;
+			AABB.leftX = meshAABB.leftX < AABB.leftX ? meshAABB.leftX : AABB.leftX;
+			AABB.rightX = meshAABB.rightX > AABB.rightX ? meshAABB.rightX : AABB.rightX;
+			AABB.leftY = meshAABB.leftY < AABB.leftY ? meshAABB.leftY : AABB.leftY;
+			AABB.rightY = meshAABB.rightY > AABB.rightY ? meshAABB.rightY : AABB.rightY;
+			AABB.leftZ = meshAABB.leftZ < AABB.leftZ ? meshAABB.leftZ : AABB.leftZ;
+			AABB.rightZ = meshAABB.rightZ > AABB.rightZ ? meshAABB.rightZ : AABB.rightZ;
+		}
+		//对于面，我们给个0.2的宽度
+		if (AABB.leftX == AABB.rightX) {
+			AABB.leftX = AABB.leftX - 0.01;
+			AABB.rightX = AABB.rightX + 0.01;
+		}
+		if (AABB.leftY == AABB.rightY) {
+			AABB.leftY = AABB.leftY - 0.01;
+			AABB.rightY = AABB.rightY + 0.01;
+		}
+		if (AABB.leftZ == AABB.rightZ) {
+			AABB.leftZ = AABB.leftZ - 0.01;
+			AABB.rightZ = AABB.rightZ + 0.01;
+		}
+	}
 };
-
-void fzbCreateCube(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices) {
-	cubeVertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-		0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f };
-	cubeIndices = {
-					1, 0, 3, 1, 3, 2,
-					4, 5, 6, 4, 6, 7,
-					5, 1, 2, 5, 2, 6,
-					0, 4, 7, 0, 7, 3,
-					7, 6, 2, 7, 2, 3,
-					0, 1, 5, 0, 5, 4
-	};
-}
-
 
 #endif

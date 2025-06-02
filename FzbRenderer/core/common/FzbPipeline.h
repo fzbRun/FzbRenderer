@@ -101,13 +101,13 @@ VkPipelineInputAssemblyStateCreateInfo fzbCreateInputAssemblyStateCreateInfo(VkP
 	return inputAssembly;
 }
 
-VkPipelineViewportStateCreateInfo fzbCreateViewStateCreateInfo(VkViewport* viewports = nullptr, VkRect2D* scissors = nullptr, const void* pNext = false) {
+VkPipelineViewportStateCreateInfo fzbCreateViewStateCreateInfo(std::vector<VkViewport>& viewports, std::vector<VkRect2D>& scissors, const void* pNext = nullptr) {
 	VkPipelineViewportStateCreateInfo viewportState{};
 	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-	viewportState.viewportCount = 1;
-	viewportState.scissorCount = 1;
-	viewportState.pViewports = viewports;
-	viewportState.pScissors = scissors;
+	viewportState.viewportCount = viewports.size();
+	viewportState.scissorCount = scissors.size();
+	viewportState.pViewports = viewports.data();
+	viewportState.pScissors = scissors.data();
 	viewportState.pNext = pNext;
 
 	return viewportState;
@@ -231,6 +231,9 @@ struct FzbPipelineCreateInfo {
 	VkCullModeFlagBits cullMode = VK_CULL_MODE_BACK_BIT;
 	VkFrontFace frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
 	const void* rasterizerExtensions = nullptr;
+	VkPolygonMode polyMode = VK_POLYGON_MODE_FILL;
+	float lineWidth = 1.0f;;
+
 	VkBool32 sampleShadingEnable = VK_FALSE;
 	VkSampleCountFlagBits sampleCount = VK_SAMPLE_COUNT_1_BIT;
 	std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;	//这个要根据renderPass来，我在想是否要搞个renderPass结构体去存储信息

@@ -86,8 +86,8 @@ struct FzbSubPass {
 	VkCommandPool commandPool;
 	VkQueue graphicsQueue;
 
-	VkDescriptorPool descriptorPool;
-	VkDescriptorSetLayout meshBatchDescriptorSetLayout;	//这个描述符集合主要是材质索引
+	VkDescriptorPool descriptorPool = nullptr;
+	VkDescriptorSetLayout meshBatchDescriptorSetLayout = nullptr;	//这个描述符集合主要是材质索引
 
 	FzbPipelineCreateInfo pipelineCreateInfo;	//主要是pipeline的公共信息，如是否要背面剔除什么的
 	std::vector<FzbMeshBatch> meshBatchs;
@@ -104,32 +104,37 @@ struct FzbSubPass {
 		for (int i = 0; i < this->meshBatchs.size(); i++) {
 			meshBatchs[i].clean();
 		}
-		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
-		vkDestroyDescriptorSetLayout(logicalDevice, meshBatchDescriptorSetLayout, nullptr);
+		if (descriptorPool) {
+			vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
+			vkDestroyDescriptorSetLayout(logicalDevice, meshBatchDescriptorSetLayout, nullptr);
+		}
 	}
 
-	//给定scene，就表明改subPass要处理的是这个scene中的mesh
-	void createMeshBatch(FzbScene& scene, FzbPipelineCreateInfo& pipelineCreateInfo, VkDescriptorSetLayout componentDescriptorSetLayout) {
-		std::unordered_map<FzbShader, uint32_t> uniqueVerticesMap{};
-		for (int i = 0; i < scene.sceneMeshSet.size(); i++) {
-			if (uniqueVerticesMap.count(scene.sceneMeshSet[i].shader) == 0) {
-				uniqueVerticesMap[scene.sceneMeshSet[i].shader] = this->meshBatchs.size();
+	//给定scene，就表明改subPass要处理的是这个scene中的mesh。excludShaderMap包含我不想在这个subpass中处理的shader
+	void createMeshBatch(FzbScene* scene, FzbPipelineCreateInfo& pipelineCreateInfo, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, bool useSceneDescriptor = true, std::unordered_map<FzbShader, uint32_t> excludShaderMap = std::unordered_map<FzbShader, uint32_t>()) {
+		std::unordered_map<FzbShader, uint32_t> uniqueShaderMap{};
+		for (int i = 0; i < scene->sceneMeshSet.size(); i++) {
+			if (excludShaderMap.count(scene->sceneMeshSet[i].shader) > 0)
+				continue;
+			if (uniqueShaderMap.count(scene->sceneMeshSet[i].shader) == 0) {
+				uniqueShaderMap[scene->sceneMeshSet[i].shader] = this->meshBatchs.size();
 
 				FzbMeshBatch meshBatch(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-				meshBatch.shader = scene.sceneMeshSet[i].shader;
+				meshBatch.shader = scene->sceneMeshSet[i].shader;
+				meshBatch.useSceneDescriptor = useSceneDescriptor;
 				this->meshBatchs.push_back(meshBatch);
 			}
-			this->meshBatchs[uniqueVerticesMap[scene.sceneMeshSet[i].shader]].meshes.push_back(&scene.sceneMeshSet[i]);
+			this->meshBatchs[uniqueShaderMap[scene->sceneMeshSet[i].shader]].meshes.push_back(&scene->sceneMeshSet[i]);
 		}
 
 		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			meshBatchs[i].createMeshBatchIndexBuffer(scene.sceneIndices);
-			meshBatchs[i].createMeshBatchMaterialBuffer();
+			meshBatchs[i].createMeshBatchIndexBuffer(scene->sceneIndices);
+			if (useSceneDescriptor) meshBatchs[i].createMeshBatchMaterialBuffer();
 			meshBatchs[i].createDrawIndexedIndirectCommandBuffer();
 		}
-		createMeshBatchDescriptor();
+		if (useSceneDescriptor) createMeshBatchDescriptor();
 		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			meshBatchs[i].shader.createPipeline(pipelineCreateInfo, componentDescriptorSetLayout, scene.sceneDecriptorSetLayout, meshBatchDescriptorSetLayout);
+			meshBatchs[i].shader.createPipeline(pipelineCreateInfo, componentDescriptorSetLayouts, useSceneDescriptor, scene->sceneDecriptorSetLayout, meshBatchDescriptorSetLayout);
 		}
 	}
 
@@ -146,9 +151,9 @@ struct FzbSubPass {
 		}
 	}
 
-	void render(VkCommandBuffer commandBuffer, VkDescriptorSet componentDescriptorSet, VkDescriptorSet sceneDescriptorSet) {
+	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets, VkDescriptorSet sceneDescriptorSet) {
 		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			this->meshBatchs[i].render(commandBuffer, componentDescriptorSet, sceneDescriptorSet);
+			this->meshBatchs[i].render(commandBuffer, componentDescriptorSets, sceneDescriptorSet);
 		}
 	}
 };
@@ -171,7 +176,7 @@ struct FzbRenderPass {
 	FzbRenderPassSetting setting;
 	std::vector<FzbImage*> images;
 
-	VkRenderPass renderPass;
+	VkRenderPass renderPass = nullptr;
 	std::vector<VkFramebuffer> framebuffers;
 	std::vector<FzbSubPass> subPasses;
 
@@ -184,11 +189,11 @@ struct FzbRenderPass {
 		this->setting = setting;
 	}
 
-	void createRenderPass(std::vector<VkAttachmentDescription> attachments, std::vector<VkSubpassDescription> subpasses, std::vector<VkSubpassDependency> dependencies) {
+	void createRenderPass(std::vector<VkAttachmentDescription>* attachments, std::vector<VkSubpassDescription> subpasses, std::vector<VkSubpassDependency> dependencies) {
 		VkRenderPassCreateInfo renderPassInfo{};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		renderPassInfo.attachmentCount = attachments.size();
-		renderPassInfo.pAttachments = attachments.data();
+		renderPassInfo.attachmentCount = attachments ? attachments->size() : 0;
+		renderPassInfo.pAttachments = attachments ? attachments->data() : nullptr;
 		renderPassInfo.subpassCount = subpasses.size();
 		renderPassInfo.pSubpasses = subpasses.data();
 		renderPassInfo.dependencyCount = dependencies.size();
@@ -200,7 +205,7 @@ struct FzbRenderPass {
 	}
 
 	void clean() {
-		vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
+		if(renderPass) vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 		for (int i = 0; i < subPasses.size(); i++) {
 			subPasses[i].clean();
 		}
@@ -237,15 +242,7 @@ struct FzbRenderPass {
 		}
 	}
 
-	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex, FzbScene& scene, VkDescriptorSet componentDescriptorSet) {
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = 0;
-		beginInfo.pInheritanceInfo = nullptr;
-
-		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-			throw std::runtime_error("failed to begin recording command buffer!");
-		}
+	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex, std::vector<FzbScene*> scenes, std::vector<std::vector<VkDescriptorSet>> componentDescriptorSets) {
 
 		VkRenderPassBeginInfo renderPassBeginInfo{};
 		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -259,16 +256,18 @@ struct FzbRenderPass {
 		for (int i = 0; i < clearAttachemtnNum - 1; i++) {
 			clearValues[i].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
 		}
-		clearValues[clearAttachemtnNum - 1].depthStencil = { 1.0f, 0 };
+		if(setting.useDepth) clearValues[clearAttachemtnNum - 1].depthStencil = { 1.0f, 0 };
 		renderPassBeginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 		renderPassBeginInfo.pClearValues = clearValues.data();
 
 		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-		VkBuffer vertexBuffers[] = { scene.vertexBuffer.buffer };
-		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+		uint32_t subPassNum = subPasses.size();
 		for (int i = 0; i < subPasses.size(); i++) {
-			subPasses[i].render(commandBuffer, componentDescriptorSet, scene.descriptorSet);
+			VkBuffer vertexBuffers[] = { scenes[i]->vertexBuffer.buffer};
+			VkDeviceSize offsets[] = { 0 };
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+			subPasses[i].render(commandBuffer, componentDescriptorSets[i], scenes[i]->descriptorSet);
+			if(--subPassNum > 0) vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 		}
 
 		vkCmdEndRenderPass(commandBuffer);

@@ -1,5 +1,5 @@
 #include "core/common/FzbComponent.h"
-//#include "core/SceneDivision/SVO/SVO.h"
+#include "core/SceneDivision/SVO/SVO.h"
 
 class FzbRenderer : public FzbMainComponent {
 
@@ -29,28 +29,30 @@ private:
 	FzbSemaphore renderFinishedSemaphores;
 	VkFence fence;
 
-	//FzbSVOSetting svoSetting = {};
-	//std::unique_ptr<FzbSVO> fzbSVO;
+	FzbSVOSetting svoSetting = {};
+	std::unique_ptr<FzbSVO> fzbSVO;
 
 	void initVulkan() {
 		initSetting();
 		createScene();
-		createAppRenderPass();
+		createPreparePresentSetting();
+		//createAppRenderPass();
+		activateSVOComponent();
 	}
 	//---------------------------------------------------------------------------------------------------
 	void createComponent() {
 
-		//svoSetting.UseSVO = false;
-		//if (svoSetting.UseSVO) {
-		//	fzbSVO = std::make_unique<FzbSVO>();
-		//	svoSetting.UseSVO_OnlyVoxelGridMap = false;
-		//	svoSetting.UseBlock = true;
-		//	svoSetting.UseConservativeRasterization = false;
-		//	svoSetting.UseSwizzle = true;
-		//	svoSetting.Present = true;
-		//	svoSetting.voxelNum = 64;
-		//	fzbSVO->addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
-		//}
+		svoSetting.UseSVO = true;
+		if (svoSetting.UseSVO) {
+			fzbSVO = std::make_unique<FzbSVO>();
+			svoSetting.UseSVO_OnlyVoxelGridMap = false;
+			svoSetting.UseBlock = true;
+			svoSetting.UseConservativeRasterization = false;
+			svoSetting.UseSwizzle = false;
+			svoSetting.Present = true;
+			svoSetting.voxelNum = 64;
+			fzbSVO->addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
+		}
 	}
 
 	void createDevice() {
@@ -79,6 +81,7 @@ private:
 	}
 
 	void initSetting() {
+		createComponent();
 		fzbCreateInstance("FzbRenderer", instanceExtensions, validationLayers);
 		fzbCetupDebugMessenger();
 		fzbCreateSurface();
@@ -88,38 +91,28 @@ private:
 	}
 //---------------------------------------------------------------------------------------------------
 	void createScene() {
+
+		FzbVertexFormat vertexFormat(true, true);
+		if (svoSetting.UseSVO) vertexFormat.mergeUpward(fzbSVO->getComponentVertexFormat());
+
 		scene = FzbScene(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 
 		//如果有GUI这里实际上不需要我去手动放置shader以及相关的贴图什么的
-		FzbMesh mesh = getMeshFromOBJ("./models/dragon.obj", FzbVertexFormat(true))[0];
-		mesh.shader = FzbShader(logicalDevice, true, false, false);
+		FzbMesh mesh = getMeshFromOBJ("./models/dragon.obj", vertexFormat)[0];
+		mesh.shader = FzbShader(logicalDevice, vertexFormat);
 		scene.addMeshToScene(mesh);
 
-		FzbMesh cube;
-		fzbCreateCube(cube.vertices, cube.indices);
-		cube.transforms = glm::scale(glm::mat4(1.0f), glm::vec3(20.0f, 1.0f, 1.0f));
-		cube.shader = FzbShader(logicalDevice, false, false, false);
-		scene.addMeshToScene(cube);
+		//FzbMesh cube;
+		//fzbCreateCube(cube.vertices, cube.indices);
+		//cube.transforms = glm::scale(glm::mat4(1.0f), glm::vec3(20.0f, 1.0f, 1.0f));
+		//cube.shader = FzbShader(logicalDevice, false, false, false);
+		//scene.addMeshToScene(cube);
 
-		scene.getSceneVertics(false);
-		scene.createBufferAndTexture();
-		scene.createDescriptor();
+		scene.initScene(false);
 	}
 //---------------------------------------------------------------------------------------------------
 	void createBuffers() {
 		cameraUniformBuffer = fzbComponentCreateUniformBuffers<FzbCameraUniformBufferObject>();
-	}
-
-	void createImages() {
-		depthMap = {};
-		depthMap.width = swapChainExtent.width;
-		depthMap.height = swapChainExtent.height;
-		depthMap.type = VK_IMAGE_TYPE_2D;
-		depthMap.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		depthMap.format = fzbFindDepthFormat(physicalDevice);
-		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
 
 	void createDescriptor() {
@@ -150,6 +143,29 @@ private:
 
 	}
 
+	void createSyncObjects() {
+		imageAvailableSemaphores = fzbCreateSemaphore(false);
+		renderFinishedSemaphores = fzbCreateSemaphore(false);
+		fence = fzbCreateFence();
+	}
+
+	void createPreparePresentSetting() {
+		createBuffers();
+		createDescriptor();
+		createSyncObjects();
+	}
+//--------------------------------------------------------
+	void createImages() {
+		depthMap = {};
+		depthMap.width = swapChainExtent.width;
+		depthMap.height = swapChainExtent.height;
+		depthMap.type = VK_IMAGE_TYPE_2D;
+		depthMap.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		depthMap.format = fzbFindDepthFormat(physicalDevice);
+		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+	}
 	void createRenderPass() {
 
 		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
@@ -163,47 +179,43 @@ private:
 
 		std::vector<VkSubpassDependency> dependencies = { fzbCreateSubpassDependency() };
 
-		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true};
+		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true };
 		renderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
 		renderPass.images.push_back(&depthMap);
-		renderPass.createRenderPass(attachments, subpasses, dependencies);
+		renderPass.createRenderPass(&attachments, subpasses, dependencies);
 		renderPass.createFramebuffers(swapChainImageViews);
 
 		FzbPipelineCreateInfo pipelineCreateInfo(renderPass.renderPass, renderPass.setting.extent);
 		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		presentSubPass.createMeshBatch(scene, pipelineCreateInfo, uniformDescriptorSetLayout);
+		presentSubPass.createMeshBatch(&scene, pipelineCreateInfo, { uniformDescriptorSetLayout });	//可以得到meshBatch，并为meshBatch创建各种缓冲，以及shader的pipeline
 		renderPass.subPasses.push_back(presentSubPass);
 	}
-
-	void createSyncObjects() {
-		imageAvailableSemaphores = fzbCreateSemaphore(false);
-		renderFinishedSemaphores = fzbCreateSemaphore(false);
-		fence = fzbCreateFence();
-	}
-
 	void createAppRenderPass() {
-		createBuffers();
 		createImages();
-		createDescriptor();
 		createRenderPass();
-		createSyncObjects();
 	}
-
+//--------------------------------------------------------
 	void initComponent() {
-		//if (svoSetting.UseSVO)
-		//	fzbSVO->init(this, &scene, svoSetting);
+		if (svoSetting.UseSVO)
+			fzbSVO->init(this, &scene, svoSetting);
 	}
 
 	void activateComponent() {
-		//if (svoSetting.UseSVO)
-		//	fzbSVO->activate();
+		if (svoSetting.UseSVO)
+			fzbSVO->activate();
 	}
 
 	void prepareComponentPresent() {
-		//if (svoSetting.UseSVO)
-		//	fzbSVO->presentPrepare(uniformDescriptorSetLayout);
+		if (svoSetting.UseSVO && svoSetting.Present)
+			fzbSVO->presentPrepare(uniformDescriptorSetLayout);
 	}
 
+	void activateSVOComponent() {
+		initComponent();
+		activateComponent();
+		prepareComponentPresent();
+	}
+//--------------------------------------------------------
 	void drawFrame() {
 
 		VkSubmitInfo submitInfo{};
@@ -223,35 +235,39 @@ private:
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 
-
 		updateUniformBuffer();
-
 		vkResetFences(logicalDevice, 1, &fence);
-		VkCommandBuffer commandBuffer = commandBuffers[0];
-		vkResetCommandBuffer(commandBuffer, 0);
-		renderPass.render(commandBuffer, imageIndex, scene, uniformDescriptorSet);
-		//if (svoSetting.UseSVO)
-		//	fzbSVO->present(uniformDescriptorSet, imageIndex, imageAvailableSemaphores.semaphore, fence);
 
-		VkSemaphore waitSemaphores[] = { imageAvailableSemaphores.semaphore };
-		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = waitSemaphores;
-		submitInfo.pWaitDstStageMask = waitStages;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderFinishedSemaphores.semaphore;
+		if (svoSetting.UseSVO)
+			fzbSVO->present(uniformDescriptorSet, imageIndex, imageAvailableSemaphores.semaphore, fence);
 
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
-			throw std::runtime_error("failed to submit draw command buffer!");
-		}
+		/*VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = 0;
+		beginInfo.pInheritanceInfo = nullptr;
+
+		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+			throw std::runtime_error("failed to begin recording command buffer!");
+		}*/
+		//VkSemaphore waitSemaphores[] = { imageAvailableSemaphores.semaphore };
+		//VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+		//submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		//submitInfo.waitSemaphoreCount = 1;
+		//submitInfo.pWaitSemaphores = waitSemaphores;
+		//submitInfo.pWaitDstStageMask = waitStages;
+		//submitInfo.commandBufferCount = 1;
+		//submitInfo.pCommandBuffers = &commandBuffer;
+		//submitInfo.signalSemaphoreCount = 1;
+		//submitInfo.pSignalSemaphores = &renderFinishedSemaphores.semaphore;
+		//renderPass.render(commandBuffer, imageIndex, scene, { uniformDescriptorSet });
+		//if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+		//	throw std::runtime_error("failed to submit draw command buffer!");
+		//}
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &renderFinishedSemaphores.semaphore;	// svoSetting.UseSVO ? &fzbSVO->presentSemaphore.semaphore : nullptr;
+		presentInfo.pWaitSemaphores = &fzbSVO->presentSemaphore.semaphore;
 
 		VkSwapchainKHR swapChains[] = { swapChain };
 		presentInfo.swapchainCount = 1;
@@ -333,14 +349,12 @@ private:
 
 	void clean() {
 
+		if(svoSetting.UseSVO) fzbSVO->clean();
 		scene.clean();
-		//presentSubPass.clean();
 		renderPass.clean();
 		cameraUniformBuffer.clean();
 
 		fzbCleanupSwapChain();
-
-		//vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
 
 		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(logicalDevice, uniformDescriptorSetLayout, nullptr);

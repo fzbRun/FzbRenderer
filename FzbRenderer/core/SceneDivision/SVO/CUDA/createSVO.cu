@@ -580,7 +580,7 @@ void CUDART_CB cleanTempData(cudaStream_t stream, cudaError_t status, void* user
 
 }
 */
-void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGridMap, HANDLE vgmSemaphoreHandle, HANDLE svoSemaphoreHandle, bool isPresent) {
+void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGridMap, HANDLE vgmSemaphoreHandle, HANDLE svoSemaphoreHandle) {
 
 	double start = cpuSecond();
 

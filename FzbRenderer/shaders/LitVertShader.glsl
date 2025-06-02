@@ -49,4 +49,5 @@ void main() {
 	int meshMaterialIndex = materialIndexs[gl_DrawID].transformIndex;
 	mat4 model = meshMaterialIndex != -1 ? models[meshMaterialIndex] : mat4(1.0f);
 	gl_Position = cubo.proj * cubo.view * model * vec4(pos_in, 1.0f);
+	//gl_Position = cubo.proj * cubo.view * cubo.model * vec4(pos_in, 1.0f);
 }

@@ -30,8 +30,8 @@ struct FzbShader {
 	bool materialTexture;
 	bool heightTexture;
 
-	VkPipelineLayout pipelineLayout;
-	VkPipeline pipeline;
+	VkPipelineLayout pipelineLayout = nullptr;
+	VkPipeline pipeline = nullptr;
 
 	FzbShader() {}
 
@@ -45,12 +45,37 @@ struct FzbShader {
 		this->fragmentShader = { true,  "./shaders/spv/LitFragShader.spv" };
 	}
 
-	void clean() {
-		vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
-		vkDestroyPipeline(logicalDevice, pipeline, nullptr);
+	FzbShader(VkDevice logicalDevice, FzbVertexFormat vertexFormat) {
+		this->logicalDevice = logicalDevice;
+		this->vertexFormat.useNormal = vertexFormat.useNormal;
+		this->vertexFormat.useTexCoord = vertexFormat.useTexCoord;
+		this->vertexFormat.useTangent = vertexFormat.useTangent;
+
+		this->vertexShader = { true, "./shaders/spv/LitVertShader.spv" };
+		this->fragmentShader = { true,  "./shaders/spv/LitFragShader.spv" };
 	}
 
-	void createPipeline(FzbPipelineCreateInfo pipelineCreateInfo, VkDescriptorSetLayout componentDescriptorSetLayout, VkDescriptorSetLayout sceneDescriptorSetLayout, VkDescriptorSetLayout meshBatchDescriptorSetLayout) {
+	void clean() {
+		if (pipeline) {
+			vkDestroyPipelineLayout(logicalDevice, pipelineLayout, nullptr);
+			vkDestroyPipeline(logicalDevice, pipeline, nullptr);
+		}
+	}
+
+	void clear() {
+		this->vertexShader = { false, "" };
+		this->tessellationControlShader = { false, "" };
+		this->tessellationEvaluateShader = { false, "" };
+		this->geometryShader = { false, "" };
+		this->fragmentShader = { false, "" };
+		this->amplifyShader = { false, "" };
+		this->meshShader = { false, "" };
+		this->rayTracingShader = { false, "" };
+
+		clean();
+	}
+
+	void createPipeline(FzbPipelineCreateInfo pipelineCreateInfo, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, bool useSceneDescriptor, VkDescriptorSetLayout sceneDescriptorSetLayout, VkDescriptorSetLayout meshBatchDescriptorSetLayout) {
 		std::map<VkShaderStageFlagBits, std::string> shaders;
 		if (this->vertexShader.first) {
 			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, this->vertexShader.second });
@@ -80,6 +105,8 @@ struct FzbShader {
 		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(pipelineCreateInfo.primitiveTopology);
 
 		VkPipelineRasterizationStateCreateInfo rasterizer = fzbCreateRasterizationStateCreateInfo(pipelineCreateInfo.cullMode, pipelineCreateInfo.frontFace, pipelineCreateInfo.rasterizerExtensions);
+		rasterizer.polygonMode = pipelineCreateInfo.polyMode;
+		rasterizer.lineWidth = pipelineCreateInfo.lineWidth;
 
 		VkPipelineMultisampleStateCreateInfo multisampling = fzbCreateMultisampleStateCreateInfo(pipelineCreateInfo.sampleShadingEnable, pipelineCreateInfo.sampleCount);
 		std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments = { pipelineCreateInfo.colorBlendAttachments };
@@ -94,7 +121,7 @@ struct FzbShader {
 			dynamicState = createDynamicStateCreateInfo(pipelineCreateInfo.dynamicStates);
 		}
 		else {
-			viewportState = fzbCreateViewStateCreateInfo(pipelineCreateInfo.viewports.data(), pipelineCreateInfo.scissors.data(), pipelineCreateInfo.viewportExtensions);
+			viewportState = fzbCreateViewStateCreateInfo(pipelineCreateInfo.viewports, pipelineCreateInfo.scissors, pipelineCreateInfo.viewportExtensions);
 			if (pipelineCreateInfo.viewports.size() == 0 || pipelineCreateInfo.scissors.size() == 0) {
 				viewport.x = 0;
 				viewport.y = 0;
@@ -104,12 +131,21 @@ struct FzbShader {
 				viewport.maxDepth = 1.0f;
 				scissor.offset = { 0, 0 };
 				scissor.extent = pipelineCreateInfo.extent;
+				viewportState.viewportCount = 1;
+				viewportState.scissorCount = 1;
 				viewportState.pViewports = &viewport;
 				viewportState.pScissors = &scissor;
 			}
 		}
 
-		std::vector< VkDescriptorSetLayout> descriptorSetLayouts = { componentDescriptorSetLayout, sceneDescriptorSetLayout, meshBatchDescriptorSetLayout };
+		std::vector<VkDescriptorSetLayout> descriptorSetLayouts;
+		for (int i = 0; i < componentDescriptorSetLayouts.size(); i++) {
+			descriptorSetLayouts.push_back(componentDescriptorSetLayouts[i]);
+		}
+		if (useSceneDescriptor) {
+			descriptorSetLayouts.push_back(sceneDescriptorSetLayout);
+			descriptorSetLayouts.push_back(meshBatchDescriptorSetLayout);
+		}
 		pipelineLayout = fzbCreatePipelineLayout(logicalDevice, &descriptorSetLayouts);
 
 		VkGraphicsPipelineCreateInfo pipelineInfo{};
@@ -130,7 +166,7 @@ struct FzbShader {
 		}
 		pipelineInfo.layout = pipelineLayout;
 		pipelineInfo.renderPass = pipelineCreateInfo.renderPass;	//先建立连接，获得索引
-		pipelineInfo.subpass = 0;	//对应renderpass的哪个子部分
+		pipelineInfo.subpass = pipelineCreateInfo.subPassIndex;	//对应renderpass的哪个子部分
 		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;	//可以直接使用现有pipeline
 		pipelineInfo.basePipelineIndex = -1;
 

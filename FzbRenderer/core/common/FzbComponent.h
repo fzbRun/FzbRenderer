@@ -187,103 +187,10 @@ public:
 		return fzbCreateUniformBuffers(physicalDevice, logicalDevice, sizeof(T));
 	}
 
-//------------------------------------------------------------------模型-------------------------------------------------------------------------
-
-	/*
-	void modelChange(FzbModel& myModel) {
-
-
-		for (int i = 0; i < myModel.meshs.size(); i++) {
-			if (myModel.meshs[i].vertices.size() > 100) {
-
-				glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(0.6f, -0.4f, 0.6f));
-				for (int j = 0; j < myModel.meshs[i].vertices.size(); j++) {
-
-					myModel.meshs[i].vertices[j].pos = glm::vec3(model * glm::vec4(myModel.meshs[i].vertices[j].pos, 1.0f));
-
-				}
-
-			}
-		}
-
+//------------------------------------------------------------------模型和shader-------------------------------------------------------------------------
+	virtual FzbVertexFormat getComponentVertexFormat() {
+		return FzbVertexFormat(true, true, true);
 	}
-
-	void fzbMakeAABB(FzbModel& myModel) {
-
-		for (int i = 0; i < myModel.meshs.size(); i++) {
-
-			//left right xyz
-			FzbAABBBox AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
-			for (int j = 0; j < myModel.meshs[i].indices.size(); j++) {
-				glm::vec3 worldPos = myModel.meshs[i].vertices[myModel.meshs[i].indices[j]].pos;
-				AABB.leftX = worldPos.x < AABB.leftX ? worldPos.x : AABB.leftX;
-				AABB.rightX = worldPos.x > AABB.rightX ? worldPos.x : AABB.rightX;
-				AABB.leftY = worldPos.y < AABB.leftY ? worldPos.y : AABB.leftY;
-				AABB.rightY = worldPos.y > AABB.rightY ? worldPos.y : AABB.rightY;
-				AABB.leftZ = worldPos.z < AABB.leftZ ? worldPos.z : AABB.leftZ;
-				AABB.rightZ = worldPos.z > AABB.rightZ ? worldPos.z : AABB.rightZ;
-			}
-			//对于面，我们给个0.2的宽度
-			if (AABB.leftX == AABB.rightX) {
-				AABB.leftX = AABB.leftX - 0.01;
-				AABB.rightX = AABB.rightX + 0.01;
-			}
-			if (AABB.leftY == AABB.rightY) {
-				AABB.leftY = AABB.leftY - 0.01;
-				AABB.rightY = AABB.rightY + 0.01;
-			}
-			if (AABB.leftZ == AABB.rightZ) {
-				AABB.leftZ = AABB.leftZ - 0.01;
-				AABB.rightZ = AABB.rightZ + 0.01;
-			}
-			myModel.meshs[i].AABB = AABB;
-
-		}
-
-		FzbAABBBox AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
-		for (int i = 0; i < myModel.meshs.size(); i++) {
-			FzbMesh mesh = myModel.meshs[i];
-			AABB.leftX = mesh.AABB.leftX < AABB.leftX ? mesh.AABB.leftX : AABB.leftX;
-			AABB.rightX = mesh.AABB.rightX > AABB.rightX ? mesh.AABB.rightX : AABB.rightX;
-			AABB.leftY = mesh.AABB.leftY < AABB.leftY ? mesh.AABB.leftY : AABB.leftY;
-			AABB.rightY = mesh.AABB.rightY > AABB.rightY ? mesh.AABB.rightY : AABB.rightY;
-			AABB.leftZ = mesh.AABB.leftZ < AABB.leftZ ? mesh.AABB.leftZ : AABB.leftZ;
-			AABB.rightZ = mesh.AABB.rightZ > AABB.rightZ ? mesh.AABB.rightZ : AABB.rightZ;
-		}
-		myModel.AABB = AABB;
-
-	}
-
-	template<typename T>
-	FzbAABBBox fzbMakeAABB(std::vector<T>& vertices) {
-
-		FzbAABBBox AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
-		for (int i = 0; i < vertices.size(); i++) {
-			glm::vec3 worldPos = vertices[i].pos;
-			AABB.leftX = worldPos.x < AABB.leftX ? worldPos.x : AABB.leftX;
-			AABB.rightX = worldPos.x > AABB.rightX ? worldPos.x : AABB.rightX;
-			AABB.leftY = worldPos.y < AABB.leftY ? worldPos.y : AABB.leftY;
-			AABB.rightY = worldPos.y > AABB.rightY ? worldPos.y : AABB.rightY;
-			AABB.leftZ = worldPos.z < AABB.leftZ ? worldPos.z : AABB.leftZ;
-			AABB.rightZ = worldPos.z > AABB.rightZ ? worldPos.z : AABB.rightZ;
-		}
-		//对于面，我们给个0.2的宽度
-		if (AABB.leftX == AABB.rightX) {
-			AABB.leftX = AABB.leftX - 0.01;
-			AABB.rightX = AABB.rightX + 0.01;
-		}
-		if (AABB.leftY == AABB.rightY) {
-			AABB.leftY = AABB.leftY - 0.01;
-			AABB.rightY = AABB.rightY + 0.01;
-		}
-		if (AABB.leftZ == AABB.rightZ) {
-			AABB.leftZ = AABB.leftZ - 0.01;
-			AABB.rightZ = AABB.rightZ + 0.01;
-		}
-		return AABB;
-
-	}
-	*/
 //------------------------------------------------------------------图像-------------------------------------------------------------------------
 //-----------------------------------------------------------------描述符-------------------------------------------------------------------------
 	VkDescriptorPool descriptorPool;

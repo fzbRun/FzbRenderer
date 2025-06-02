@@ -231,12 +231,12 @@ struct FzbMaterial {
 
 struct FzbAABBBox {
 
-	float leftX;
-	float rightX;
-	float leftY;
-	float rightY;
-	float leftZ;
-	float rightZ;
+	float leftX = FLT_MAX;
+	float rightX = -FLT_MAX;
+	float leftY = FLT_MAX;
+	float rightY = -FLT_MAX;
+	float leftZ = FLT_MAX;
+	float rightZ = -FLT_MAX;
 
 	glm::vec3 startPos;
 	glm::vec3 distanceXYZ;
@@ -261,6 +261,10 @@ struct FzbAABBBox {
 		else if (k == 5) {
 			return rightZ;
 		}
+	}
+
+	bool isEmpty() {
+		return leftX == FLT_MAX && rightX == -FLT_MAX && leftY == FLT_MAX && rightY == -FLT_MAX && leftZ == FLT_MAX && rightZ == -FLT_MAX;
 	}
 
 };
@@ -310,6 +314,7 @@ public:
 	FzbVertexFormat vertexFormat;	//从obj中获取到的mesh的顶点格式
 	FzbShader shader;
 
+	uint32_t instanceNum = 1;
 	FzbAABBBox AABB;
 
 	FzbMesh() {
@@ -366,6 +371,37 @@ public:
 	}
 
 	void clean() {
+		
+	}
+
+	void createAABB() {
+		uint32_t vertexSize = this->vertexFormat.getVertexSize() / sizeof(float);
+
+		this->AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
+		for (int i = 0; i < this->vertices.size(); i += vertexSize) {
+			float x = vertices[i];
+			float y = vertices[i + 1];
+			float z = vertices[i + 2];
+			AABB.leftX = x < AABB.leftX ? x : AABB.leftX;
+			AABB.rightX = x > AABB.rightX ?x : AABB.rightX;
+			AABB.leftY = y < AABB.leftY ? y : AABB.leftY;
+			AABB.rightY = y > AABB.rightY ? y : AABB.rightY;
+			AABB.leftZ = z < AABB.leftZ ? z : AABB.leftZ;
+			AABB.rightZ = z > AABB.rightZ ? z : AABB.rightZ;
+		}
+		//对于面，我们给个0.2的宽度
+		if (AABB.leftX == AABB.rightX) {
+			AABB.leftX = AABB.leftX - 0.01;
+			AABB.rightX = AABB.rightX + 0.01;
+		}
+		if (AABB.leftY == AABB.rightY) {
+			AABB.leftY = AABB.leftY - 0.01;
+			AABB.rightY = AABB.rightY + 0.01;
+		}
+		if (AABB.leftZ == AABB.rightZ) {
+			AABB.leftZ = AABB.leftZ - 0.01;
+			AABB.rightZ = AABB.rightZ + 0.01;
+		}
 		
 	}
 
@@ -432,6 +468,7 @@ FzbMesh processMesh(aiMesh* mesh, const aiScene* scene) {
 			fzbMesh.indices.push_back(face.mIndices[j]);
 		}
 	}
+	fzbMesh.indeArraySize = fzbMesh.indices.size();
 
 	FzbMaterial mat;
 	if (mesh->mMaterialIndex >= 0) {
@@ -497,6 +534,29 @@ std::vector<FzbMesh> getMeshFromOBJ(std::string path, FzbVertexFormat meshVertex
 
 }
 
+void fzbCreateCube(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices) {
+	cubeVertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+		0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f };
+	cubeIndices = {
+					1, 0, 3, 1, 3, 2,
+					4, 5, 6, 4, 6, 7,
+					5, 1, 2, 5, 2, 6,
+					0, 4, 7, 0, 7, 3,
+					7, 6, 2, 7, 2, 3,
+					0, 1, 5, 0, 5, 4
+	};
+}
+
+void fzbCreateCubeWireframe(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices) {
+	cubeVertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+	0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f };
+	cubeIndices = {
+		0, 1, 1, 2, 2, 3, 3, 0,
+		4, 5, 5, 6, 6, 7, 7, 4,
+		0, 4, 1, 5, 2, 6, 3, 7
+	};
+}
+
 //批应该分为两种，一种是批内mesh都相同，可以当作一个大的mesh；另一种就是shader相同，但是数据不同
 //一个batch中的mesh的shader相同，即顶点格式、所用纹理数量、类型什么的都相同。
 struct FzbMeshBatch {
@@ -513,6 +573,7 @@ public:
 
 	uint32_t vertexBufferOffset = 0;
 	FzbBuffer indexBuffer;
+	bool useSceneDescriptor = true;
 	FzbBuffer materialIndexBuffer;
 	uint32_t drawIndexedIndirectCommandSize = 0;
 	FzbBuffer drawIndexedIndirectCommandBuffer;
@@ -555,7 +616,7 @@ public:
 		std::vector<VkDrawIndexedIndirectCommand> batchDrawIndexedIndirectCommands;
 		for (int i = 0; i < meshes.size(); i++) {
 			drawIndexedIndirectCommandSize++;
-			batchDrawIndexedIndirectCommands.push_back({ meshes[i]->indeArraySize, 1, 0, 0, 0 });
+			batchDrawIndexedIndirectCommands.push_back({ meshes[i]->indeArraySize, meshes[i]->instanceNum, 0, 0, 0 });
 		}
 		drawIndexedIndirectCommandBuffer = fzbCreateIndirectCommandBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, batchDrawIndexedIndirectCommands.data(), batchDrawIndexedIndirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
 	}
@@ -578,13 +639,17 @@ public:
 		vkUpdateDescriptorSets(logicalDevice, meshBatchDescriptorWrites.size(), meshBatchDescriptorWrites.data(), 0, nullptr);
 	}
 
-	void render(VkCommandBuffer commandBuffer, VkDescriptorSet componentDescriptorSet, VkDescriptorSet sceneDescriptorSet) {
+	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets, VkDescriptorSet sceneDescriptorSet) {
 		vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipeline);
 		//0：组件的uniform,1: material、texture、transform，2：不同meshBatch的materialIndex
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, 0, 1, &componentDescriptorSet, 0, nullptr);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, 1, 1, &sceneDescriptorSet, 0, nullptr);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, 2, 1, &descriptorSet, 0, nullptr);
+		for (int i = 0; i < componentDescriptorSets.size(); i++) {
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, i, 1, &componentDescriptorSets[i], 0, nullptr);
+		}
+		if (useSceneDescriptor) {
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, componentDescriptorSets.size(), 1, &sceneDescriptorSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, componentDescriptorSets.size() + 1, 1, &descriptorSet, 0, nullptr);
+		}
 		vkCmdDrawIndexedIndirect(commandBuffer, drawIndexedIndirectCommandBuffer.buffer, 0, drawIndexedIndirectCommandSize, sizeof(VkDrawIndexedIndirectCommand));
 	}
 

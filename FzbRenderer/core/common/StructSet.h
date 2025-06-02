@@ -429,6 +429,12 @@ struct FzbVertexFormat {
 		return attributeDescriptions;
 	}
 
+	void mergeUpward(FzbVertexFormat vertexFormat) {
+		this->useNormal |= vertexFormat.useNormal;
+		this->useTexCoord |= vertexFormat.useTexCoord;
+		this->useTangent |= vertexFormat.useTangent;
+	}
+
 	bool operator==(const FzbVertexFormat& other) const {
 		if (!(useNormal == other.useNormal && useTexCoord == other.useTexCoord && useTangent == other.useTangent)) {
 			return false;

@@ -33,28 +33,12 @@ public:
 	VkDescriptorSetLayout voxelGridMapDescriptorSetLayout;
 	VkDescriptorSet voxelGridMapDescriptorSet;
 
-	FzbScene* scene;
-	std::vector<FzbVertex> cubeVertices;
-	std::vector<uint32_t> cubeIndices;
-
-	FzbBuffer sceneVertexBuffer;
-	FzbBuffer sceneIndexBuffer;
-	FzbBuffer sceneCubeVertexBuffer;
-	FzbBuffer sceneCubeIndexBuffer;
-	FzbBuffer sceneWireframeVertexBuffer;
-	FzbBuffer sceneWireframeIndexBuffer;
+	FzbScene* mainComponentScene;
+	FzbScene componentScene;
 	FzbBuffer svoUniformBuffer;
 
-	VkRenderPass voxelGridMapRenderPass;
-	VkPipeline voxelGridMapPipeline;
-	VkPipelineLayout voxelGridMapPipelineLayout;
-
-	VkRenderPass presentRenderPass;
-	VkPipeline presentPipeline;
-	VkPipelineLayout presentPipelineLayout;
-
-	VkPipeline presentWireframePipeline;
-	VkPipelineLayout presentWireframePipelineLayout;
+	FzbRenderPass voxelGridMapRenderPass;
+	FzbRenderPass presentRenderPass;
 
 	FzbImage depthMap;
 
@@ -70,6 +54,8 @@ public:
 	FzbSemaphore presentSemaphore;
 
 	VkFence fence;
+
+	FzbSVO() {}
 
 	void addExtensions(FzbSVOSetting svoSetting, std::vector<const char*>& instanceExtensions, std::vector<const char*>& deviceExtensions, VkPhysicalDeviceFeatures& deviceFeatures) {
 
@@ -102,6 +88,10 @@ public:
 		}
 	}
 
+	FzbVertexFormat getComponentVertexFormat() {
+		return FzbVertexFormat();
+	}
+
 	void init(FzbMainComponent* renderer, FzbScene* scene, FzbSVOSetting setting) {
 		
 		this->physicalDevice = renderer->physicalDevice;
@@ -111,7 +101,7 @@ public:
 		this->swapChainImageFormat = renderer->swapChainImageFormat;
 		this->swapChainImageViews = renderer->swapChainImageViews;
 		this->commandPool = renderer->commandPool;
-		this->scene = scene;
+		this->mainComponentScene = scene;
 		this->svoSetting = setting;
 
 		if (!this->svoSetting.UseSVO_OnlyVoxelGridMap) {
@@ -121,33 +111,26 @@ public:
 	}
 
 	void activate() {
-
-		createVoxelGridMapBuffer();
-		initVoxelGridMap();
-		createDescriptorPool();
-		createVoxelGridMapDescriptor();
-		createVoxelGridMapRenderPass();
-		createVoxelGridMapFramebuffer();
-		createVoxelGridMapPipeline();
-		createVoxelGridMapSyncObjects();
 		createVoxelGridMap();
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			createSVOCuda();
 			createSVODescriptor();
 		}
-
 	}
 
-	void presentPrepare(VkDescriptorSetLayout uniformDescriptorSetLayout) {
-		createPresentBuffer();
-		initDepthMap();
-		createPresentRenderPass(swapChainImageFormat);
-		createPresentFrameBuffer(swapChainImageViews);
+	void presentPrepare(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
+		if(!(svoSetting.UseSVO_OnlyVoxelGridMap && svoSetting.UseBlock)) initDepthMap();
 		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
-			createVGMPresentPipeline(uniformDescriptorSetLayout);
+			if (!svoSetting.UseBlock) {
+				createVGMRenderPass_nonBlock(mainComponentDescriptorSetLayout);
+			}
+			else {
+				createVGMRenderPass_block(mainComponentDescriptorSetLayout);
+			}
 		}
 		else {
-			createSVOPresentPipeline(uniformDescriptorSetLayout);
+			createSVORenderPass(mainComponentDescriptorSetLayout);
+			//createSVORenderPassTest(mainComponentDescriptorSetLayout);
 		}
 		presentSemaphore = fzbCreateSemaphore(false);
 	}
@@ -167,70 +150,32 @@ public:
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
-		VkRenderPassBeginInfo renderPassBeginInfo{};
-		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassBeginInfo.renderPass = presentRenderPass;
-		renderPassBeginInfo.framebuffer = framebuffers[1][imageIndex];
-		renderPassBeginInfo.renderArea.offset = { 0, 0 };
-		renderPassBeginInfo.renderArea.extent = swapChainExtent;
-
-		std::array<VkClearValue, 2> clearValues{};
-		clearValues[0].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-		clearValues[1].depthStencil = { 1.0f, 0 };
-		renderPassBeginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-		renderPassBeginInfo.pClearValues = clearValues.data();
-
-		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		if (svoSetting.UseBlock && svoSetting.UseSVO_OnlyVoxelGridMap) {
-			VkBuffer cube_vertexBuffers[] = { sceneCubeVertexBuffer.buffer };
-			VkDeviceSize cube_offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, cube_vertexBuffers, cube_offsets);
-			vkCmdBindIndexBuffer(commandBuffer, sceneCubeIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-		}
-		else {
-			VkBuffer vertexBuffers[] = { sceneVertexBuffer.buffer };
-			VkDeviceSize offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-			vkCmdBindIndexBuffer(commandBuffer, sceneIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-		}
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipeline);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentPipelineLayout, 1, 1, &voxelGridMapDescriptorSet, 0, nullptr);
-		if (svoSetting.UseBlock && svoSetting.UseSVO_OnlyVoxelGridMap) {
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(sceneCubeIndexBuffer.size), std::pow(svoSetting.voxelNum, 3), 0, 0, 0);
-		}
-		else {
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(scene->sceneIndices.size()), 1, 0, 0, 0);
-		}
-
+		std::vector<std::vector<VkDescriptorSet>> componentDescriptors;
+		componentDescriptors.push_back({ uniformDescriptorSet, voxelGridMapDescriptorSet });
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
-
-			VkBuffer cube_vertexBuffers[] = { sceneWireframeVertexBuffer.buffer };
-			VkDeviceSize cube_offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, cube_vertexBuffers, cube_offsets);
-			vkCmdBindIndexBuffer(commandBuffer, sceneWireframeIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipeline);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 0, 1, &uniformDescriptorSet, 0, nullptr);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 1, 1, &voxelGridMapDescriptorSet, 0, nullptr);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, presentWireframePipelineLayout, 2, 1, &svoDescriptorSet, 0, nullptr);
-			vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(cubeIndices.size()), svoCuda->nodeBlockNum * 8 + 1, 0, 0, 0);
+			componentDescriptors.push_back({ uniformDescriptorSet, voxelGridMapDescriptorSet, svoDescriptorSet });
+			//componentDescriptors = { { uniformDescriptorSet, voxelGridMapDescriptorSet, svoDescriptorSet } };
 		}
-
-		vkCmdEndRenderPass(commandBuffer);
-
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-			throw std::runtime_error("failed to record command buffer!");
+		std::vector<FzbScene*> scenes;
+		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
+			if (svoSetting.UseBlock) {
+				scenes = { &componentScene };
+			}
+			else {
+				scenes = { mainComponentScene };
+			}
 		}
+		else {
+			scenes = { mainComponentScene, &componentScene };
+		}
+		presentRenderPass.render(commandBuffer, imageIndex, scenes, componentDescriptors);
 
-		VkSemaphore waitSemaphores[] = { startSemaphore, svoSetting.UseSVO_OnlyVoxelGridMap ? vgmSemaphore.semaphore : svoCudaSemaphore.semaphore };
+		std::vector<VkSemaphore> waitSemaphores = { startSemaphore, svoSetting.UseSVO_OnlyVoxelGridMap ? vgmSemaphore.semaphore : svoCudaSemaphore.semaphore };
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = waitSemaphores;
+		submitInfo.waitSemaphoreCount = waitSemaphores.size();
+		submitInfo.pWaitSemaphores = waitSemaphores.data();
 		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffer;
@@ -245,22 +190,19 @@ public:
 
 	void clean() {
 
+		componentScene.clean();
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			svoCuda->clean();
 		}
 		voxelGridMap.clean();
 		depthMap.clean();
 
-		//清理管线
-		vkDestroyPipeline(logicalDevice, voxelGridMapPipeline, nullptr);
-		vkDestroyPipelineLayout(logicalDevice, voxelGridMapPipelineLayout, nullptr);
-		vkDestroyPipeline(logicalDevice, presentPipeline, nullptr);
-		vkDestroyPipelineLayout(logicalDevice, presentPipelineLayout, nullptr);
-		vkDestroyPipeline(logicalDevice, presentWireframePipeline, nullptr);
-		vkDestroyPipelineLayout(logicalDevice, presentWireframePipelineLayout, nullptr);
-		//清理渲染Pass
-		vkDestroyRenderPass(logicalDevice, voxelGridMapRenderPass, nullptr);
-		vkDestroyRenderPass(logicalDevice, presentRenderPass, nullptr);
+		voxelGridMapRenderPass.clean();
+		presentRenderPass.clean();
+
+		svoUniformBuffer.clean();
+		nodePool.clean();
+		voxelValueBuffer.clean();
 
 		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 		vkDestroyDescriptorSetLayout(logicalDevice, voxelGridMapDescriptorSetLayout, nullptr);
@@ -270,22 +212,6 @@ public:
 		fzbCleanSemaphore(svoCudaSemaphore);
 		fzbCleanSemaphore(presentSemaphore);
 		fzbCleanFence(fence);
-
-		sceneVertexBuffer.clean();
-		sceneIndexBuffer.clean();
-		sceneCubeVertexBuffer.clean();
-		sceneCubeIndexBuffer.clean();
-		sceneWireframeVertexBuffer.clean();
-		sceneWireframeIndexBuffer.clean();
-		svoUniformBuffer.clean();
-		nodePool.clean();
-		voxelValueBuffer.clean();
-		for (int i = 0; i < framebuffers.size(); i++) {
-			for (int j = 0; j < framebuffers[i].size(); j++) {
-				vkDestroyFramebuffer(logicalDevice, framebuffers[i][j], nullptr);
-			}
-		}
-
 	}
 
 private:
@@ -294,38 +220,37 @@ private:
 
 		fzbCreateCommandBuffers(2);
 
-		sceneVertexBuffer = fzbComponentCreateStorageBuffer<FzbVertex>(&scene->sceneVertices);
-		sceneIndexBuffer = fzbComponentCreateStorageBuffer<uint32_t>(&scene->sceneIndices);
-
 		svoUniformBuffer = fzbComponentCreateUniformBuffers<SVOUniform>();
 		SVOUniform svoUniform;
 		svoUniform.modelMatrix = glm::mat4(1.0f);
-
-		float distanceX = scene->AABB.rightX - scene->AABB.leftX;
-		float distanceY = scene->AABB.rightY - scene->AABB.leftY;
-		float distanceZ = scene->AABB.rightZ - scene->AABB.leftZ;
+		
+		if (mainComponentScene->AABB.isEmpty()) mainComponentScene->createAABB();
+		FzbAABBBox mianSceneAABB = mainComponentScene->AABB;
+		float distanceX = mianSceneAABB.rightX - mianSceneAABB.leftX;
+		float distanceY = mianSceneAABB.rightY - mianSceneAABB.leftY;
+		float distanceZ = mianSceneAABB.rightZ - mianSceneAABB.leftZ;
 		//想让顶点通过swizzle变换后得到正确的结果，必须保证投影矩阵是立方体的，这样xyz通过1减后才能是对应的
 		//但是其实不需要VP，shader中其实没啥用
 		float distance = glm::max(distanceX, glm::max(distanceY, distanceZ));
-		float centerX = (scene->AABB.rightX + scene->AABB.leftX) * 0.5f;
-		float centerY = (scene->AABB.rightY + scene->AABB.leftY) * 0.5f;
-		float centerZ = (scene->AABB.rightZ + scene->AABB.leftZ) * 0.5f;
+		float centerX = (mianSceneAABB.rightX + mianSceneAABB.leftX) * 0.5f;
+		float centerY = (mianSceneAABB.rightY + mianSceneAABB.leftY) * 0.5f;
+		float centerZ = (mianSceneAABB.rightZ + mianSceneAABB.leftZ) * 0.5f;
 		//前面
-		glm::vec3 viewPoint = glm::vec3(centerX, centerY, scene->AABB.rightZ + 0.2f);	//世界坐标右手螺旋，即+z朝后
+		glm::vec3 viewPoint = glm::vec3(centerX, centerY, mianSceneAABB.rightZ + 0.2f);	//世界坐标右手螺旋，即+z朝后
 		glm::mat4 viewMatrix = glm::lookAt(viewPoint, viewPoint + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		glm::mat4 orthoMatrix = glm::orthoRH_ZO(-0.51f * distanceX, 0.51f * distanceX, -0.51f * distanceY, 0.51f * distanceY, 0.1f, distanceZ + 0.5f);
 		orthoMatrix[1][1] *= -1;
 		svoUniform.VP[0] = orthoMatrix * viewMatrix;
 
 		//左边
-		viewPoint = glm::vec3(scene->AABB.leftX - 0.2f, centerY, centerZ);
+		viewPoint = glm::vec3(mianSceneAABB.leftX - 0.2f, centerY, centerZ);
 		viewMatrix = glm::lookAt(viewPoint, viewPoint + glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 		orthoMatrix = glm::orthoRH_ZO(-0.51f * distanceZ, 0.51f * distanceZ, -0.51f * distanceY, 0.51f * distanceY, 0.1f, distanceX + 0.5f);
 		orthoMatrix[1][1] *= -1;
 		svoUniform.VP[1] = orthoMatrix * viewMatrix;
 
 		//下面
-		viewPoint = glm::vec3(centerX, scene->AABB.leftY - 0.2f, centerZ);
+		viewPoint = glm::vec3(centerX, mianSceneAABB.leftY - 0.2f, centerZ);
 		viewMatrix = glm::lookAt(viewPoint, viewPoint + glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, -1.0f));
 		orthoMatrix = glm::orthoRH_ZO(-0.51f * distanceX, 0.51f * distanceX, -0.51f * distanceZ, 0.51f * distanceZ, 0.1f, distanceY + 0.5f);
 		orthoMatrix[1][1] *= -1;
@@ -337,7 +262,7 @@ private:
 
 	}
 
-	void initVoxelGridMap(){
+	void initVoxelGridMap() {
 		voxelGridMap = {};
 		voxelGridMap.width = svoSetting.voxelNum;
 		voxelGridMap.height = svoSetting.voxelNum;
@@ -397,135 +322,79 @@ private:
 
 	}
 
-	void createVoxelGridMapRenderPass() {
+	void createVoxelGridMapSyncObjects() {	//这里应该返回一个信号量，然后阻塞主线程，知道渲染完成，才能唤醒
+		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
+			vgmSemaphore = fzbCreateSemaphore(false);	//当vgm创建完成后唤醒
+		}
+		else {
+			vgmSemaphore = fzbCreateSemaphore(true);		//当vgm创建完成后唤醒
+			svoCudaSemaphore = fzbCreateSemaphore(true);		//当svo创建完成后唤醒
+		}
+
+		fence = fzbCreateFence();
+	}
+
+	void createScene() {
+
+	}
+
+	void createVGMRenderPass() {
+
+		FzbShader shader(logicalDevice, false, false, false);
+		if (!svoSetting.UseSwizzle) {
+			shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelVert.spv" };
+			shader.geometryShader = { true, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelGemo.spv" };
+			shader.fragmentShader = { true,  "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelFrag.spv" };
+		}
+		else {
+			shader.vertexShader = { true,  "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelVert.spv"  };
+			shader.fragmentShader = { true,  "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelFrag.spv" };
+		}
+		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
+			mainComponentScene->sceneMeshSet[i].shader.clean();
+			shader.vertexFormat = mainComponentScene->sceneMeshSet[i].vertexFormat;
+			mainComponentScene->sceneMeshSet[i].shader = shader;
+		}
 
 		VkSubpassDescription voxelGridMapSubpass{};
 		voxelGridMapSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
 		VkSubpassDependency dependency = fzbCreateSubpassDependency();
 
-		VkRenderPassCreateInfo renderPassInfo{};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		renderPassInfo.attachmentCount = 0;
-		renderPassInfo.pAttachments = nullptr;
-		renderPassInfo.subpassCount = 1;
-		renderPassInfo.pSubpasses = &voxelGridMapSubpass;
-		renderPassInfo.dependencyCount = 1;
-		renderPassInfo.pDependencies = &dependency;
+		FzbRenderPassSetting setting = { false, 1, swapChainExtent, 1, false };
+		voxelGridMapRenderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
+		voxelGridMapRenderPass.createRenderPass(nullptr, { voxelGridMapSubpass }, { dependency });
+		voxelGridMapRenderPass.createFramebuffers(swapChainImageViews);
 
-		if (vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &voxelGridMapRenderPass) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create render pass!");
-		}
-
-	}
-
-	void createVoxelGridMapFramebuffer() {
-		std::vector<std::vector<VkImageView>> attachmentImageViews;
-		VkExtent2D extent = {
-			static_cast<uint32_t>(this->swapChainExtent.width),
-			static_cast<uint32_t>(swapChainExtent.height)
-		};
-		fzbCreateFramebuffer(1, extent, 0, attachmentImageViews, voxelGridMapRenderPass);
-	}
-
-	void createVoxelGridMapPipeline() {
-		std::map<VkShaderStageFlagBits, std::string> shaders;
-		if (svoSetting.UseSwizzle) {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelVert.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelFrag.spv" });
-		}
-		else {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelVert.spv" });
-			shaders.insert({ VK_SHADER_STAGE_GEOMETRY_BIT, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelGemo.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelFrag.spv" });
-		}
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(logicalDevice, shaders);
-
-		VkVertexInputBindingDescription inputBindingDescriptor = FzbVertex::getBindingDescription();
-		auto inputAttributeDescription = FzbVertex::getAttributeDescriptions();
-		VkPipelineVertexInputStateCreateInfo vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
-		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-		VkPipelineRasterizationStateCreateInfo rasterizer = {};
+		FzbPipelineCreateInfo pipelineCreateInfo(voxelGridMapRenderPass.renderPass, voxelGridMapRenderPass.setting.extent);
+		pipelineCreateInfo.cullMode = VK_CULL_MODE_NONE;
+		pipelineCreateInfo.depthTestEnable = VK_FALSE;
+		pipelineCreateInfo.depthWriteEnable = VK_FALSE;
 		VkPipelineRasterizationConservativeStateCreateInfoEXT conservativeState{};
 		if (svoSetting.UseConservativeRasterization) {
 			conservativeState.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_CONSERVATIVE_STATE_CREATE_INFO_EXT;
 			conservativeState.pNext = NULL;
 			conservativeState.conservativeRasterizationMode = VK_CONSERVATIVE_RASTERIZATION_MODE_OVERESTIMATE_EXT;
 			conservativeState.extraPrimitiveOverestimationSize = 0.5f; // 根据需要设置
-			rasterizer = fzbCreateRasterizationStateCreateInfo(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE, &conservativeState);
+			pipelineCreateInfo.rasterizerExtensions = &conservativeState;
 		}
-		else {
-			rasterizer = fzbCreateRasterizationStateCreateInfo(VK_CULL_MODE_NONE);
-		}
-
-		VkPipelineMultisampleStateCreateInfo multisampling = fzbCreateMultisampleStateCreateInfo();
-		VkPipelineColorBlendAttachmentState colorBlendAttachment = fzbCreateColorBlendAttachmentState();
-		std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments = { colorBlendAttachment };
-		VkPipelineColorBlendStateCreateInfo colorBlending = fzbCreateColorBlendStateCreateInfo(colorBlendAttachments);
-		VkPipelineDepthStencilStateCreateInfo depthStencil = fzbCreateDepthStencilStateCreateInfo(VK_FALSE, VK_FALSE);
-
-		VkPipelineViewportStateCreateInfo viewportState = fzbCreateViewStateCreateInfo();
-		VkViewport viewport = {};
-		viewport.x = 0;
-		viewport.y = 0;
-		viewport.width = static_cast<float>(swapChainExtent.width);
-		viewport.height = static_cast<float>(swapChainExtent.height);
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		VkRect2D scissor = {};
-		scissor.offset = { 0, 0 };
-		scissor.extent = swapChainExtent;
-		viewportState.pViewports = &viewport;
-		viewportState.pScissors = &scissor;
-
-		std::array< VkViewport, 3> viewports = {};
-		std::array< VkRect2D, 3> scissors = {};
+		std::vector<VkViewport> viewports(3);
+		std::vector<VkRect2D> scissors(3);
 		std::array<VkViewportSwizzleNV, 3> swizzles = {};
 		VkPipelineViewportSwizzleStateCreateInfoNV viewportSwizzleInfo{};
 		if (svoSetting.UseSwizzle) {
-			//std::array< VkViewport, 4> viewports = {};
-			//std::array< VkRect2D, 4> scissors = {};
-			//for (int y = 0; y < 2; y++) {
-			//	for (int x = 0; x < 2; x++) {
-			//		viewports[x + y * 2].x = x * swapChainExtent.width / 2;
-			//		viewports[x + y * 2].y = y * swapChainExtent.height / 2;
-			//		viewports[x + y * 2].width = static_cast<float>(swapChainExtent.width / 2);
-			//		viewports[x + y * 2].height = static_cast<float>(swapChainExtent.height / 2);
-			//		viewports[x + y * 2].minDepth = 0.0f;
-			//		viewports[x + y * 2].maxDepth = 1.0f;
-			//		scissors[x + y * 2].offset = { x * (int)swapChainExtent.width / 2, y * (int)swapChainExtent.height / 2 };
-			//		scissors[x + y * 2].extent = { swapChainExtent.width / 2, swapChainExtent.height / 2 };;
-			//	}
-			//}
-			//std::array< VkViewportSwizzleNV, 4 > swizzles = {};
-			//for (int i = 0; i < 4; i++) {
-			//	swizzles[i] = {
-			//		i % 2 == 0 ? VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV : VK_VIEWPORT_COORDINATE_SWIZZLE_NEGATIVE_X_NV, /* x */
-			//		i / 2 == 0 ? VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Y_NV : VK_VIEWPORT_COORDINATE_SWIZZLE_NEGATIVE_Y_NV, /* y */
-			//		VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Z_NV, /* z */
-			//		VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV /* w */
-			//	};
-			//}
 			for (int i = 0; i < viewports.size(); i++) {
 				viewports[i].x = 0;
 				viewports[i].y = 0;
-				viewports[i].width = static_cast<float>(swapChainExtent.width);
-				viewports[i].height = static_cast<float>(swapChainExtent.height);
+				viewports[i].width = static_cast<float>(voxelGridMapRenderPass.setting.extent.width);
+				viewports[i].height = static_cast<float>(voxelGridMapRenderPass.setting.extent.height);
 				viewports[i].minDepth = 0.0f;
 				viewports[i].maxDepth = 1.0f;
 
 				scissors[i].offset = { 0, 0 };
-				scissors[i].extent = swapChainExtent;
+				scissors[i].extent = voxelGridMapRenderPass.setting.extent;
 			}
 
-			/*
-			哇哇哇，这里很有意思，就是由于vulkan的NDC是y轴朝下的，所以我的投影矩阵的y乘了-1，所以才能正确显示。
-			但是呢，在这里swizzle时，swizzles[0]和swizzle[1]都是同一个y，所以反转y后才能正确显示，所以没问题
-			而对于swizzle[2]来说，反转后的y变成了它的z，这就导致原本是从下向上看的，编程了从上向下看，并且由于NEGATIVE_Z没有反转，因此图像变到了上方
-			因此想要正确显示就必须样swizzle[2]的y变为VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Z_NV，z变为VK_VIEWPORT_COORDINATE_SWIZZLE_NEGATIVE_Y_NV
-			*/
-			
 			swizzles[0] = {		//前面
 				VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_X_NV,
 				VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_Y_NV,
@@ -545,77 +414,28 @@ private:
 				VK_VIEWPORT_COORDINATE_SWIZZLE_POSITIVE_W_NV
 			};
 
-			viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-			viewportState.viewportCount = viewports.size();
-			viewportState.pViewports = viewports.data();
-			viewportState.scissorCount = scissors.size();
-			viewportState.pScissors = scissors.data();
-
-			
 			viewportSwizzleInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_SWIZZLE_STATE_CREATE_INFO_NV;
 			viewportSwizzleInfo.pViewportSwizzles = swizzles.data();
 			viewportSwizzleInfo.viewportCount = swizzles.size();
 
-			viewportState.pNext = &viewportSwizzleInfo;
-
-		}
-		////一般渲染管道状态都是固定的，不能渲染循环中修改，但是某些状态可以，如视口，长宽和混合常数
-		////同样通过宏来确定可动态修改的状态
-		//std::vector<VkDynamicState> dynamicStates = {
-		//	VK_DYNAMIC_STATE_VIEWPORT,
-		//	VK_DYNAMIC_STATE_SCISSOR
-		//};
-		//VkPipelineDynamicStateCreateInfo dynamicState{};
-		//dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-		//dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
-		//dynamicState.pDynamicStates = dynamicStates.data();
-
-		std::vector< VkDescriptorSetLayout> descriptorSetLayouts = { voxelGridMapDescriptorSetLayout };
-		voxelGridMapPipelineLayout = fzbCreatePipelineLayout(logicalDevice, &descriptorSetLayouts);
-
-		VkGraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineInfo.stageCount = shaderStages.size();
-		pipelineInfo.pStages = shaderStages.data();
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
-		pipelineInfo.pViewportState = &viewportState;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = &depthStencil;
-		pipelineInfo.pColorBlendState = &colorBlending;
-		//pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = voxelGridMapPipelineLayout;
-		pipelineInfo.renderPass = voxelGridMapRenderPass;	//先建立连接，获得索引
-		pipelineInfo.subpass = 0;	//对应renderpass的哪个子部分
-		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;	//可以直接使用现有pipeline
-		pipelineInfo.basePipelineIndex = -1;
-
-		if (vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &voxelGridMapPipeline) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline!");
+			pipelineCreateInfo.viewports = viewports;
+			pipelineCreateInfo.scissors = scissors;
+			pipelineCreateInfo.viewportExtensions = &viewportSwizzleInfo;
 		}
 
-		for (VkPipelineShaderStageCreateInfo shaderModule : shaderStages) {
-			vkDestroyShaderModule(logicalDevice, shaderModule.module, nullptr);
-		}
-	}
-
-	void createVoxelGridMapSyncObjects() {	//这里应该返回一个信号量，然后阻塞主线程，知道渲染完成，才能唤醒
-		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
-			vgmSemaphore = fzbCreateSemaphore(false);	//当vgm创建完成后唤醒
-		}
-		else {
-			vgmSemaphore = fzbCreateSemaphore(true);		//当vgm创建完成后唤醒
-			svoCudaSemaphore = fzbCreateSemaphore(true);		//当svo创建完成后唤醒
-		}
-
-		fence = fzbCreateFence();
+		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		presentSubPass.createMeshBatch(mainComponentScene, pipelineCreateInfo, { voxelGridMapDescriptorSetLayout }, false);
+		voxelGridMapRenderPass.subPasses.push_back(presentSubPass);
 	}
 
 	void createVoxelGridMap() {
 
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		createVoxelGridMapBuffer();
+		initVoxelGridMap();
+		createDescriptorPool();
+		createVoxelGridMapDescriptor();
+		createVoxelGridMapSyncObjects();
+		createVGMRenderPass();
 
 		vkResetFences(logicalDevice, 1, &fence);
 		VkCommandBuffer commandBuffer = commandBuffers[0];
@@ -637,31 +457,9 @@ private:
 		voxel_clearColor.uint32[3] = 0;
 		voxelGridMap.fzbClearTexture(commandBuffer, voxel_clearColor, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-		VkRenderPassBeginInfo renderPassInfo{};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassInfo.renderPass = voxelGridMapRenderPass;
-		renderPassInfo.framebuffer = framebuffers[0][0];
-		renderPassInfo.renderArea.offset = { 0, 0 };
-		renderPassInfo.renderArea.extent = swapChainExtent;
+		voxelGridMapRenderPass.render(commandBuffer, 0, { mainComponentScene }, {{voxelGridMapDescriptorSet}});
 
-		vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-		VkBuffer vertexBuffers[] = { sceneVertexBuffer.buffer };
-		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-		vkCmdBindIndexBuffer(commandBuffer, sceneIndexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, voxelGridMapPipeline);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, voxelGridMapPipelineLayout, 0, 1, &voxelGridMapDescriptorSet, 0, nullptr);
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(scene->sceneIndices.size()), 1, 0, 0, 0);
-
-		vkCmdEndRenderPass(commandBuffer);
-
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-			throw std::runtime_error("failed to record command buffer!");
-		}
-
-		submitInfo = {};
+		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		submitInfo.waitSemaphoreCount = 0;
 		submitInfo.pWaitSemaphores = nullptr;
@@ -672,12 +470,12 @@ private:
 		submitInfo.pSignalSemaphores =  &vgmSemaphore.semaphore;
 
 		//执行完后解开fence
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
+		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
 	}
-
+//---------------------------------------------------------------
 	void createSVOCuda() {
 
 		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle);
@@ -723,54 +521,7 @@ private:
 
 		vkUpdateDescriptorSets(logicalDevice, svoDescriptorWrites.size(), svoDescriptorWrites.data(), 0, nullptr);
 	}
-
-	void createPresentBuffer() {
-		glm::vec3 cubeVertexOffset[8] = { glm::vec3(0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f),
-						  glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(1.0f, 0.0f, 1.0f), glm::vec3(1.0f, 1.0f, 1.0f), glm::vec3(0.0f, 1.0f, 1.0f) };
-		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
-			if (svoSetting.UseBlock) {
-				float distanceX = scene->AABB.rightX - scene->AABB.leftX;
-				float distanceY = scene->AABB.rightY - scene->AABB.leftY;
-				float distanceZ = scene->AABB.rightZ - scene->AABB.leftZ;
-				float distance = glm::max(distanceX, glm::max(distanceY, distanceZ));
-				float voxelSize = distance / svoSetting.voxelNum;
-
-				float centerX = (scene->AABB.rightX + scene->AABB.leftX) * 0.5f;
-				float centerY = (scene->AABB.rightY + scene->AABB.leftY) * 0.5f;
-				float centerZ = (scene->AABB.rightZ + scene->AABB.leftZ) * 0.5f;
-
-				cubeVertices.resize(8);
-				for (int i = 0; i < 8; i++) {
-					cubeVertices[i].pos = cubeVertexOffset[i] * voxelSize + glm::vec3(centerX - distance * 0.5f, centerY - distance * 0.5f, centerZ - distance * 0.5f);
-				}
-				cubeIndices  = {
-					1, 0, 3, 1, 3, 2,
-					4, 5, 6, 4, 6, 7,
-					5, 1, 2, 5, 2, 6,
-					0, 4, 7, 0, 7, 3,
-					7, 6, 2, 7, 2, 3,
-					0, 1, 5, 0, 5, 4
-				};
-				sceneCubeVertexBuffer = fzbComponentCreateStorageBuffer<FzbVertex>(&cubeVertices);
-				sceneCubeIndexBuffer = fzbComponentCreateStorageBuffer<uint32_t>(&cubeIndices);
-			}
-		}
-		else {
-			cubeVertices;
-			cubeVertices.resize(8);
-			for (int i = 0; i < 8; i++) {
-				cubeVertices[i].pos = cubeVertexOffset[i];
-			}
-			cubeIndices = {
-				0, 1, 1, 2, 2, 3, 3, 0,
-				4, 5, 5, 6, 6, 7, 7, 4,
-				0, 4, 1, 5, 2, 6, 3, 7
-			};
-			sceneWireframeVertexBuffer = fzbComponentCreateStorageBuffer<FzbVertex>(&cubeVertices);
-			sceneWireframeIndexBuffer = fzbComponentCreateStorageBuffer<uint32_t>(&cubeIndices);
-		}
-	}
-
+//---------------------------------------------------------------
 	void initDepthMap() {
 		depthMap = {};
 		depthMap.width = swapChainExtent.width;
@@ -783,219 +534,141 @@ private:
 		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
 
-	void createPresentRenderPass(VkFormat swapChainImageFormat) {
+	void createVGMRenderPass_nonBlock(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
+
+		//不需要额外的mesh，只需要将现有的场景的shader换成采样VGM的shader即可
+		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
+			mainComponentScene->sceneMeshSet[i].shader.clear();
+			mainComponentScene->sceneMeshSet[i].shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" };
+			mainComponentScene->sceneMeshSet[i].shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" };
+		}
+
 		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
 		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-
-		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve };
-
 		VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment(physicalDevice);
 		VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-		if(!svoSetting.UseSVO_OnlyVoxelGridMap)
-			attachments.push_back(depthMapAttachment);
+		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve, depthMapAttachment };
 
 		std::vector<VkSubpassDescription> subpasses;
-		VkSubpassDescription presentSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, nullptr);
-		if (!svoSetting.UseSVO_OnlyVoxelGridMap)
-			presentSubpass.pDepthStencilAttachment = &depthMapAttachmentResolveRef;
-		subpasses.push_back(presentSubpass);
-
-		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			VkSubpassDescription presentWireframeSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef);
-			subpasses.push_back(presentWireframeSubpass);
-		}
+		subpasses.push_back(fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef));
 
 		VkSubpassDependency dependency = fzbCreateSubpassDependency();
-		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			dependency = fzbCreateSubpassDependency(0, 1, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-				VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
-		}
-		std::array< VkSubpassDependency, 1> dependencies = { dependency };
 
-		VkRenderPassCreateInfo renderPassInfo{};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		renderPassInfo.attachmentCount = attachments.size();
-		renderPassInfo.pAttachments = attachments.data();
-		renderPassInfo.subpassCount = subpasses.size();
-		renderPassInfo.pSubpasses = subpasses.data();
-		renderPassInfo.dependencyCount = dependencies.size();
-		renderPassInfo.pDependencies = dependencies.data();
+		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true };
+		presentRenderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
+		presentRenderPass.images.push_back(&depthMap);
+		presentRenderPass.createRenderPass(&attachments, subpasses, { dependency });
+		presentRenderPass.createFramebuffers(swapChainImageViews);
 
-		if (vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &presentRenderPass) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create render pass!");
-		}
+		FzbPipelineCreateInfo pipelineCreateInfo(presentRenderPass.renderPass, presentRenderPass.setting.extent);
+		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		presentSubPass.createMeshBatch(mainComponentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
+		presentRenderPass.subPasses.push_back(presentSubPass);
+
 	}
 
-	void createPresentFrameBuffer(std::vector<VkImageView>& swapChainImageViews) {
-		std::vector<std::vector<VkImageView>> attachmentImageViews;
-		attachmentImageViews.resize(swapChainImageViews.size());
-		for (int i = 0; i < swapChainImageViews.size(); i++) {
-			attachmentImageViews[i].push_back(swapChainImageViews[i]);
-			if (!svoSetting.UseSVO_OnlyVoxelGridMap)
-				attachmentImageViews[i].push_back(depthMap.imageView);
+	void createVGMRenderPass_block(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
+		
+		FzbMesh cubeMesh;
+		cubeMesh.instanceNum = pow(svoSetting.voxelNum, 3);
+		cubeMesh.shader = FzbShader(logicalDevice, false, false, false);
+		cubeMesh.shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present_VGM/spv/presentVert_Block.spv" };
+		cubeMesh.shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present_VGM/spv/presentFrag_Block.spv" };
+		fzbCreateCube(cubeMesh.vertices, cubeMesh.indices);
+
+		if (mainComponentScene->AABB.isEmpty()) mainComponentScene->createAABB();
+		float distanceX = mainComponentScene->AABB.rightX - mainComponentScene->AABB.leftX;
+		float distanceY = mainComponentScene->AABB.rightY - mainComponentScene->AABB.leftY;
+		float distanceZ = mainComponentScene->AABB.rightZ - mainComponentScene->AABB.leftZ;
+		float distance = glm::max(distanceX, glm::max(distanceY, distanceZ));
+		float voxelSize = distance / svoSetting.voxelNum;
+
+		float centerX = (mainComponentScene->AABB.rightX + mainComponentScene->AABB.leftX) * 0.5f;
+		float centerY = (mainComponentScene->AABB.rightY + mainComponentScene->AABB.leftY) * 0.5f;
+		float centerZ = (mainComponentScene->AABB.rightZ + mainComponentScene->AABB.leftZ) * 0.5f;
+
+		for (int i = 0; i < 24; i += 3) {
+			cubeMesh.vertices[i] = cubeMesh.vertices[i] * voxelSize + centerX - distance * 0.5f;
+			cubeMesh.vertices[i + 1] = cubeMesh.vertices[i + 1] * voxelSize + centerY - distance * 0.5f;
+			cubeMesh.vertices[i + 2] = cubeMesh.vertices[i + 2] * voxelSize + centerZ - distance * 0.5f;
 		}
-		fzbCreateFramebuffer(swapChainImageViews.size(), swapChainExtent, svoSetting.UseSVO_OnlyVoxelGridMap ? 1 : 2, attachmentImageViews, presentRenderPass);
+		componentScene = FzbScene(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		componentScene.addMeshToScene(cubeMesh);
+		componentScene.initScene(false);
+
+		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
+		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve };
+
+		std::vector<VkSubpassDescription> subpasses;
+		subpasses.push_back(fzbCreateSubPass(1, &colorAttachmentResolveRef, nullptr));
+
+		VkSubpassDependency dependency = fzbCreateSubpassDependency();
+
+		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true };
+		presentRenderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
+		presentRenderPass.createRenderPass(&attachments, subpasses, { dependency });
+		presentRenderPass.createFramebuffers(swapChainImageViews);
+
+		FzbPipelineCreateInfo pipelineCreateInfo(presentRenderPass.renderPass, presentRenderPass.setting.extent);
+		pipelineCreateInfo.depthTestEnable = VK_FALSE;
+		pipelineCreateInfo.depthWriteEnable = VK_FALSE;
+		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		presentSubPass.createMeshBatch(&componentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
+		presentRenderPass.subPasses.push_back(presentSubPass);
 	}
 
-	void createVGMPresentPipeline(VkDescriptorSetLayout uniformDescriptorSetLayout) {
-		std::map<VkShaderStageFlagBits, std::string> shaders;
-		if (svoSetting.UseBlock) {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present_VGM/spv/presentVert_Block.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present_VGM/spv/presentFrag_Block.spv" });
-		}
-		else {
-			shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" });
-			shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" });
-		}
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(logicalDevice, shaders);
+	void createSVORenderPass(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
 
-		VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
-		VkVertexInputBindingDescription inputBindingDescriptor = FzbVertex::getBindingDescription();
-		auto inputAttributeDescription = FzbVertex::getAttributeDescriptions();
-		vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
-		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
-
-		VkPipelineRasterizationStateCreateInfo rasterizer = fzbCreateRasterizationStateCreateInfo(VK_CULL_MODE_NONE);
-
-		VkPipelineMultisampleStateCreateInfo multisampling = fzbCreateMultisampleStateCreateInfo();
-		VkPipelineColorBlendAttachmentState colorBlendAttachment = fzbCreateColorBlendAttachmentState();
-		std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments = { colorBlendAttachment };
-		VkPipelineColorBlendStateCreateInfo colorBlending = fzbCreateColorBlendStateCreateInfo(colorBlendAttachments);
-		VkPipelineDepthStencilStateCreateInfo depthStencil = fzbCreateDepthStencilStateCreateInfo(VK_FALSE, VK_FALSE);
-
-		VkPipelineViewportStateCreateInfo viewportState = fzbCreateViewStateCreateInfo();
-		VkViewport viewport = {};
-		viewport.x = 0;
-		viewport.y = 0;
-		viewport.width = static_cast<float>(swapChainExtent.width);
-		viewport.height = static_cast<float>(swapChainExtent.height);
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		VkRect2D scissor = {};
-		scissor.offset = { 0, 0 };
-		scissor.extent = swapChainExtent;
-		viewportState.pViewports = &viewport;
-		viewportState.pScissors = &scissor;
-
-		std::vector< VkDescriptorSetLayout> presentDescriptorSetLayouts = { uniformDescriptorSetLayout, voxelGridMapDescriptorSetLayout };
-		presentPipelineLayout = fzbCreatePipelineLayout(logicalDevice, &presentDescriptorSetLayouts);
-
-		VkGraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineInfo.stageCount = shaderStages.size();
-		pipelineInfo.pStages = shaderStages.data();
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
-		pipelineInfo.pViewportState = &viewportState;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = &depthStencil;
-		pipelineInfo.pColorBlendState = &colorBlending;
-		//pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = presentPipelineLayout;
-		pipelineInfo.renderPass = presentRenderPass;	//先建立连接，获得索引
-		pipelineInfo.subpass = 0;	//对应renderpass的哪个子部分
-		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;	//可以直接使用现有pipeline
-		pipelineInfo.basePipelineIndex = -1;
-
-		if (vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &presentPipeline) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline!");
+		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
+			mainComponentScene->sceneMeshSet[i].shader.clear();
+			mainComponentScene->sceneMeshSet[i].shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" };
+			mainComponentScene->sceneMeshSet[i].shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" };
 		}
 
-		for (VkPipelineShaderStageCreateInfo shaderModule : shaderStages) {
-			vkDestroyShaderModule(logicalDevice, shaderModule.module, nullptr);
-		}
-	}
+		FzbShader wireframePresentShader(logicalDevice, false, false, false);
+		wireframePresentShader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present_SVO/spv/vert.spv" };
+		wireframePresentShader.geometryShader = { true, "core/SceneDivision/SVO/shaders/present_SVO/spv/gemo.spv" };
+		wireframePresentShader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present_SVO/spv/frag.spv" };
+		FzbMesh cubeMesh;
+		cubeMesh.shader = wireframePresentShader;
+		cubeMesh.instanceNum = svoCuda->nodeBlockNum * 8 + 1;
+		fzbCreateCubeWireframe(cubeMesh.vertices, cubeMesh.indices);
+		componentScene = FzbScene(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		componentScene.addMeshToScene(cubeMesh);
+		componentScene.initScene(false);
 
-	void createSVOPresentPipeline(VkDescriptorSetLayout uniformDescriptorSetLayout) {
-		std::map<VkShaderStageFlagBits, std::string> shaders;
-		shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" });
-		shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" });
-		std::vector<VkPipelineShaderStageCreateInfo> shaderStages = fzbCreateShader(logicalDevice, shaders);
+		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
+		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment(physicalDevice);
+		VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve, depthMapAttachment };
 
-		VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
-		VkVertexInputBindingDescription inputBindingDescriptor = FzbVertex::getBindingDescription();
-		auto inputAttributeDescription = FzbVertex::getAttributeDescriptions();
-		vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);
-		VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+		std::vector<VkSubpassDescription> subpasses;
+		subpasses.push_back(fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef));
+		subpasses.push_back(fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef));
 
-		VkPipelineRasterizationStateCreateInfo rasterizer = fzbCreateRasterizationStateCreateInfo(VK_CULL_MODE_NONE);
+		VkSubpassDependency dependency = fzbCreateSubpassDependency(0, 1, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
 
-		VkPipelineMultisampleStateCreateInfo multisampling = fzbCreateMultisampleStateCreateInfo();
-		VkPipelineColorBlendAttachmentState colorBlendAttachment = fzbCreateColorBlendAttachmentState();
-		std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments = { colorBlendAttachment };
-		VkPipelineColorBlendStateCreateInfo colorBlending = fzbCreateColorBlendStateCreateInfo(colorBlendAttachments);
-		VkPipelineDepthStencilStateCreateInfo depthStencil = fzbCreateDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE);
+		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true };
+		presentRenderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
+		presentRenderPass.images.push_back(&depthMap);
+		presentRenderPass.createRenderPass(&attachments, subpasses, { dependency });
+		presentRenderPass.createFramebuffers(swapChainImageViews);
 
-		VkPipelineViewportStateCreateInfo viewportState = fzbCreateViewStateCreateInfo();
-		VkViewport viewport = {};
-		viewport.x = 0;
-		viewport.y = 0;
-		viewport.width = static_cast<float>(swapChainExtent.width);
-		viewport.height = static_cast<float>(swapChainExtent.height);
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		VkRect2D scissor = {};
-		scissor.offset = { 0, 0 };
-		scissor.extent = swapChainExtent;
-		viewportState.pViewports = &viewport;
-		viewportState.pScissors = &scissor;
+		FzbPipelineCreateInfo pipelineCreateInfo(presentRenderPass.renderPass, presentRenderPass.setting.extent);
+		FzbSubPass scenePresentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		scenePresentSubPass.createMeshBatch(mainComponentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
+		presentRenderPass.subPasses.push_back(scenePresentSubPass);
 
-		std::vector< VkDescriptorSetLayout> presentDescriptorSetLayouts = { uniformDescriptorSetLayout, voxelGridMapDescriptorSetLayout };
-		presentPipelineLayout = fzbCreatePipelineLayout(logicalDevice, &presentDescriptorSetLayouts);
-
-		VkGraphicsPipelineCreateInfo pipelineInfo{};
-		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-		pipelineInfo.stageCount = shaderStages.size();
-		pipelineInfo.pStages = shaderStages.data();
-		pipelineInfo.pVertexInputState = &vertexInputInfo;
-		pipelineInfo.pInputAssemblyState = &inputAssemblyInfo;
-		pipelineInfo.pViewportState = &viewportState;
-		pipelineInfo.pRasterizationState = &rasterizer;
-		pipelineInfo.pMultisampleState = &multisampling;
-		pipelineInfo.pDepthStencilState = &depthStencil;
-		pipelineInfo.pColorBlendState = &colorBlending;
-		//pipelineInfo.pDynamicState = &dynamicState;
-		pipelineInfo.layout = presentPipelineLayout;
-		pipelineInfo.renderPass = presentRenderPass;	//先建立连接，获得索引
-		pipelineInfo.subpass = 0;	//对应renderpass的哪个子部分
-		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;	//可以直接使用现有pipeline
-		pipelineInfo.basePipelineIndex = -1;
-
-		if (vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &presentPipeline) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline!");
-		}
-
-		for (VkPipelineShaderStageCreateInfo shaderModule : shaderStages) {
-			vkDestroyShaderModule(logicalDevice, shaderModule.module, nullptr);
-		}
-
-		shaders = std::map<VkShaderStageFlagBits, std::string>();
-		shaders.insert({ VK_SHADER_STAGE_VERTEX_BIT, "core/SceneDivision/SVO/shaders/present_SVO/spv/vert.spv" });
-		shaders.insert({ VK_SHADER_STAGE_GEOMETRY_BIT, "core/SceneDivision/SVO/shaders/present_SVO/spv/gemo.spv" });
-		shaders.insert({ VK_SHADER_STAGE_FRAGMENT_BIT, "core/SceneDivision/SVO/shaders/present_SVO/spv/frag.spv" });
-		shaderStages = fzbCreateShader(logicalDevice, shaders);
-
-		inputAssemblyInfo = fzbCreateInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
-
-		rasterizer.polygonMode = VK_POLYGON_MODE_LINE;
-		rasterizer.lineWidth = 1.0f;
-
-		presentDescriptorSetLayouts = { uniformDescriptorSetLayout, voxelGridMapDescriptorSetLayout, svoDescriptorSetLayout };
-		presentWireframePipelineLayout = fzbCreatePipelineLayout(logicalDevice, &presentDescriptorSetLayouts);
-
-		pipelineInfo.stageCount = shaderStages.size();
-		pipelineInfo.pStages = shaderStages.data();
-		pipelineInfo.layout = presentWireframePipelineLayout;
-		pipelineInfo.subpass = 1;
-		if (vkCreateGraphicsPipelines(logicalDevice, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &presentWireframePipeline) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create graphics pipeline!");
-		}
-
-		for (VkPipelineShaderStageCreateInfo shaderModule : shaderStages) {
-			vkDestroyShaderModule(logicalDevice, shaderModule.module, nullptr);
-		}
-
+		pipelineCreateInfo.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+		pipelineCreateInfo.polyMode = VK_POLYGON_MODE_LINE;
+		pipelineCreateInfo.lineWidth = 1.0f;
+		pipelineCreateInfo.subPassIndex = 1;
+		FzbSubPass wireframePresentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		wireframePresentSubPass.createMeshBatch(&componentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout, svoDescriptorSetLayout }, false);
+		presentRenderPass.subPasses.push_back(wireframePresentSubPass);
 	}
 
 };
