@@ -367,3 +367,4 @@ Lib/
 ./sln
 ./vcxproj
 ./filters
+*.dll
