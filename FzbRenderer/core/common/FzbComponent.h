@@ -495,6 +495,8 @@ public:
 			vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
 			std::cout << deviceProperties.deviceName << std::endl;
 
+			this->queueFamilyIndices = findQueueFamilies(physicalDevice);
+			this->swapChainSupportDetails = querySwapChainSupport(physicalDevice);
 		}
 		else {
 			throw std::runtime_error("failed to find a suitable GPU!");
@@ -509,7 +511,7 @@ public:
 		//vkGetPhysicalDeviceProperties(device, &deviceProperties);	//设备信息
 		//vkGetPhysicalDeviceFeatures(device, &deviceFeatures);		//设备功能
 
-		this->queueFamilyIndices = findQueueFamilies(device);
+		FzbQueueFamilyIndices queueFamilyIndicesTemp = findQueueFamilies(device);
 		VkPhysicalDeviceProperties deviceProperties;
 		vkGetPhysicalDeviceProperties(device, &deviceProperties);
 		//std::cout << deviceProperties.limits.maxPerStageDescriptorStorageImages << std::endl;
@@ -519,11 +521,11 @@ public:
 		bool swapChainAdequate = false;
 		if (extensionsSupport) {
 			//判断物理设备的图像和展示功能是否支持
-			this->swapChainSupportDetails = querySwapChainSupport(device);
-			swapChainAdequate = !swapChainSupportDetails.formats.empty() && !swapChainSupportDetails.presentModes.empty();
+			FzbSwapChainSupportDetails swapChainSupportDetailsTmep = querySwapChainSupport(device);
+			swapChainAdequate = !swapChainSupportDetailsTmep.formats.empty() && !swapChainSupportDetailsTmep.presentModes.empty();
 		}
 
-		if (queueFamilyIndices.isComplete() && extensionsSupport && swapChainAdequate) {
+		if (queueFamilyIndicesTemp.isComplete() && extensionsSupport && swapChainAdequate) {
 			int score = 0;
 			if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) {
 				score += 1000;

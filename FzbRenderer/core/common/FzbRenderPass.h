@@ -55,24 +55,24 @@ namespace std {
 			};
 
 			// 对所有着色器路径和启用标志进行哈希
-			hash_pair(seed, s.vertexShader);
-			hash_pair(seed, s.tessellationControlShader);
-			hash_pair(seed, s.tessellationEvaluateShader);
-			hash_pair(seed, s.geometryShader);
-			hash_pair(seed, s.fragmentShader);
-			hash_pair(seed, s.amplifyShader);
-			hash_pair(seed, s.meshShader);
-			hash_pair(seed, s.rayTracingShader);
+			//hash_pair(seed, s.vertexShader);
+			//hash_pair(seed, s.tessellationControlShader);
+			//hash_pair(seed, s.tessellationEvaluateShader);
+			//hash_pair(seed, s.geometryShader);
+			//hash_pair(seed, s.fragmentShader);
+			//hash_pair(seed, s.amplifyShader);
+			//hash_pair(seed, s.meshShader);
+			//hash_pair(seed, s.rayTracingShader);
 
 			// 对顶点格式进行哈希
 			combine_hash(seed, hash<FzbVertexFormat>{}(s.vertexFormat));
 
 			// 对其他布尔标志进行哈希
-			combine_hash(seed, hash<bool>{}(s.useFaceNormal));
-			combine_hash(seed, hash<bool>{}(s.albedoTexture));
-			combine_hash(seed, hash<bool>{}(s.normalTexture));
-			combine_hash(seed, hash<bool>{}(s.materialTexture));
-			combine_hash(seed, hash<bool>{}(s.heightTexture));
+			//combine_hash(seed, hash<bool>{}(s.useFaceNormal));
+			//combine_hash(seed, hash<bool>{}(s.albedoTexture));
+			//combine_hash(seed, hash<bool>{}(s.normalTexture));
+			//combine_hash(seed, hash<bool>{}(s.materialTexture));
+			//combine_hash(seed, hash<bool>{}(s.heightTexture));
 
 			return seed;
 		}
@@ -85,75 +85,61 @@ struct FzbSubPass {
 	VkDevice logicalDevice;
 	VkCommandPool commandPool;
 	VkQueue graphicsQueue;
-
-	VkDescriptorPool descriptorPool = nullptr;
-	VkDescriptorSetLayout meshBatchDescriptorSetLayout = nullptr;	//这个描述符集合主要是材质索引
+	VkRenderPass renderPass;
+	uint32_t subPassIndex;
 
 	FzbPipelineCreateInfo pipelineCreateInfo;	//主要是pipeline的公共信息，如是否要背面剔除什么的
 	std::vector<FzbMeshBatch> meshBatchs;
 
 	FzbSubPass() {};
-	FzbSubPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue) {
+	FzbSubPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, VkRenderPass renderPass, uint32_t subPassIndex) {
 		this->physicalDevice = physicalDevice;
 		this->logicalDevice = logicalDevice;
 		this->commandPool = commandPool;
 		this->graphicsQueue = graphicsQueue;
+		this->renderPass = renderPass;
+		this->subPassIndex = subPassIndex;
 	}
 
 	void clean() {
 		for (int i = 0; i < this->meshBatchs.size(); i++) {
 			meshBatchs[i].clean();
 		}
-		if (descriptorPool) {
-			vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
-			vkDestroyDescriptorSetLayout(logicalDevice, meshBatchDescriptorSetLayout, nullptr);
-		}
 	}
 
 	//给定scene，就表明改subPass要处理的是这个scene中的mesh。excludShaderMap包含我不想在这个subpass中处理的shader
-	void createMeshBatch(FzbScene* scene, FzbPipelineCreateInfo& pipelineCreateInfo, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, bool useSceneDescriptor = true, std::unordered_map<FzbShader, uint32_t> excludShaderMap = std::unordered_map<FzbShader, uint32_t>()) {
+	void createMeshBatch(FzbScene* scene, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, std::unordered_map<FzbShader, uint32_t> excludShaderMap = std::unordered_map<FzbShader, uint32_t>()) {
 		std::unordered_map<FzbShader, uint32_t> uniqueShaderMap{};
 		for (int i = 0; i < scene->sceneMeshSet.size(); i++) {
-			if (excludShaderMap.count(scene->sceneMeshSet[i].shader) > 0)
+			FzbMesh& mesh = scene->sceneMeshSet[i];
+			FzbMaterial material = scene->sceneMaterials[mesh.materialID];
+			if (excludShaderMap.count(material.shader) > 0)		//如果材质的shader在排除集合之中，则不处理
 				continue;
-			if (uniqueShaderMap.count(scene->sceneMeshSet[i].shader) == 0) {
-				uniqueShaderMap[scene->sceneMeshSet[i].shader] = this->meshBatchs.size();
+			if (uniqueShaderMap.count(material.shader) == 0) {	//如果当前subPass没有这种shader，则创建相应的meshBatch
+				uniqueShaderMap[material.shader] = this->meshBatchs.size();
 
 				FzbMeshBatch meshBatch(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-				meshBatch.shader = scene->sceneMeshSet[i].shader;
-				meshBatch.useSceneDescriptor = useSceneDescriptor;
+				meshBatch.materialID = mesh.materialID;
 				this->meshBatchs.push_back(meshBatch);
 			}
-			this->meshBatchs[uniqueShaderMap[scene->sceneMeshSet[i].shader]].meshes.push_back(&scene->sceneMeshSet[i]);
+			this->meshBatchs[uniqueShaderMap[material.shader]].meshes.push_back(&scene->sceneMeshSet[i]);	//这里defulatMaterial的shader可能与某些material的相同，就合并了。
 		}
 
 		for (int i = 0; i < this->meshBatchs.size(); i++) {
 			meshBatchs[i].createMeshBatchIndexBuffer(scene->sceneIndices);
-			if (useSceneDescriptor) meshBatchs[i].createMeshBatchMaterialBuffer();
-			meshBatchs[i].createDrawIndexedIndirectCommandBuffer();
-		}
-		if (useSceneDescriptor) createMeshBatchDescriptor();
-		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			meshBatchs[i].shader.createPipeline(pipelineCreateInfo, componentDescriptorSetLayouts, useSceneDescriptor, scene->sceneDecriptorSetLayout, meshBatchDescriptorSetLayout);
-		}
-	}
 
-	void createMeshBatchDescriptor() {
-		std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
-		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, this->meshBatchs.size()});	//材质、纹理、变换索引
-		this->descriptorPool = fzbCreateDescriptorPool(logicalDevice, bufferTypeAndNum);
-
-		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
-		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL };
-		meshBatchDescriptorSetLayout = fzbCreateDescriptLayout(logicalDevice, 1, descriptorTypes, descriptorShaderFlags);
-		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			meshBatchs[i].createDescriptorSet(descriptorPool, meshBatchDescriptorSetLayout);
+			//创建pipeline
+			FzbMaterial& material = scene->sceneMaterials[meshBatchs[i].materialID];
+			std::vector<VkDescriptorSetLayout> descriptorSetLayouts = componentDescriptorSetLayouts;
+			if(material.descriptorSetLayout) descriptorSetLayouts.push_back(material.descriptorSetLayout);	//材质描述符，不一定会有
+			descriptorSetLayouts.push_back(meshBatchs[i].meshes[0]->descriptorSetLayout);	//mesh描述符，基本上会有
+			material.shader.createPipeline(renderPass, subPassIndex, descriptorSetLayouts);
 		}
 	}
 
-	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets, VkDescriptorSet sceneDescriptorSet) {
+	void render(VkCommandBuffer commandBuffer, std::map<std::string, FzbMaterial>& sceneMaterials, std::vector<VkDescriptorSet> componentDescriptorSets) {
 		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			this->meshBatchs[i].render(commandBuffer, componentDescriptorSets, sceneDescriptorSet);
+			this->meshBatchs[i].render(commandBuffer, sceneMaterials, componentDescriptorSets);
 		}
 	}
 };
@@ -242,7 +228,7 @@ struct FzbRenderPass {
 		}
 	}
 
-	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex, std::vector<FzbScene*> scenes, std::vector<std::vector<VkDescriptorSet>> componentDescriptorSets) {
+	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex, FzbScene* scene, std::vector<std::vector<VkDescriptorSet>> componentDescriptorSets) {
 
 		VkRenderPassBeginInfo renderPassBeginInfo{};
 		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -261,12 +247,14 @@ struct FzbRenderPass {
 		renderPassBeginInfo.pClearValues = clearValues.data();
 
 		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+		VkBuffer vertexBuffers[] = { scene->vertexBuffer.buffer };
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+
 		uint32_t subPassNum = subPasses.size();
+		std::map<std::string, FzbMaterial>& sceneMaterials = scene->sceneMaterials;
 		for (int i = 0; i < subPasses.size(); i++) {
-			VkBuffer vertexBuffers[] = { scenes[i]->vertexBuffer.buffer};
-			VkDeviceSize offsets[] = { 0 };
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-			subPasses[i].render(commandBuffer, componentDescriptorSets[i], scenes[i]->descriptorSet);
+			subPasses[i].render(commandBuffer, sceneMaterials, componentDescriptorSets[i]);	//这里其实可以将组件描述符放到subPass结构体中
 			if(--subPassNum > 0) vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 		}
 
@@ -278,6 +266,7 @@ struct FzbRenderPass {
 	}
 };
 
+//----------------------------------------------------------------------------------------------
 
 VkAttachmentDescription fzbCreateDepthAttachment(VkPhysicalDevice physicalDevice) {
 	VkAttachmentDescription depthMapAttachment{};

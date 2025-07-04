@@ -33,6 +33,34 @@ VkDescriptorPool fzbCreateDescriptorPool(VkDevice logicalDevice, std::map<VkDesc
 	return descriptorPool;
 }
 
+VkDescriptorPool fzbCreateDescriptorPool(VkDevice logicalDevice, std::vector<VkDescriptorType> type, std::vector<uint32_t> num) {
+
+	std::vector<VkDescriptorPoolSize> poolSizes{};
+	VkDescriptorPoolSize poolSize;
+
+	if(type.size() != num.size())
+		throw std::runtime_error("创建描述符池时类型数和数量数不等");
+	for (int i = 0; i < type.size(); i++) {
+		if (num[i] == 0)
+			continue;
+		poolSize.type = type[i];
+		poolSize.descriptorCount = num[i];
+		poolSizes.push_back(poolSize);
+	}
+
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+	poolInfo.pPoolSizes = poolSizes.data();
+	poolInfo.maxSets = static_cast<uint32_t>(32);
+
+	VkDescriptorPool descriptorPool;
+	if (vkCreateDescriptorPool(logicalDevice, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create descriptor pool!");
+	}
+	return descriptorPool;
+}
+
 VkDescriptorSetLayout fzbCreateDescriptLayout(VkDevice logicalDevice, uint32_t descriptorNum, std::vector<VkDescriptorType> descriptorTypes, std::vector<VkShaderStageFlags> descriptorStagesFlags, std::vector<uint32_t> descriptorCounts = std::vector<uint32_t>(), std::vector<bool> bindless = std::vector<bool>()) {
 	VkDescriptorSetLayout descriptorSetLayout;
 	std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
@@ -49,7 +77,7 @@ VkDescriptorSetLayout fzbCreateDescriptLayout(VkDevice logicalDevice, uint32_t d
 		binding.descriptorCount = descriptorCounts.size() > 0 ? descriptorCounts[i] : 1;
 		binding.descriptorType = descriptorTypes[i];
 		binding.pImmutableSamplers = nullptr;
-		binding.stageFlags = descriptorStagesFlags[i];
+		binding.stageFlags = descriptorStagesFlags[i];	//shaderStage设置为all和特地shader不会影响数据的读取速度，只是在编译时候检测范围不同而已（影响编译速度而已）。
 		layoutBindings.push_back(binding);
 	}
 

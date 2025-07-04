@@ -460,12 +460,16 @@ struct FzbUniformLightBufferObject {
 	glm::mat4 view;
 	glm::mat4 proj;
 	glm::vec4 lightPos_strength;
+};
+
+struct FzbUniformAreaLightBufferObject : public FzbUniformLightBufferObject {
 	glm::vec4 normal;
 	glm::vec4 size;
+};
 
+struct FzbUniformPTAreaLightBufferObject : public FzbUniformAreaLightBufferObject {
 	//球面矩形采样参数
 	glm::vec4 ex, ey;
-
 };
 
 struct FzbDescriptorObject {

@@ -210,7 +210,7 @@ public:
 
 		//创建加速结构需要一些临时数据，因此需要创建临时缓冲区
 		fzbCreateASScratchBuffer(buildSizesInfo.buildScratchSize);
-		fzbGetBufferDeviceAddress(logicalDevice, scratchBuffer);	//获得临时缓冲区设备地址
+		scratchBuffer.fzbGetBufferDeviceAddress();	//获得临时缓冲区设备地址
 
 		buildGeometryInfo.scratchData.deviceAddress = scratchBuffer.deviceAddress;
 		buildGeometryInfo.dstAccelerationStructure = accelerationStructure;
@@ -220,7 +220,7 @@ public:
 		vkCmdBuildAccelerationStructuresKHR(commandBuffer, 1, &buildGeometryInfo, &asBuildRangeInfos);
 		endSingleTimeCommands(logicalDevice, commandPool, commandBuffer, graphicsQueue);
 
-		fzbCleanBuffer(logicalDevice, &scratchBuffer);
+		scratchBuffer.clean();
 	}
 
 	VkAccelerationStructureKHR getAccelerationStructure() {
@@ -260,17 +260,14 @@ private:
 	FzbBuffer asBuffer;
 
 	void fzbCreateASBuffer(VkDeviceSize bufferSize, bool UseExternal = false) {
-		asBuffer.size = bufferSize;
 		//VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT表示可以在shader中使用缓冲区的地址来进行一些操作，如原子运算，而不需要通过描述符
 		//描述符的有点是资源大小固定，因此硬件高度优化，并且可以减少描述符资源的大小（不能增大，如需增大，则要重新创建）；而设备地址则可以适应动态资源。
-		fzbCreateBuffer(physicalDevice, logicalDevice, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, asBuffer, UseExternal);
+		asBuffer = FzbBuffer(physicalDevice, logicalDevice, bufferSize, VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
 	}
 
 	void fzbCreateASScratchBuffer(VkDeviceSize scratchBufferSize) {
-		scratchBuffer.size = scratchBufferSize;
-		fzbCreateBuffer(physicalDevice, logicalDevice,
-			VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			scratchBuffer);
+		scratchBuffer = FzbBuffer(physicalDevice, logicalDevice, scratchBufferSize, VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
+		scratchBuffer.fzbCreateBuffer();
 	}
 
 };

@@ -33,7 +33,7 @@ public:
 	VkDescriptorSetLayout voxelGridMapDescriptorSetLayout;
 	VkDescriptorSet voxelGridMapDescriptorSet;
 
-	FzbScene* mainComponentScene;
+	FzbScene mainComponentScene;
 	FzbScene componentScene;
 	FzbBuffer svoUniformBuffer;
 
@@ -101,7 +101,11 @@ public:
 		this->swapChainImageFormat = renderer->swapChainImageFormat;
 		this->swapChainImageViews = renderer->swapChainImageViews;
 		this->commandPool = renderer->commandPool;
-		this->mainComponentScene = scene;
+		mainComponentScene = FzbScene(physicalDevice, logicalDevice, commandPool, graphicsQueue);
+		for (int i = 0; i < scene->sceneMeshSet.size(); i++) {
+			mainComponentScene.addMeshToScene(scene->sceneMeshSet[i]);
+		}
+		mainComponentScene.initScene();
 		this->svoSetting = setting;
 
 		if (!this->svoSetting.UseSVO_OnlyVoxelGridMap) {
@@ -162,11 +166,11 @@ public:
 				scenes = { &componentScene };
 			}
 			else {
-				scenes = { mainComponentScene };
+				scenes = { &mainComponentScene };
 			}
 		}
 		else {
-			scenes = { mainComponentScene, &componentScene };
+			scenes = { &mainComponentScene, &componentScene };
 		}
 		presentRenderPass.render(commandBuffer, imageIndex, scenes, componentDescriptors);
 
@@ -190,6 +194,7 @@ public:
 
 	void clean() {
 
+		mainComponentScene.clean();
 		componentScene.clean();
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			svoCuda->clean();
@@ -224,8 +229,8 @@ private:
 		SVOUniform svoUniform;
 		svoUniform.modelMatrix = glm::mat4(1.0f);
 		
-		if (mainComponentScene->AABB.isEmpty()) mainComponentScene->createAABB();
-		FzbAABBBox mianSceneAABB = mainComponentScene->AABB;
+		if (mainComponentScene.AABB.isEmpty()) mainComponentScene.createAABB();
+		FzbAABBBox mianSceneAABB = mainComponentScene.AABB;
 		float distanceX = mianSceneAABB.rightX - mianSceneAABB.leftX;
 		float distanceY = mianSceneAABB.rightY - mianSceneAABB.leftY;
 		float distanceZ = mianSceneAABB.rightZ - mianSceneAABB.leftZ;
@@ -350,10 +355,10 @@ private:
 			shader.vertexShader = { true,  "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelVert.spv"  };
 			shader.fragmentShader = { true,  "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelFrag.spv" };
 		}
-		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
-			mainComponentScene->sceneMeshSet[i].shader.clean();
-			shader.vertexFormat = mainComponentScene->sceneMeshSet[i].vertexFormat;
-			mainComponentScene->sceneMeshSet[i].shader = shader;
+		for (int i = 0; i < mainComponentScene.sceneMeshSet.size(); i++) {
+			mainComponentScene.sceneMeshSet[i].shader.clean();
+			shader.vertexFormat = mainComponentScene.sceneMeshSet[i].vertexFormat;
+			mainComponentScene.sceneMeshSet[i].shader = shader;
 		}
 
 		VkSubpassDescription voxelGridMapSubpass{};
@@ -424,7 +429,7 @@ private:
 		}
 
 		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		presentSubPass.createMeshBatch(mainComponentScene, pipelineCreateInfo, { voxelGridMapDescriptorSetLayout }, false);
+		presentSubPass.createMeshBatch(&mainComponentScene, pipelineCreateInfo, { voxelGridMapDescriptorSetLayout }, false);
 		voxelGridMapRenderPass.subPasses.push_back(presentSubPass);
 	}
 
@@ -457,7 +462,7 @@ private:
 		voxel_clearColor.uint32[3] = 0;
 		voxelGridMap.fzbClearTexture(commandBuffer, voxel_clearColor, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
-		voxelGridMapRenderPass.render(commandBuffer, 0, { mainComponentScene }, {{voxelGridMapDescriptorSet}});
+		voxelGridMapRenderPass.render(commandBuffer, 0, { &mainComponentScene }, {{voxelGridMapDescriptorSet}});
 
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -537,10 +542,10 @@ private:
 	void createVGMRenderPass_nonBlock(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
 
 		//不需要额外的mesh，只需要将现有的场景的shader换成采样VGM的shader即可
-		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
-			mainComponentScene->sceneMeshSet[i].shader.clear();
-			mainComponentScene->sceneMeshSet[i].shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" };
-			mainComponentScene->sceneMeshSet[i].shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" };
+		for (int i = 0; i < mainComponentScene.sceneMeshSet.size(); i++) {
+			mainComponentScene.sceneMeshSet[i].shader.clear();
+			mainComponentScene.sceneMeshSet[i].shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" };
+			mainComponentScene.sceneMeshSet[i].shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" };
 		}
 
 		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
@@ -562,7 +567,7 @@ private:
 
 		FzbPipelineCreateInfo pipelineCreateInfo(presentRenderPass.renderPass, presentRenderPass.setting.extent);
 		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		presentSubPass.createMeshBatch(mainComponentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
+		presentSubPass.createMeshBatch(&mainComponentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
 		presentRenderPass.subPasses.push_back(presentSubPass);
 
 	}
@@ -576,16 +581,16 @@ private:
 		cubeMesh.shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present_VGM/spv/presentFrag_Block.spv" };
 		fzbCreateCube(cubeMesh.vertices, cubeMesh.indices);
 
-		if (mainComponentScene->AABB.isEmpty()) mainComponentScene->createAABB();
-		float distanceX = mainComponentScene->AABB.rightX - mainComponentScene->AABB.leftX;
-		float distanceY = mainComponentScene->AABB.rightY - mainComponentScene->AABB.leftY;
-		float distanceZ = mainComponentScene->AABB.rightZ - mainComponentScene->AABB.leftZ;
+		if (mainComponentScene.AABB.isEmpty()) mainComponentScene.createAABB();
+		float distanceX = mainComponentScene.AABB.rightX - mainComponentScene.AABB.leftX;
+		float distanceY = mainComponentScene.AABB.rightY - mainComponentScene.AABB.leftY;
+		float distanceZ = mainComponentScene.AABB.rightZ - mainComponentScene.AABB.leftZ;
 		float distance = glm::max(distanceX, glm::max(distanceY, distanceZ));
 		float voxelSize = distance / svoSetting.voxelNum;
 
-		float centerX = (mainComponentScene->AABB.rightX + mainComponentScene->AABB.leftX) * 0.5f;
-		float centerY = (mainComponentScene->AABB.rightY + mainComponentScene->AABB.leftY) * 0.5f;
-		float centerZ = (mainComponentScene->AABB.rightZ + mainComponentScene->AABB.leftZ) * 0.5f;
+		float centerX = (mainComponentScene.AABB.rightX + mainComponentScene.AABB.leftX) * 0.5f;
+		float centerY = (mainComponentScene.AABB.rightY + mainComponentScene.AABB.leftY) * 0.5f;
+		float centerZ = (mainComponentScene.AABB.rightZ + mainComponentScene.AABB.leftZ) * 0.5f;
 
 		for (int i = 0; i < 24; i += 3) {
 			cubeMesh.vertices[i] = cubeMesh.vertices[i] * voxelSize + centerX - distance * 0.5f;
@@ -620,10 +625,10 @@ private:
 
 	void createSVORenderPass(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
 
-		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
-			mainComponentScene->sceneMeshSet[i].shader.clear();
-			mainComponentScene->sceneMeshSet[i].shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" };
-			mainComponentScene->sceneMeshSet[i].shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" };
+		for (int i = 0; i < mainComponentScene.sceneMeshSet.size(); i++) {
+			mainComponentScene.sceneMeshSet[i].shader.clear();
+			mainComponentScene.sceneMeshSet[i].shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" };
+			mainComponentScene.sceneMeshSet[i].shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" };
 		}
 
 		FzbShader wireframePresentShader(logicalDevice, false, false, false);
@@ -659,7 +664,7 @@ private:
 
 		FzbPipelineCreateInfo pipelineCreateInfo(presentRenderPass.renderPass, presentRenderPass.setting.extent);
 		FzbSubPass scenePresentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		scenePresentSubPass.createMeshBatch(mainComponentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
+		scenePresentSubPass.createMeshBatch(&mainComponentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
 		presentRenderPass.subPasses.push_back(scenePresentSubPass);
 
 		pipelineCreateInfo.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;

@@ -43,11 +43,11 @@ public:
 	std::unique_ptr<FzbAccelerationStructure> topASs;
 	std::unique_ptr<FzbAccelerationStructure> bottomASs;
 
-	FzbStorageBuffer<FzbVertex> vertexBuffer;
-	FzbStorageBuffer<uint32_t> indexBuffer;
-	FzbStorageBuffer<VkTransformMatrixKHR> transformBuffer;
+	FzbBuffer vertexBuffer;
+	FzbBuffer indexBuffer;
+	FzbBuffer transformBuffer;	//VkTransformMatrixKHR
 
-	FzbUniformBuffer<PathTracingUnifom> ptUniformBuffer;
+	FzbBuffer ptUniformBuffer;
 
 	FzbImage depthMap;
 
@@ -114,7 +114,7 @@ public:
 	}
 
 	void clean() {
-		fzbCleanImage(depthMap);
+		depthMap.clean();
 		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
 
 		if (ptSetting.UseHardware) {
@@ -127,7 +127,7 @@ public:
 				vkDestroyDescriptorSetLayout(logicalDevice, rayQueryDescriptorSetLayout, nullptr);
 			}
 
-			fzbCleanBuffer(logicalDevice, &ptUniformBuffer);
+			ptUniformBuffer.clean();
 			topASs->clean();
 			bottomASs->clean();
 		}
@@ -189,8 +189,7 @@ private:
 	void createPTBuffer(std::vector<VkTransformMatrixKHR> sceneTransforms) {
 		fzbCreateCommandBuffers(1);
 
-
-		fzbCreateUniformBuffers(ptUniformBuffer);
+		ptUniformBuffer = fzbComponentCreateUniformBuffers<PathTracingUnifom>();
 		memcpy(ptUniformBuffer.mapped, &ptSetting.ptUniform, sizeof(PathTracingUnifom));
 	}
 
@@ -204,21 +203,21 @@ private:
 		depthMap.format = fzbFindDepthFormat(physicalDevice);
 		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-		fzbCreateImage(depthMap, false);
+		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
 	
 	void createRayQueryDescriptorPool() {
 		std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
 		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, 1 });
-		fzbCreateDescriptorPool(bufferTypeAndNum);
+		fzbComponentCreateDescriptorPool(bufferTypeAndNum);
 	}
 
 	void createRayQueryDescriptor() {
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR };
 		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT };
-		rayQueryDescriptorSetLayout = fzbCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
-		rayQueryDescriptorSet = fzbCreateDescriptorSet(rayQueryDescriptorSetLayout);
+		rayQueryDescriptorSetLayout = fzbComponentCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
+		rayQueryDescriptorSet = fzbComponentCreateDescriptorSet(rayQueryDescriptorSetLayout);
 
 		std::array<VkWriteDescriptorSet, 2> ptDescriptorWrites{};
 		VkDescriptorBufferInfo ptUniformBufferInfo{};
@@ -462,7 +461,7 @@ private:
 
 //---------------------------------------------------------------¸¨Öúº¯Êý-------------------------------------------------------------------
 	template<typename T>
-	void fzbCreateASStorageBuffer(FzbStorageBuffer<T>& fzbBuffer, std::vector<T>* bufferData, bool UseExternal = false) {
+	void fzbCreateASStorageBuffer(FzbBuffer& fzbBuffer, std::vector<T>* bufferData, bool UseExternal = false) {
 
 		uint32_t bufferSize = bufferData->size() * sizeof(T);
 		fzbBuffer.data = *bufferData;

@@ -4,10 +4,12 @@
 #include "FzbPipeline.h"
 #include "FzbDescriptor.h"
 #include "FzbShader.h"
+#include "FzbMaterial.h"
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <iostream>
 
 #ifndef FZB_MESH_H
 #define FZB_MESH_H
@@ -211,24 +213,6 @@ struct FzbVertex_PosNormalTexCoord {
 };
 */
 
-struct FzbMaterial {
-	glm::vec4 ka;
-	glm::vec4 kd;
-	glm::vec4 ks;
-	glm::vec4 ke;
-
-	FzbMaterial() {
-		this->ka = glm::vec4(1.0f);
-		this->kd = glm::vec4(1.0f);
-		this->ks = glm::vec4(1.0f);
-		this->ke = glm::vec4(0.0f);
-	}
-
-	bool operator==(const FzbMaterial& other) const {
-		return ka == other.ka && kd == other.kd && ks == other.ks && ke == other.ke;
-	}
-};
-
 struct FzbAABBBox {
 
 	float leftX = FLT_MAX;
@@ -269,62 +253,39 @@ struct FzbAABBBox {
 
 };
 
-struct FzbTexture {
-	//uint32_t id;
-	std::string type;
-	std::string path = "";
-
-	bool operator==(const FzbTexture& other) const {
-		return type == other.type && path == other.path;
-	}
-};
-
-struct FzbShaderTextureIndexs {
-	int albedoTextureIndex = -1;	//反射率纹理索引
-	int normalTextureIndex = -1; //发现纹理索引
-};
-
-struct FzbMeshMaterialUniformObject {
-	int transformIndex = -1;
-	int materialIndex = -1;	//当前draw的mesh的材质在材质buffer中的索引
-	int albedoTextureIndex = -1;	//反射率纹理索引
-	int normalTextureIndex = -1; //发现纹理索引
-
-	FzbMeshMaterialUniformObject() {
-		transformIndex = -1;
-		materialIndex = -1;
-		albedoTextureIndex = -1;
-		normalTextureIndex = -1;
-	}
+struct FzbMeshUniformBufferObject {
+	glm::mat4 transforms;
 };
 
 struct FzbMesh {
 public:
+	VkDevice logicalDevice;
+
+	std::string id;
 	std::vector<float> vertices;	//压缩前的顶点数据，压缩后就会被释放
 	std::vector<uint32_t> indices;	//压缩前的顶点索引数据，压缩后就会被释放
 	uint32_t indexArrayOffset;
 	uint32_t indeArraySize;
 
 	glm::mat4 transforms;	//一个mesh对应一种变换
-	FzbMaterial material;
-	FzbTexture albedoTexture;
-	FzbTexture normalTexture;
-	FzbMeshMaterialUniformObject materialUniformObject;
-
+	std::string materialID;
 	FzbVertexFormat vertexFormat;	//从obj中获取到的mesh的顶点格式
-	FzbShader shader;
+
+	FzbBuffer meshBuffer;
+	VkDescriptorSetLayout descriptorSetLayout = nullptr;
+	VkDescriptorSet descriptorSet = nullptr;	//所需要的材质和纹理信息
 
 	uint32_t instanceNum = 1;
 	FzbAABBBox AABB;
 
 	FzbMesh() {
 		this->transforms = glm::mat4(1.0f);
-		this->materialUniformObject = FzbMeshMaterialUniformObject();
 		this->vertexFormat = FzbVertexFormat();
 	};
 
 	std::vector<float> getVetices() {
-		
+		return this->vertices;
+		/*
 		if (shader.vertexFormat == vertexFormat) {
 			return vertices;
 		}
@@ -368,10 +329,38 @@ public:
 			}
 		}
 		return vertices_temp;
+		*/
 	}
 
 	void clean() {
-		
+		meshBuffer.clean();
+		vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, nullptr);
+	}
+
+	void createBuffer(VkPhysicalDevice physicalDevice) {
+		FzbMeshUniformBufferObject uniformBufferObject;
+		uniformBufferObject.transforms = this->transforms;
+		this->meshBuffer = fzbCreateUniformBuffers(physicalDevice, logicalDevice, sizeof(FzbMeshUniformBufferObject));
+		memcpy(this->meshBuffer.mapped, &uniformBufferObject, sizeof(FzbMeshUniformBufferObject));
+	}
+
+	void createDescriptor(VkDescriptorPool descriptorPool) {
+		this->descriptorSetLayout = fzbCreateDescriptLayout(logicalDevice, 1, { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER }, { VK_SHADER_STAGE_ALL });
+		this->descriptorSet = fzbCreateDescriptorSet(logicalDevice, descriptorPool, descriptorSetLayout);
+		VkDescriptorBufferInfo meshBufferInfo{};
+		meshBufferInfo.buffer = this->meshBuffer.buffer;
+		meshBufferInfo.offset = 0;
+		meshBufferInfo.range = sizeof(FzbMeshUniformBufferObject);
+		std::vector<VkWriteDescriptorSet> voxelGridMapDescriptorWrites(1);
+		voxelGridMapDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		voxelGridMapDescriptorWrites[0].dstSet = descriptorSet;
+		voxelGridMapDescriptorWrites[0].dstBinding = 0;
+		voxelGridMapDescriptorWrites[0].dstArrayElement = 0;
+		voxelGridMapDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		voxelGridMapDescriptorWrites[0].descriptorCount = 1;
+		voxelGridMapDescriptorWrites[0].pBufferInfo = &meshBufferInfo;
+
+		vkUpdateDescriptorSets(logicalDevice, voxelGridMapDescriptorWrites.size(), voxelGridMapDescriptorWrites.data(), 0, nullptr);
 	}
 
 	void createAABB() {
@@ -421,7 +410,7 @@ std::vector<FzbTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type
 		mat->GetTexture(type, i, &str);
 		FzbTexture texture;
 		//texture.id = TextureFromFile(str.C_Str(), directory);
-		texture.type = typeName;
+		//texture.type = typeName;
 		texture.path = str.C_Str();		//meshPathDirectory + '/' + str.C_Str();
 		textures.push_back(texture);
 		//sceneTextures->push_back(texture); // 添加到已加载的纹理中
@@ -431,7 +420,9 @@ std::vector<FzbTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type
 
 }
 
-FzbMesh processMesh(aiMesh* mesh, const aiScene* scene) {
+FzbMesh processMesh(aiMesh* mesh, const aiScene* scene, FzbMaterial& material) {
+
+	FzbVertexFormat materialVertexFormat = material.getVertexFormat();
 
 	FzbMesh fzbMesh;
 	for (uint32_t i = 0; i < mesh->mNumVertices; i++) {
@@ -440,26 +431,43 @@ FzbMesh processMesh(aiMesh* mesh, const aiScene* scene) {
 		fzbMesh.vertices.push_back(mesh->mVertices[i].y);
 		fzbMesh.vertices.push_back(mesh->mVertices[i].z);
 
-		if (mesh->HasNormals()) {
-			fzbMesh.vertexFormat.useNormal = true;
-			fzbMesh.vertices.push_back(mesh->mNormals[i].x);
-			fzbMesh.vertices.push_back(mesh->mNormals[i].y);
-			fzbMesh.vertices.push_back(mesh->mNormals[i].z);
+		if (materialVertexFormat.useNormal) {
+			if (mesh->HasNormals()) {
+				fzbMesh.vertexFormat.useNormal = true;
+				fzbMesh.vertices.push_back(mesh->mNormals[i].x);
+				fzbMesh.vertices.push_back(mesh->mNormals[i].y);
+				fzbMesh.vertices.push_back(mesh->mNormals[i].z);
+			}
+			else {
+				throw std::runtime_error("该mesh没有法线属性");
+			}
 		}
 
-		if (mesh->mTextureCoords[0]) // 网格是否有纹理坐标？这里只处理一种纹理uv
-		{
-			fzbMesh.vertexFormat.useTexCoord = true;
-			fzbMesh.vertices.push_back(mesh->mTextureCoords[0][i].x);
-			fzbMesh.vertices.push_back(mesh->mTextureCoords[0][i].y);
+		if (materialVertexFormat.useTexCoord) {
+			if (mesh->mTextureCoords[0]) // 网格是否有纹理坐标？这里只处理一种纹理uv
+			{
+				fzbMesh.vertexFormat.useTexCoord = true;
+				fzbMesh.vertices.push_back(mesh->mTextureCoords[0][i].x);
+				fzbMesh.vertices.push_back(mesh->mTextureCoords[0][i].y);
+			}
+			else {
+				throw std::runtime_error("该mesh没有uv属性");
+			}
 		}
 
-		if (mesh->HasTangentsAndBitangents()) {
-			fzbMesh.vertexFormat.useTangent = true;
-			fzbMesh.vertices.push_back(mesh->mTangents[i].x);
-			fzbMesh.vertices.push_back(mesh->mTangents[i].y);
-			fzbMesh.vertices.push_back(mesh->mTangents[i].z);
+		if (materialVertexFormat.useTangent) {
+			if (mesh->HasTangentsAndBitangents()) {
+				fzbMesh.vertexFormat.useTangent = true;
+				fzbMesh.vertices.push_back(mesh->mTangents[i].x);
+				fzbMesh.vertices.push_back(mesh->mTangents[i].y);
+				fzbMesh.vertices.push_back(mesh->mTangents[i].z);
+			}
+			else {
+				throw std::runtime_error("该mesh没有切线属性");
+			}
 		}
+
+		material.changeVertexFormat(fzbMesh.vertexFormat);	//根据mesh的实际顶点格式修改材质和shader的顶点格式
 	}
 
 	for (uint32_t i = 0; i < mesh->mNumFaces; i++) {
@@ -470,6 +478,7 @@ FzbMesh processMesh(aiMesh* mesh, const aiScene* scene) {
 	}
 	fzbMesh.indeArraySize = fzbMesh.indices.size();
 
+	/*
 	FzbMaterial mat;
 	if (mesh->mMaterialIndex >= 0) {
 
@@ -496,33 +505,35 @@ FzbMesh processMesh(aiMesh* mesh, const aiScene* scene) {
 			fzbMesh.normalTexture = normalMaps[0];
 
 	}
+	*/
 
 	return fzbMesh;
 }
 
-std::vector<FzbMesh> processNode(aiNode* node, const aiScene* scene) {
+std::vector<FzbMesh> processNode(aiNode* node, const aiScene* scene, FzbMaterial& material) {
 
 	std::vector<FzbMesh> meshes;
 	for (uint32_t i = 0; i < node->mNumMeshes; i++) {
 		aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
-		meshes.push_back(processMesh(mesh, scene));
+		meshes.push_back(processMesh(mesh, scene, material));
 	}
 
 	for (uint32_t i = 0; i < node->mNumChildren; i++) {
-		std::vector<FzbMesh> results = processNode(node->mChildren[i], scene);
+		std::vector<FzbMesh> results = processNode(node->mChildren[i], scene, material);
 		meshes.insert(meshes.begin(), results.begin(), results.end());
 	}
 
 	return meshes;
 }
 
-std::vector<FzbMesh> getMeshFromOBJ(std::string path, FzbVertexFormat meshVertexFormat = FzbVertexFormat()) {
+std::vector<FzbMesh> fzbGetMeshFromOBJ(std::string path, FzbMaterial& material) {
 	Assimp::Importer import;
+	FzbVertexFormat materialVertexFormat = material.getVertexFormat();
 	uint32_t needs = aiProcess_Triangulate |
-		(meshVertexFormat.useTexCoord ? aiProcess_FlipUVs : aiPostProcessSteps(0u)) |
-		(meshVertexFormat.useNormal ? aiProcess_GenSmoothNormals : aiPostProcessSteps(0u)) |
-		(meshVertexFormat.useTangent ? aiProcess_CalcTangentSpace : aiPostProcessSteps(0u));
-	const aiScene* scene = import.ReadFile(path, needs);
+		(materialVertexFormat.useTexCoord ? aiProcess_FlipUVs : aiPostProcessSteps(0u)) |
+		(materialVertexFormat.useNormal ? aiProcess_GenSmoothNormals : aiPostProcessSteps(0u)) |
+		(materialVertexFormat.useTangent ? aiProcess_CalcTangentSpace : aiPostProcessSteps(0u));
+	const aiScene* scene = import.ReadFile(path, needs);	//相对地址从main程序目录开始，也就是在FzbRenderer下，所以相对地址要从那里开始
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
 		std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
@@ -530,7 +541,7 @@ std::vector<FzbMesh> getMeshFromOBJ(std::string path, FzbVertexFormat meshVertex
 	}
 
 	//std::string  meshPathDirectory = path.substr(0, path.find_last_of('/'));
-	return processNode(scene->mRootNode, scene);
+	return processNode(scene->mRootNode, scene, material);
 
 }
 
@@ -557,8 +568,30 @@ void fzbCreateCubeWireframe(std::vector<float>& cubeVertices, std::vector<uint32
 	};
 }
 
-//批应该分为两种，一种是批内mesh都相同，可以当作一个大的mesh；另一种就是shader相同，但是数据不同
-//一个batch中的mesh的shader相同，即顶点格式、所用纹理数量、类型什么的都相同。
+void fzbCreateRectangle(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices, bool world = true) {
+	if (world) {
+		cubeVertices = { -1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 0.0f, -1.0f, -1.0f, 0.0f, -1.0f };
+		cubeIndices = {
+			0, 1, 2,
+			0, 2, 3
+		};
+	}
+	else {
+		cubeVertices = { -1.0f, -1.0f, 0.0f, 1.0f, -1.0f, 0.0f, 1.0f, 1.0f, 0.0f, -1.0f, 1.0f, 0.0f };
+		cubeIndices = {
+			0, 1, 2,
+			0, 2, 3
+		};
+	}
+	
+}
+//--------------------------------------------------------------------------------------------------------------------
+
+/*
+一个meshBatch中的mesh的shader和宏都相同，即使用的资源数量、类型都相同，只是数据不同而已。
+因此共享一个描述符池和描述符集合布局，每个mesh维护一个描述符集合
+如果后面加入multidraw，则可能由meshBatch维护所有的资源
+*/
 struct FzbMeshBatch {
 public:
 	VkPhysicalDevice physicalDevice;
@@ -566,17 +599,15 @@ public:
 	VkCommandPool commandPool;
 	VkQueue graphicsQueue;
 
-	FzbShader shader;
+	std::string materialID;
 	std::vector<FzbMesh*> meshes;
-
-	VkDescriptorSet descriptorSet;
 
 	uint32_t vertexBufferOffset = 0;
 	FzbBuffer indexBuffer;
 	bool useSceneDescriptor = true;
-	FzbBuffer materialIndexBuffer;
-	uint32_t drawIndexedIndirectCommandSize = 0;
-	FzbBuffer drawIndexedIndirectCommandBuffer;
+	//FzbBuffer materialIndexBuffer;
+	//uint32_t drawIndexedIndirectCommandSize = 0;
+	//FzbBuffer drawIndexedIndirectCommandBuffer;
 	
 	FzbMeshBatch() {};
 	FzbMeshBatch(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue) {
@@ -588,10 +619,9 @@ public:
 
 	void clean() {
 		indexBuffer.clean();
-		materialIndexBuffer.clean();
-		drawIndexedIndirectCommandBuffer.clean();
+		//materialIndexBuffer.clean();
+		//drawIndexedIndirectCommandBuffer.clean();
 
-		shader.clean();
 	}
 
 	void createMeshBatchIndexBuffer(std::vector<uint32_t>& sceneIndices) {
@@ -604,14 +634,7 @@ public:
 		indexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, batchIndices.data(), batchIndices.size() * sizeof(uint32_t));
 	}
 
-	void createMeshBatchMaterialBuffer() {
-		std::vector<FzbMeshMaterialUniformObject> batchMaterials;
-		for (int i = 0; i < meshes.size(); i++) {
-			batchMaterials.push_back(meshes[i]->materialUniformObject);
-		}
-		materialIndexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, batchMaterials.data(), batchMaterials.size() * sizeof(FzbMeshMaterialUniformObject));
-	}
-
+	/*
 	void createDrawIndexedIndirectCommandBuffer() {
 		std::vector<VkDrawIndexedIndirectCommand> batchDrawIndexedIndirectCommands;
 		for (int i = 0; i < meshes.size(); i++) {
@@ -621,13 +644,21 @@ public:
 		drawIndexedIndirectCommandBuffer = fzbCreateIndirectCommandBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, batchDrawIndexedIndirectCommands.data(), batchDrawIndexedIndirectCommands.size() * sizeof(VkDrawIndexedIndirectCommand));
 	}
 
+	void createMeshBatchMaterialBuffer() {
+		std::vector<uint32_t> batchMaterials;
+		for (int i = 0; i < meshes.size(); i++) {
+			batchMaterials.push_back(meshes[i]->materialIndex);
+		}
+		materialIndexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, batchMaterials.data(), batchMaterials.size() * sizeof(FzbMeshMaterialUniformObject));
+	}
+
 	void createDescriptorSet(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout) {
 		descriptorSet = fzbCreateDescriptorSet(logicalDevice, descriptorPool, descriptorSetLayout);
 		std::vector<VkWriteDescriptorSet> meshBatchDescriptorWrites(1);
 		VkDescriptorBufferInfo materialIndexStorageBufferInfo{};
 		materialIndexStorageBufferInfo.buffer = this->materialIndexBuffer.buffer;
 		materialIndexStorageBufferInfo.offset = 0;
-		materialIndexStorageBufferInfo.range = sizeof(FzbMeshMaterialUniformObject) * meshes.size();
+		materialIndexStorageBufferInfo.range = sizeof(uint32_t) * meshes.size();
 		meshBatchDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		meshBatchDescriptorWrites[0].dstSet = descriptorSet;
 		meshBatchDescriptorWrites[0].dstBinding = 0;
@@ -638,21 +669,32 @@ public:
 
 		vkUpdateDescriptorSets(logicalDevice, meshBatchDescriptorWrites.size(), meshBatchDescriptorWrites.data(), 0, nullptr);
 	}
+	*/
 
-	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets, VkDescriptorSet sceneDescriptorSet) {
+	void render(VkCommandBuffer commandBuffer, std::map<std::string, FzbMaterial>& sceneMaterials, std::vector<VkDescriptorSet> componentDescriptorSets) {
 		vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipeline);
+		FzbMaterial material = sceneMaterials[this->materialID];
+		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.shader.pipeline);
 		//0：组件的uniform,1: material、texture、transform，2：不同meshBatch的materialIndex
 		for (int i = 0; i < componentDescriptorSets.size(); i++) {
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, i, 1, &componentDescriptorSets[i], 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.shader.pipelineLayout, i, 1, &componentDescriptorSets[i], 0, nullptr);
 		}
-		if (useSceneDescriptor) {
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, componentDescriptorSets.size(), 1, &sceneDescriptorSet, 0, nullptr);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, shader.pipelineLayout, componentDescriptorSets.size() + 1, 1, &descriptorSet, 0, nullptr);
+		for (int i = 0; i < meshes.size(); i++) {
+			uint32_t descriptorSetIndex = componentDescriptorSets.size();
+			if (material.descriptorSetLayout) {
+				vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.shader.pipelineLayout, descriptorSetIndex, 1, &material.descriptorSet, 0, nullptr);
+				descriptorSetIndex++;
+			} 
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, material.shader.pipelineLayout, descriptorSetIndex, 1, &meshes[i]->descriptorSet, 0, nullptr);
+			vkCmdDrawIndexed(commandBuffer, meshes[i]->indeArraySize, meshes[i]->instanceNum, 0, 0, 0);
 		}
-		vkCmdDrawIndexedIndirect(commandBuffer, drawIndexedIndirectCommandBuffer.buffer, 0, drawIndexedIndirectCommandSize, sizeof(VkDrawIndexedIndirectCommand));
+		//vkCmdDrawIndexedIndirect(commandBuffer, drawIndexedIndirectCommandBuffer.buffer, 0, drawIndexedIndirectCommandSize, sizeof(VkDrawIndexedIndirectCommand));
 	}
 
+
+};
+
+struct FzbLight {
 
 };
 

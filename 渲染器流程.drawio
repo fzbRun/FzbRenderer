@@ -1,70 +1,9 @@
-<mxfile host="Electron" modified="2025-05-14T10:08:35.429Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.2.8 Chrome/112.0.5615.165 Electron/24.2.0 Safari/537.36" etag="DDVCM5raZB4eCTqeipW_" version="21.2.8" type="device">
+<mxfile host="Electron" modified="2025-06-27T01:35:36.730Z" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/21.2.8 Chrome/112.0.5615.165 Electron/24.2.0 Safari/537.36" etag="IIm-4czEg2G1gv_guVGD" version="21.2.8" type="device">
   <diagram id="C5RBs43oDa-KdzZeNtuy" name="Page-1">
-    <mxGraphModel dx="1036" dy="629" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+    <mxGraphModel dx="863" dy="524" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
       <root>
         <mxCell id="WIyWlLk6GJQsqaUBKTNV-0" />
         <mxCell id="WIyWlLk6GJQsqaUBKTNV-1" parent="WIyWlLk6GJQsqaUBKTNV-0" />
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-0" value="组件" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" vertex="1" parent="WIyWlLk6GJQsqaUBKTNV-1">
-          <mxGeometry x="85" y="80" width="170" height="100" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-1" value="各种功能函数，如创建缓冲区、同步。但是不包括创建设备等。" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1" parent="TLkwKD5cT3m0Ub27ryul-0">
-          <mxGeometry y="30" width="170" height="70" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-4" value="主组件" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" vertex="1" parent="WIyWlLk6GJQsqaUBKTNV-1">
-          <mxGeometry x="80" y="290" width="180" height="130" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-6" value="有组件的各种函数，还包括创建实例、设备、表面等唯一函数" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1" parent="TLkwKD5cT3m0Ub27ryul-4">
-          <mxGeometry y="30" width="180" height="100" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-8" value="" style="endArrow=block;html=1;rounded=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;endFill=0;" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" source="TLkwKD5cT3m0Ub27ryul-4" target="TLkwKD5cT3m0Ub27ryul-1">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="390" y="360" as="sourcePoint" />
-            <mxPoint x="440" y="310" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-9" value="继承" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="TLkwKD5cT3m0Ub27ryul-8">
-          <mxGeometry x="0.2957" y="-3" relative="1" as="geometry">
-            <mxPoint x="-27" as="offset" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-10" value="场景" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" vertex="1" parent="WIyWlLk6GJQsqaUBKTNV-1">
-          <mxGeometry x="390" y="110" width="180" height="130" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-11" value="包含所有的批，负责渲染调度" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1" parent="TLkwKD5cT3m0Ub27ryul-10">
-          <mxGeometry y="30" width="180" height="100" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-12" value="mesh" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" vertex="1" parent="WIyWlLk6GJQsqaUBKTNV-1">
-          <mxGeometry x="630" y="50" width="140" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-13" value="包含顶点、索引和变换" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1" parent="TLkwKD5cT3m0Ub27ryul-12">
-          <mxGeometry y="30" width="140" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-16" value="批" style="swimlane;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=30;horizontalStack=0;resizeParent=1;resizeParentMax=0;resizeLast=0;collapsible=1;marginBottom=0;whiteSpace=wrap;html=1;" vertex="1" parent="WIyWlLk6GJQsqaUBKTNV-1">
-          <mxGeometry x="610" y="160" width="180" height="110" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-17" value="相同shader的mesh属于一个批，负责构建pipeline&lt;br&gt;拥有属于该批的所有mesh的buffer和纹理" style="text;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;" vertex="1" parent="TLkwKD5cT3m0Ub27ryul-16">
-          <mxGeometry y="30" width="180" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-20" value="渲染" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="WIyWlLk6GJQsqaUBKTNV-1">
-          <mxGeometry x="420" y="340" width="120" height="60" as="geometry" />
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-21" value="" style="endArrow=classic;html=1;rounded=0;exitX=0.496;exitY=0.998;exitDx=0;exitDy=0;exitPerimeter=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1" source="TLkwKD5cT3m0Ub27ryul-11" target="TLkwKD5cT3m0Ub27ryul-20">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="390" y="330" as="sourcePoint" />
-            <mxPoint x="440" y="280" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-22" value="" style="endArrow=classic;html=1;rounded=0;" edge="1" parent="WIyWlLk6GJQsqaUBKTNV-1">
-          <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="170" y="250" as="sourcePoint" />
-            <mxPoint x="480" y="290" as="targetPoint" />
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="TLkwKD5cT3m0Ub27ryul-23" value="开启功能" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="TLkwKD5cT3m0Ub27ryul-22">
-          <mxGeometry x="0.2619" relative="1" as="geometry">
-            <mxPoint x="-35" y="-25" as="offset" />
-          </mxGeometry>
-        </mxCell>
       </root>
     </mxGraphModel>
   </diagram>

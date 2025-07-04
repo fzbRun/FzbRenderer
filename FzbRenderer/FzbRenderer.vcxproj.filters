@@ -70,6 +70,21 @@
     <Filter Include="资源文件\shaders">
       <UniqueIdentifier>{4188a3f0-e7ec-43cc-a464-511e5a364501}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\core\O-CNN">
+      <UniqueIdentifier>{4ef86fb0-0e31-4637-ba64-01f43d6c2544}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\shaders\LitShader">
+      <UniqueIdentifier>{f43e819b-b17d-4cf4-a6d7-a4ffa895847f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\shaders\forward">
+      <UniqueIdentifier>{b090b185-393d-4106-9103-88d91199dfd8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\shaders\forward\diffuse">
+      <UniqueIdentifier>{cc3b8828-2eeb-42b6-9a50-6a9c40346b9e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\shaders\common">
+      <UniqueIdentifier>{99bccb51-6cfa-4eb5-bc9c-d9f9325e93e6}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
@@ -123,6 +138,12 @@
     <ClInclude Include="core\common\FzbShader.h">
       <Filter>资源文件\core\common</Filter>
     </ClInclude>
+    <ClInclude Include="core\O-CNN\FzbOCNN.h">
+      <Filter>资源文件\core\O-CNN</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbMaterial.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
@@ -140,6 +161,9 @@
       <Filter>资源文件\core\common</Filter>
     </ClCompile>
     <ClCompile Include="core\common\FzbBuffer.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbPipeline.cpp">
       <Filter>资源文件\core\common</Filter>
     </ClCompile>
   </ItemGroup>
@@ -180,11 +204,30 @@
     <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelVert.glsl">
       <Filter>资源文件\core\SceneDivision\SVO\shaders\useSwizzle</Filter>
     </None>
-    <None Include="shaders\LitVertShader.glsl">
-      <Filter>资源文件\shaders</Filter>
+    <None Include="shaders\LitShader\LitFragShader.glsl">
+      <Filter>资源文件\shaders\LitShader</Filter>
     </None>
-    <None Include="shaders\LitFragShader.glsl">
-      <Filter>资源文件\shaders</Filter>
+    <None Include="shaders\LitShader\LitVertShader.glsl">
+      <Filter>资源文件\shaders\LitShader</Filter>
     </None>
+    <None Include="shaders\forward\diffuse\vertex.glsl">
+      <Filter>资源文件\shaders\forward\diffuse</Filter>
+    </None>
+    <None Include="shaders\forward\diffuse\fragment.glsl">
+      <Filter>资源文件\shaders\forward\diffuse</Filter>
+    </None>
+    <None Include="shaders\common\getAttribute.glsl">
+      <Filter>资源文件\shaders\common</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="shaders\LitShader\shaderInfo.xml">
+      <Filter>资源文件\shaders\LitShader</Filter>
+    </Text>
+  </ItemGroup>
+  <ItemGroup>
+    <Xml Include="shaders\forward\diffuse\shaderInfo.xml">
+      <Filter>资源文件\shaders\forward\diffuse</Filter>
+    </Xml>
   </ItemGroup>
 </Project>

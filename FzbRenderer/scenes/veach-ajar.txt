@@ -1,0 +1,17 @@
+<bsdf type="twosided" id="LandscapeBSDF">
+<bsdf type="diffuse">
+<texture name="reflectance" type="bitmap">
+<string name="filename" value="textures/landscape-with-a-lake.jpg"/>
+<string name="filter_type" value="bilinear"/>
+</texture>
+</bsdf>
+</bsdf>
+
+<shape type="obj" id="Landscape">
+<string name="filename" value="models/Mesh008.obj"/>
+<transform name="to_world">
+<matrix value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
+</transform>
+<boolean name="face_normals" value="true"/>
+<ref id="LandscapeBSDF"/>
+</shape>

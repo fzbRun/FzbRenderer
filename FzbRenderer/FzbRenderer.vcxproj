@@ -112,8 +112,8 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\assimpLib;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\glfw_lib_vc2022;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\meshoptimizerLib;C:\D\Vulkan\Lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;assimp-vc143-mt.lib;meshoptimizer.lib;cuda.lib;cudart.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\assimpLib;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\glfw_lib_vc2022;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\meshoptimizerLib;C:\D\Vulkan\Lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5\lib\x64;C:\Users\fangzanbo\Desktop\FzbRenderer\include\pugixml\build\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;assimp-vc143-mt.lib;meshoptimizer.lib;cuda.lib;cudart.lib;pugixml.lib;glslangd.lib;OSDependentd.lib;SPIRVd.lib;MachineIndependentd.lib;GenericCodeGend.lib;SPIRV-Toolsd.lib;SPIRV-Tools-optd.lib;SPIRV-Tools-linkd.lib;SPIRV-Tools-lintd.lib;SPIRV-Tools-reduced.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <CudaCompile>
       <CodeGeneration>compute_86,sm_86;%(CodeGeneration)</CodeGeneration>
@@ -137,8 +137,8 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalLibraryDirectories>C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\assimpLib;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\glfw_lib_vc2022;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\meshoptimizerLib;C:\D\Vulkan\Lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;assimp-vc143-mt.lib;meshoptimizer.lib;cuda.lib;cudart.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\assimpLib;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\glfw_lib_vc2022;C:\Users\fangzanbo\Desktop\FzbRenderer\Lib\meshoptimizerLib;C:\D\Vulkan\Lib;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.5\lib\x64;C:\Users\fangzanbo\Desktop\FzbRenderer\include\pugixml\build\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>vulkan-1.lib;glfw3.lib;assimp-vc143-mt.lib;meshoptimizer.lib;cuda.lib;cudart.lib;pugixml.lib;glslang.lib;OSDependent.lib;SPIRV.lib;MachineIndependent.lib;GenericCodeGen.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <CudaCompile>
       <CodeGeneration>compute_86,sm_86;%(CodeGeneration)</CodeGeneration>
@@ -152,6 +152,7 @@
     <ClInclude Include="core\common\FzbComponent.h" />
     <ClInclude Include="core\common\FzbDescriptor.h" />
     <ClInclude Include="core\common\FzbImage.h" />
+    <ClInclude Include="core\common\FzbMaterial.h" />
     <ClInclude Include="core\common\FzbMesh.h" />
     <ClInclude Include="core\common\FzbPipeline.h" />
     <ClInclude Include="core\common\FzbRenderPass.h" />
@@ -162,6 +163,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
     </ClInclude>
+    <ClInclude Include="core\O-CNN\FzbOCNN.h" />
     <ClInclude Include="core\RayTracing\PathTracing\AccelerationStructure\accelerationStructure.h" />
     <ClInclude Include="core\RayTracing\PathTracing\pathTracing.h" />
     <ClInclude Include="core\SceneDivision\BVH\BVH.h" />
@@ -171,6 +173,7 @@
   <ItemGroup>
     <ClCompile Include="core\common\FzbBuffer.cpp" />
     <ClCompile Include="core\common\FzbImage.cpp" />
+    <ClCompile Include="core\common\FzbPipeline.cpp" />
     <ClCompile Include="FzbRenderer.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -193,8 +196,17 @@
     <None Include="core\SceneDivision\SVO\shaders\unuseSwizzle\voxelVert.glsl" />
     <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelFrag.glsl" />
     <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelVert.glsl" />
-    <None Include="shaders\LitFragShader.glsl" />
-    <None Include="shaders\LitVertShader.glsl" />
+    <None Include="shaders\common\getAttribute.glsl" />
+    <None Include="shaders\forward\diffuse\fragment.glsl" />
+    <None Include="shaders\forward\diffuse\vertex.glsl" />
+    <None Include="shaders\LitShader\LitFragShader.glsl" />
+    <None Include="shaders\LitShader\LitVertShader.glsl" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="shaders\LitShader\shaderInfo.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Xml Include="shaders\forward\diffuse\shaderInfo.xml" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
