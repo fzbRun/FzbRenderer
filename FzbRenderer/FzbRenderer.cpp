@@ -1,5 +1,8 @@
 #include "core/common/FzbComponent.h"
-//#include "core/SceneDivision/SVO/SVO.h"
+#include "core/ForwardRender/FzbForwardRender.h"
+#include "core/SceneDivision/SVO/SVO.h"
+
+#include <glslang/Public/ShaderLang.h>
 
 //#include<opencv2/opencv.hpp>
 //#include <torch/torch.h>
@@ -10,8 +13,7 @@ class FzbRenderer : public FzbMainComponent {
 public:
 
 	void run() {
-		camera = FzbCamera(glm::vec3(0.0f, 5.0f, 18.0f));
-		fzbInitWindow(512, 512, "FzbRenderer", VK_FALSE);
+		createGlobalData();
 		initVulkan();
 		mainLoop();
 		clean();
@@ -21,50 +23,55 @@ private:
 
 	FzbScene scene;
 
-	FzbBuffer cameraUniformBuffer;
-	FzbImage depthMap;
-
-	VkDescriptorSetLayout uniformDescriptorSetLayout;
-	VkDescriptorSet uniformDescriptorSet;
-
-	FzbRenderPass renderPass;
-
-	FzbSemaphore imageAvailableSemaphores;
-	FzbSemaphore renderFinishedSemaphores;
+	FzbSemaphore imageAvailableSemaphore;
 	VkFence fence;
 
-	//FzbSVOSetting svoSetting = {};
-	//std::unique_ptr<FzbSVO> fzbSVO;
-
-	void initVulkan() {
-		initSetting();
-		createScene();
-		createPreparePresentSetting();
-		//if (svoSetting.UseSVO) {
-		//	activateSVOComponent();
-		//}
-		//else {
-		//	createAppRenderPass();
-		//}
-		createAppRenderPass();
-		
+	std::vector<FzbRenderPass*> renderPasses;	//当窗口大小改变后，所有使用到swapChain的帧缓冲都需要重新创建，绑定一个数组方便修改
+	FzbVertexFormat vertexFormat;
+	FzbForwardRenderSetting forwardRenderSetting;
+	std::unique_ptr<FzbForwardRender> fzbForwardRender;
+	FzbSVOSetting svoSetting = {};
+	std::unique_ptr<FzbSVO> fzbSVO;
+//---------------------------------------------创建全局变量---------------------------------------------
+	void createGlobalData() {
+		glslang::InitializeProcess();	//初始化GLSLang库，全局初始化，在程序启动时调用一次
+		vertexFormat = FzbVertexFormat();
+		this->scene = FzbScene("./models/veach-ajar");	//获取sceneXML中的全局信息
+		createComponent();
 	}
-	//---------------------------------------------------------------------------------------------------
-	/*void createComponent() {
-
-		svoSetting.UseSVO = false;
+	void createComponent() {
+		svoSetting.UseSVO = true;
 		if (svoSetting.UseSVO) {
 			fzbSVO = std::make_unique<FzbSVO>();
-			svoSetting.UseSVO_OnlyVoxelGridMap = false;
-			svoSetting.UseBlock = true;
+			svoSetting.UseSVO_OnlyVoxelGridMap = true;
+			svoSetting.UseBlock = false;
 			svoSetting.UseConservativeRasterization = false;
 			svoSetting.UseSwizzle = false;
 			svoSetting.Present = true;
 			svoSetting.voxelNum = 64;
 			fzbSVO->addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
+			vertexFormat.mergeUpward(fzbSVO->getComponentVertexFormat());
 		}
-	}*/
-
+		forwardRenderSetting.useForwardRender = false;
+		if (forwardRenderSetting.useForwardRender) {
+			fzbForwardRender = std::make_unique<FzbForwardRender>();
+			fzbForwardRender->addExtensions(forwardRenderSetting, instanceExtensions, deviceExtensions, deviceFeatures);
+			vertexFormat.mergeUpward(fzbForwardRender->getComponentVertexFormat());
+		}
+	}
+//-----------------------------------------------初始化Vulkan-------------------------------------------------
+	void initVulkan() {
+		fzbInitWindow(this->scene.width, this->scene.height, "FzbRenderer", VK_FALSE);
+		fzbCreateInstance("FzbRenderer", instanceExtensions, validationLayers);
+		fzbCetupDebugMessenger();
+		fzbCreateSurface();
+		createDevice();
+		fzbCreateSwapChain();
+		initBuffers();
+		createScene();
+		initComponent();
+		createSyncObjects();
+	}
 	void createDevice() {
 		deviceFeatures.samplerAnisotropy = VK_TRUE;
 		deviceFeatures.geometryShader = VK_TRUE;
@@ -84,113 +91,21 @@ private:
 
 		fzbCreateDevice(nullptr, deviceExtensions, &feature2);
 	}
-
 	void initBuffers() {
 		fzbCreateCommandPool();
 		fzbCreateCommandBuffers(1);
 	}
-
-	void initSetting() {
-		//createComponent();
-		fzbCreateInstance("FzbRenderer", instanceExtensions, validationLayers);
-		fzbCetupDebugMessenger();
-		fzbCreateSurface();
-		createDevice();
-		fzbCreateSwapChain();
-		initBuffers();
-	}
-//---------------------------------------------------------------------------------------------------
 	void createScene() {
-
-		FzbVertexFormat vertexFormat(true, true);
-		//if (svoSetting.UseSVO) vertexFormat.mergeUpward(fzbSVO->getComponentVertexFormat());
-
-		scene = FzbScene(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		scene.addSceneFromMitsubaXML("./models/veach-ajar");
-
-		scene.initScene();
+		scene.initScene(physicalDevice, logicalDevice, commandPool, graphicsQueue, vertexFormat);
+		this->camera = &scene.sceneCameras[0];
 	}
-//---------------------------------------------------------------------------------------------------
-	void createBuffers() {
-		cameraUniformBuffer = fzbComponentCreateUniformBuffers<FzbCameraUniformBufferObject>();
+	void initComponent() {
+		if (forwardRenderSetting.useForwardRender) fzbForwardRender->init(this, forwardRenderSetting, &scene, renderPasses);
+		if (svoSetting.UseSVO) fzbSVO->init(this, svoSetting, &scene, renderPasses);
 	}
-
-	void createDescriptor() {
-
-		std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
-		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
-		fzbComponentCreateDescriptorPool(bufferTypeAndNum);
-
-		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
-		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL };
-		uniformDescriptorSetLayout = fzbComponentCreateDescriptLayout(1, descriptorTypes, descriptorShaderFlags);
-		uniformDescriptorSet = fzbComponentCreateDescriptorSet(uniformDescriptorSetLayout);
-
-		std::array<VkWriteDescriptorSet, 1> uniformDescriptorWrites{};
-		VkDescriptorBufferInfo cameraUniformBufferInfo{};
-		cameraUniformBufferInfo.buffer = cameraUniformBuffer.buffer;
-		cameraUniformBufferInfo.offset = 0;
-		cameraUniformBufferInfo.range = sizeof(FzbCameraUniformBufferObject);
-		uniformDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		uniformDescriptorWrites[0].dstSet = uniformDescriptorSet;
-		uniformDescriptorWrites[0].dstBinding = 0;
-		uniformDescriptorWrites[0].dstArrayElement = 0;
-		uniformDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uniformDescriptorWrites[0].descriptorCount = 1;
-		uniformDescriptorWrites[0].pBufferInfo = &cameraUniformBufferInfo;
-
-		vkUpdateDescriptorSets(logicalDevice, uniformDescriptorWrites.size(), uniformDescriptorWrites.data(), 0, nullptr);
-
-	}
-
 	void createSyncObjects() {
-		imageAvailableSemaphores = fzbCreateSemaphore(false);
-		renderFinishedSemaphores = fzbCreateSemaphore(false);
+		imageAvailableSemaphore = FzbSemaphore(logicalDevice, false);
 		fence = fzbCreateFence();
-	}
-
-	void createPreparePresentSetting() {
-		createBuffers();
-		createDescriptor();
-		createSyncObjects();
-	}
-//--------------------------默认展示------------------------------
-	void createImages() {
-		depthMap = {};
-		depthMap.width = swapChainExtent.width;
-		depthMap.height = swapChainExtent.height;
-		depthMap.type = VK_IMAGE_TYPE_2D;
-		depthMap.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		depthMap.format = fzbFindDepthFormat(physicalDevice);
-		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-	}
-	void createRenderPass() {
-		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
-		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-		VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment(physicalDevice);
-		VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve, depthMapAttachment };
-
-		VkSubpassDescription presentSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef);
-		std::vector<VkSubpassDescription> subpasses = { presentSubpass };
-
-		std::vector<VkSubpassDependency> dependencies = { fzbCreateSubpassDependency() };
-
-		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true };
-		renderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
-		renderPass.images.push_back(&depthMap);
-		renderPass.createRenderPass(&attachments, subpasses, dependencies);
-		renderPass.createFramebuffers(swapChainImageViews);
-
-		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, renderPass.renderPass, 0);
-		presentSubPass.createMeshBatch(&scene, { uniformDescriptorSetLayout });	//可以得到meshBatch，并为meshBatch创建各种缓冲，以及shader的pipeline
-		renderPass.subPasses.push_back(presentSubPass);
-	}
-	void createAppRenderPass() {
-		createImages();
-		createRenderPass();
 	}
 //----------------------组件展示----------------------------------
 
@@ -218,62 +133,64 @@ private:
 //--------------------------------------------------------
 	void drawFrame() {
 
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 		vkWaitForFences(logicalDevice, 1, &fence, VK_TRUE, UINT64_MAX);
 
 		uint32_t imageIndex;
-		VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX, imageAvailableSemaphores.semaphore, VK_NULL_HANDLE, &imageIndex);
+		VkResult result = vkAcquireNextImageKHR(logicalDevice, swapChain, UINT64_MAX, imageAvailableSemaphore.semaphore, VK_NULL_HANDLE, &imageIndex);
 		//VK_ERROR_OUT_OF_DATE_KHR：交换链与表面不兼容，无法再用于渲染。通常在调整窗口大小后发生。
 		//VK_SUBOPTIMAL_KHR：交换链仍可用于成功呈现到表面，但表面属性不再完全匹配。
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
 			framebufferResized = false;
-			recreateSwapChain({renderPass});
+			recreateSwapChain(renderPasses);
 			return;
 		}
 		else if (result != VK_SUCCESS) {
 			throw std::runtime_error("failed to acquire swap chain image!");
 		}
 
-		updateUniformBuffer();
+		updateGlobalData();
 		vkResetFences(logicalDevice, 1, &fence);
 
 		//if (svoSetting.UseSVO) {
 		//	fzbSVO->present(uniformDescriptorSet, imageIndex, imageAvailableSemaphores.semaphore, fence);
 		//}
-		if (false) {}
-		else {
-			VkCommandBufferBeginInfo beginInfo{};
-			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-			beginInfo.flags = 0;
-			beginInfo.pInheritanceInfo = nullptr;
+		//if (false) {}
+		//else {
+		//	VkCommandBufferBeginInfo beginInfo{};
+		//	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		//	beginInfo.flags = 0;
+		//	beginInfo.pInheritanceInfo = nullptr;
+		//
+		//	if (vkBeginCommandBuffer(commandBuffers[0], &beginInfo) != VK_SUCCESS) {
+		//		throw std::runtime_error("failed to begin recording command buffer!");
+		//	}
+		//
+		//	renderPass.render(commandBuffers[0], imageIndex, { &scene }, { {uniformDescriptorSet} });
+		//
+		//	VkSemaphore waitSemaphores[] = { imageAvailableSemaphores.semaphore };
+		//	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+		//	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		//	submitInfo.waitSemaphoreCount = 1;
+		//	submitInfo.pWaitSemaphores = waitSemaphores;
+		//	submitInfo.pWaitDstStageMask = waitStages;
+		//	submitInfo.commandBufferCount = 1;
+		//	submitInfo.pCommandBuffers = &commandBuffers[0];
+		//	submitInfo.signalSemaphoreCount = 1;
+		//	submitInfo.pSignalSemaphores = &renderFinishedSemaphores.semaphore;
+		//
+		//	if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+		//		throw std::runtime_error("failed to submit draw command buffer!");
+		//	}
+		//}
 
-			if (vkBeginCommandBuffer(commandBuffers[0], &beginInfo) != VK_SUCCESS) {
-				throw std::runtime_error("failed to begin recording command buffer!");
-			}
-
-			renderPass.render(commandBuffers[0], imageIndex, { &scene }, { {uniformDescriptorSet} });
-
-			VkSemaphore waitSemaphores[] = { imageAvailableSemaphores.semaphore };
-			VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
-			submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-			submitInfo.waitSemaphoreCount = 1;
-			submitInfo.pWaitSemaphores = waitSemaphores;
-			submitInfo.pWaitDstStageMask = waitStages;
-			submitInfo.commandBufferCount = 1;
-			submitInfo.pCommandBuffers = &commandBuffers[0];
-			submitInfo.signalSemaphoreCount = 1;
-			submitInfo.pSignalSemaphores = &renderFinishedSemaphores.semaphore;
-
-			if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
-				throw std::runtime_error("failed to submit draw command buffer!");
-			}
-		}
+		VkSemaphore renderFinishedSemaphore;
+		if(forwardRenderSetting.useForwardRender) renderFinishedSemaphore = fzbForwardRender->render(imageIndex, imageAvailableSemaphore.semaphore, fence);
+		if (svoSetting.UseSVO && svoSetting.Present) renderFinishedSemaphore = fzbSVO->render(imageIndex, imageAvailableSemaphore.semaphore, fence);
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &renderFinishedSemaphores.semaphore; ;	// svoSetting.UseSVO ? &fzbSVO->presentSemaphore.semaphore : &renderFinishedSemaphores.semaphore;
+		presentInfo.pWaitSemaphores = &renderFinishedSemaphore; 	// svoSetting.UseSVO ? &fzbSVO->presentSemaphore.semaphore : &renderFinishedSemaphores.semaphore;
 
 		VkSwapchainKHR swapChains[] = { swapChain };
 		presentInfo.swapchainCount = 1;
@@ -281,7 +198,7 @@ private:
 		presentInfo.pImageIndices = &imageIndex;
 		result = vkQueuePresentKHR(presentQueue, &presentInfo);
 		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-			recreateSwapChain({ renderPass });
+			recreateSwapChain(renderPasses);
 		}
 		else if (result != VK_SUCCESS) {
 			throw std::runtime_error("failed to present swap chain image!");
@@ -328,54 +245,33 @@ private:
 
 	}
 	*/
-	void updateUniformBuffer() {
-
+	void updateGlobalData() {
 		float currentTime = static_cast<float>(glfwGetTime());
 		deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - lastTime).count();
 		lastTime = currentTime;
-
-		FzbCameraUniformBufferObject ubo{};
-		ubo.model = glm::mat4(1.0f);	// glm::rotate(glm::mat4(1.0f), glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		ubo.view = camera.GetViewMatrix();
-		ubo.proj = glm::perspectiveRH_ZO(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-		//ubo.view = glm::lookAt(glm::vec3(0, 5, 10), glm::vec3(0, 5, 10) + glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-		//ubo.proj = glm::orthoRH_ZO(-10.0f, 10.0f, -10.0f, 10.0f, 0.1f, 20.1f);
-		//怪不得，我从obj文件中看到场景的顶点是顺时针的，但是在shader中得是逆时针才对，原来是这里proj[1][1]1 *= -1搞的鬼
-		//那我们在计算着色器中处理顶点数据似乎不需要这个啊
-		ubo.proj[1][1] *= -1;
-		ubo.cameraPos = glm::vec4(camera.Position, 0.0f);
-
-		memcpy(cameraUniformBuffer.mapped, &ubo, sizeof(ubo));
-
 	}
 
-	void cleanupImages() {
-		depthMap.clean();
-	}
+	void cleanupImages() {}
 
 	void clean() {
+		glslang::FinalizeProcess();
 
-		//if(svoSetting.UseSVO) fzbSVO->clean();
+		if(svoSetting.UseSVO) fzbSVO->clean();
+		if(forwardRenderSetting.useForwardRender) fzbForwardRender->clean();
 		scene.clean();
-		renderPass.clean();
-		cameraUniformBuffer.clean();
 
 		fzbCleanupSwapChain();
 
 		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
-		vkDestroyDescriptorSetLayout(logicalDevice, uniformDescriptorSetLayout, nullptr);
 
-		vkDestroySemaphore(logicalDevice, imageAvailableSemaphores.semaphore, nullptr);
-		vkDestroySemaphore(logicalDevice, renderFinishedSemaphores.semaphore, nullptr);
+		imageAvailableSemaphore.clean(logicalDevice);
 		vkDestroyFence(logicalDevice, fence, nullptr);
 
 		vkDestroyCommandPool(logicalDevice, commandPool, nullptr);
 
 		vkDestroyDevice(logicalDevice, nullptr);
 
-		if (enableValidationLayers) {
-			DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-		}
+		if (enableValidationLayers) DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 
 		vkDestroySurfaceKHR(instance, surface, nullptr);
 		vkDestroyInstance(instance, nullptr);
@@ -383,9 +279,7 @@ private:
 		glfwDestroyWindow(window);
 
 		glfwTerminate();
-
 	}
-
 };
 
 int main() {

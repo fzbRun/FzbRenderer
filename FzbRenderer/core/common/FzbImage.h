@@ -2,8 +2,6 @@
 
 #include "FzbBuffer.h"
 
-#include <stdexcept>
-
 #ifndef FZB_IMAGE_H
 #define FZB_IMAGE_H
 

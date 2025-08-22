@@ -18,22 +18,21 @@ struct FzbSVOSetting {
 };
 
 struct SVOUniform {
-	glm::mat4 modelMatrix;
 	glm::mat4 VP[3];
 	glm::vec4 voxelSize_Num;
 	glm::vec4 voxelStartPos;
 };
 
-class FzbSVO : public FzbComponent {
+struct FzbSVO : public FzbComponent {
 
 public:
 
 	FzbSVOSetting svoSetting;
 	FzbImage voxelGridMap;
-	VkDescriptorSetLayout voxelGridMapDescriptorSetLayout;
+	VkDescriptorSetLayout voxelGridMapDescriptorSetLayout = nullptr;
 	VkDescriptorSet voxelGridMapDescriptorSet;
 
-	FzbScene mainComponentScene;
+	FzbScene* mainComponentScene;
 	FzbScene componentScene;
 	FzbBuffer svoUniformBuffer;
 
@@ -46,14 +45,18 @@ public:
 	FzbBuffer nodePool;
 	FzbBuffer voxelValueBuffer;
 
-	VkDescriptorSetLayout svoDescriptorSetLayout;
+	VkDescriptorSetLayout svoDescriptorSetLayout = nullptr;
 	VkDescriptorSet svoDescriptorSet;
 
 	FzbSemaphore vgmSemaphore;
 	FzbSemaphore svoCudaSemaphore;
 	FzbSemaphore presentSemaphore;
-
 	VkFence fence;
+
+	FzbShader vgmShader;
+	FzbMaterial vgmMaterial;
+	FzbShader presentShader;
+	FzbMaterial presentMaterial;
 
 	FzbSVO() {}
 
@@ -88,59 +91,27 @@ public:
 		}
 	}
 
-	FzbVertexFormat getComponentVertexFormat() {
+	FzbVertexFormat getComponentVertexFormat() {	//这个组件中的shader所需要用到的顶点属性
 		return FzbVertexFormat();
 	}
 
-	void init(FzbMainComponent* renderer, FzbScene* scene, FzbSVOSetting setting) {
-		
-		this->physicalDevice = renderer->physicalDevice;
-		this->logicalDevice = renderer->logicalDevice;
-		this->graphicsQueue = renderer->graphicsQueue;
-		this->swapChainExtent = renderer->swapChainExtent;
-		this->swapChainImageFormat = renderer->swapChainImageFormat;
-		this->swapChainImageViews = renderer->swapChainImageViews;
-		this->commandPool = renderer->commandPool;
-		mainComponentScene = FzbScene(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		for (int i = 0; i < scene->sceneMeshSet.size(); i++) {
-			mainComponentScene.addMeshToScene(scene->sceneMeshSet[i]);
-		}
-		mainComponentScene.initScene();
+	void init(FzbMainComponent* renderer,  FzbSVOSetting setting, FzbScene* scene, std::vector<FzbRenderPass*>& renderPasses) {
+		initComponent(renderer);
+		mainComponentScene = scene;
 		this->svoSetting = setting;
 
-		if (!this->svoSetting.UseSVO_OnlyVoxelGridMap) {
-			this->svoCuda = std::make_unique<SVOCuda>();
-		}
-
-	}
-
-	void activate() {
 		createVoxelGridMap();
-		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			createSVOCuda();
-			createSVODescriptor();
-		}
-	}
-
-	void presentPrepare(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
-		if(!(svoSetting.UseSVO_OnlyVoxelGridMap && svoSetting.UseBlock)) initDepthMap();
-		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
-			if (!svoSetting.UseBlock) {
-				createVGMRenderPass_nonBlock(mainComponentDescriptorSetLayout);
-			}
-			else {
-				createVGMRenderPass_block(mainComponentDescriptorSetLayout);
-			}
-		}
-		else {
-			createSVORenderPass(mainComponentDescriptorSetLayout);
-			//createSVORenderPassTest(mainComponentDescriptorSetLayout);
-		}
-		presentSemaphore = fzbCreateSemaphore(false);
+		//if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
+		//	this->svoCuda = std::make_unique<SVOCuda>();
+		//	createSVOCuda();
+		//	createSVODescriptor();
+		//}
+		presentPrepare(renderPasses);
 	}
 
 	//用于测试体素化结果
-	void present(VkDescriptorSet uniformDescriptorSet, uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) {
+	VkSemaphore render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) {
+		mainComponentScene->updateCameraBuffer();
 
 		VkCommandBuffer commandBuffer = commandBuffers[1];
 		vkResetCommandBuffer(commandBuffer, 0);
@@ -154,31 +125,13 @@ public:
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
-		std::vector<std::vector<VkDescriptorSet>> componentDescriptors;
-		componentDescriptors.push_back({ uniformDescriptorSet, voxelGridMapDescriptorSet });
-		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
-			componentDescriptors.push_back({ uniformDescriptorSet, voxelGridMapDescriptorSet, svoDescriptorSet });
-			//componentDescriptors = { { uniformDescriptorSet, voxelGridMapDescriptorSet, svoDescriptorSet } };
-		}
-		std::vector<FzbScene*> scenes;
-		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
-			if (svoSetting.UseBlock) {
-				scenes = { &componentScene };
-			}
-			else {
-				scenes = { &mainComponentScene };
-			}
-		}
-		else {
-			scenes = { &mainComponentScene, &componentScene };
-		}
-		presentRenderPass.render(commandBuffer, imageIndex, scenes, componentDescriptors);
+		presentRenderPass.render(commandBuffer, imageIndex, { mainComponentScene }, { {mainComponentScene->cameraAndLightsDescriptorSet, voxelGridMapDescriptorSet} });
 
-		std::vector<VkSemaphore> waitSemaphores = { startSemaphore, svoSetting.UseSVO_OnlyVoxelGridMap ? vgmSemaphore.semaphore : svoCudaSemaphore.semaphore };
+		std::vector<VkSemaphore> waitSemaphores = { startSemaphore, vgmSemaphore.semaphore };
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.waitSemaphoreCount = waitSemaphores.size();
+		submitInfo.waitSemaphoreCount = 1;	// waitSemaphores.size();
 		submitInfo.pWaitSemaphores = waitSemaphores.data();
 		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.commandBufferCount = 1;
@@ -190,11 +143,11 @@ public:
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
+		return presentSemaphore.semaphore;
 	}
 
 	void clean() {
 
-		mainComponentScene.clean();
 		componentScene.clean();
 		if (!svoSetting.UseSVO_OnlyVoxelGridMap) {
 			svoCuda->clean();
@@ -205,32 +158,82 @@ public:
 		voxelGridMapRenderPass.clean();
 		presentRenderPass.clean();
 
+
+		vgmShader.clean();
+		vgmMaterial.clean();
+		presentShader.clean();
+		presentMaterial.clean();
+
 		svoUniformBuffer.clean();
 		nodePool.clean();
 		voxelValueBuffer.clean();
 
 		vkDestroyDescriptorPool(logicalDevice, descriptorPool, nullptr);
-		vkDestroyDescriptorSetLayout(logicalDevice, voxelGridMapDescriptorSetLayout, nullptr);
-		vkDestroyDescriptorSetLayout(logicalDevice, svoDescriptorSetLayout, nullptr);
+		if(voxelGridMapDescriptorSetLayout) vkDestroyDescriptorSetLayout(logicalDevice, voxelGridMapDescriptorSetLayout, nullptr);
+		if(svoDescriptorSetLayout) vkDestroyDescriptorSetLayout(logicalDevice, svoDescriptorSetLayout, nullptr);
 
-		fzbCleanSemaphore(vgmSemaphore);
-		fzbCleanSemaphore(svoCudaSemaphore);
-		fzbCleanSemaphore(presentSemaphore);
+		vgmSemaphore.clean(logicalDevice);
+		svoCudaSemaphore.clean(logicalDevice);
+		presentSemaphore.clean(logicalDevice);
 		fzbCleanFence(fence);
 	}
 
 private:
+	void createVoxelGridMap() {
 
+		createVoxelGridMapBuffer();
+		initVoxelGridMap();
+		createDescriptorPool();
+		createVoxelGridMapDescriptor();
+		createVoxelGridMapSyncObjects();
+		createVGMRenderPass();
+
+		vkResetFences(logicalDevice, 1, &fence);
+		VkCommandBuffer commandBuffer = commandBuffers[0];
+		vkResetCommandBuffer(commandBuffer, 0);
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = 0;
+		beginInfo.pInheritanceInfo = nullptr;
+
+		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+			throw std::runtime_error("failed to begin recording command buffer!");
+		}
+
+		VkClearColorValue voxel_clearColor = {};
+		voxel_clearColor.uint32[0] = 0;
+		voxel_clearColor.uint32[1] = 0;
+		voxel_clearColor.uint32[2] = 0;
+		voxel_clearColor.uint32[3] = 0;
+		voxelGridMap.fzbClearTexture(commandBuffer, voxel_clearColor, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+
+		voxelGridMapRenderPass.render(commandBuffer, 0, { mainComponentScene }, { {voxelGridMapDescriptorSet} });
+
+		VkSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.waitSemaphoreCount = 0;
+		submitInfo.pWaitSemaphores = nullptr;
+		submitInfo.pWaitDstStageMask = nullptr;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &vgmSemaphore.semaphore;
+
+		//执行完后解开fence
+		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+			throw std::runtime_error("failed to submit draw command buffer!");
+		}
+
+	}
 	void createVoxelGridMapBuffer() {
-
 		fzbCreateCommandBuffers(2);
 
 		svoUniformBuffer = fzbComponentCreateUniformBuffers<SVOUniform>();
 		SVOUniform svoUniform;
-		svoUniform.modelMatrix = glm::mat4(1.0f);
 		
-		if (mainComponentScene.AABB.isEmpty()) mainComponentScene.createAABB();
-		FzbAABBBox mianSceneAABB = mainComponentScene.AABB;
+		if (mainComponentScene->AABB.isEmpty()) mainComponentScene->createAABB();
+		FzbAABBBox mianSceneAABB = mainComponentScene->AABB;
 		float distanceX = mianSceneAABB.rightX - mianSceneAABB.leftX;
 		float distanceY = mianSceneAABB.rightY - mianSceneAABB.leftY;
 		float distanceZ = mianSceneAABB.rightZ - mianSceneAABB.leftZ;
@@ -266,7 +269,6 @@ private:
 		memcpy(svoUniformBuffer.mapped, &svoUniform, sizeof(SVOUniform));
 
 	}
-
 	void initVoxelGridMap() {
 		voxelGridMap = {};
 		voxelGridMap.width = svoSetting.voxelNum;
@@ -279,7 +281,6 @@ private:
 		voxelGridMap.UseExternal = !svoSetting.UseSVO_OnlyVoxelGridMap;
 		voxelGridMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
-
 	void createDescriptorPool() {
 		std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 		bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
@@ -289,7 +290,6 @@ private:
 		}
 		fzbComponentCreateDescriptorPool(bufferTypeAndNum);
 	}
-
 	void createVoxelGridMapDescriptor() {
 
 		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE };
@@ -326,40 +326,26 @@ private:
 		//fzbDescriptor->descriptorSets.push_back({ voxelGridMapDescriptorSet });
 
 	}
-
 	void createVoxelGridMapSyncObjects() {	//这里应该返回一个信号量，然后阻塞主线程，知道渲染完成，才能唤醒
 		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
-			vgmSemaphore = fzbCreateSemaphore(false);	//当vgm创建完成后唤醒
+			vgmSemaphore = FzbSemaphore(logicalDevice, false);	//当vgm创建完成后唤醒
 		}
 		else {
-			vgmSemaphore = fzbCreateSemaphore(true);		//当vgm创建完成后唤醒
-			svoCudaSemaphore = fzbCreateSemaphore(true);		//当svo创建完成后唤醒
+			vgmSemaphore = FzbSemaphore(logicalDevice, true);		//当vgm创建完成后唤醒
+			svoCudaSemaphore = FzbSemaphore(logicalDevice, true);		//当svo创建完成后唤醒
 		}
-
 		fence = fzbCreateFence();
 	}
-
-	void createScene() {
-
-	}
-
 	void createVGMRenderPass() {
-
-		FzbShader shader(logicalDevice, false, false, false);
-		if (!svoSetting.UseSwizzle) {
-			shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelVert.spv" };
-			shader.geometryShader = { true, "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelGemo.spv" };
-			shader.fragmentShader = { true,  "core/SceneDivision/SVO/shaders/unuseSwizzle/spv/voxelFrag.spv" };
+		vgmMaterial = FzbMaterial(logicalDevice);
+		if (!svoSetting.UseSwizzle) vgmShader = FzbShader(logicalDevice, getRootPath() + "/core/SceneDivision/SVO/shaders/unuseSwizzle");
+		else vgmShader = FzbShader(logicalDevice, getRootPath() + "/core/SceneDivision/SVO/shaders/useSwizzle");
+		vgmShader.createShaderVariant(&vgmMaterial, getComponentVertexFormat());
+		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
+			vgmShader.shaderVariants[0].meshBatch.meshes.push_back(&mainComponentScene->sceneMeshSet[i]);
 		}
-		else {
-			shader.vertexShader = { true,  "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelVert.spv"  };
-			shader.fragmentShader = { true,  "core/SceneDivision/SVO/shaders/useSwizzle/spv/voxelFrag.spv" };
-		}
-		for (int i = 0; i < mainComponentScene.sceneMeshSet.size(); i++) {
-			mainComponentScene.sceneMeshSet[i].shader.clean();
-			shader.vertexFormat = mainComponentScene.sceneMeshSet[i].vertexFormat;
-			mainComponentScene.sceneMeshSet[i].shader = shader;
-		}
+		vgmShader.shaderVariants[0].meshBatch.useSameMaterial = true;
+		vgmShader.shaderVariants[0].meshBatch.materials.push_back(&vgmMaterial);
 
 		VkSubpassDescription voxelGridMapSubpass{};
 		voxelGridMapSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -369,8 +355,9 @@ private:
 		FzbRenderPassSetting setting = { false, 1, swapChainExtent, 1, false };
 		voxelGridMapRenderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
 		voxelGridMapRenderPass.createRenderPass(nullptr, { voxelGridMapSubpass }, { dependency });
-		voxelGridMapRenderPass.createFramebuffers(swapChainImageViews);
+		voxelGridMapRenderPass.createFramebuffers();
 
+		/*
 		FzbPipelineCreateInfo pipelineCreateInfo(voxelGridMapRenderPass.renderPass, voxelGridMapRenderPass.setting.extent);
 		pipelineCreateInfo.cullMode = VK_CULL_MODE_NONE;
 		pipelineCreateInfo.depthTestEnable = VK_FALSE;
@@ -427,106 +414,35 @@ private:
 			pipelineCreateInfo.scissors = scissors;
 			pipelineCreateInfo.viewportExtensions = &viewportSwizzleInfo;
 		}
+		*/
 
-		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		presentSubPass.createMeshBatch(&mainComponentScene, pipelineCreateInfo, { voxelGridMapDescriptorSetLayout }, false);
+		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, voxelGridMapRenderPass.renderPass, { voxelGridMapDescriptorSetLayout }, 0, mainComponentScene, { &vgmShader });
 		voxelGridMapRenderPass.subPasses.push_back(presentSubPass);
 	}
 
-	void createVoxelGridMap() {
-
-		createVoxelGridMapBuffer();
-		initVoxelGridMap();
-		createDescriptorPool();
-		createVoxelGridMapDescriptor();
-		createVoxelGridMapSyncObjects();
-		createVGMRenderPass();
-
-		vkResetFences(logicalDevice, 1, &fence);
-		VkCommandBuffer commandBuffer = commandBuffers[0];
-		vkResetCommandBuffer(commandBuffer, 0);
-
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = 0;
-		beginInfo.pInheritanceInfo = nullptr;
-
-		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-			throw std::runtime_error("failed to begin recording command buffer!");
+	void presentPrepare(std::vector<FzbRenderPass*>& renderPasses) {
+		if (!svoSetting.Present) return;
+		presentSemaphore = FzbSemaphore(logicalDevice, false);
+		if (!svoSetting.UseBlock && svoSetting.UseSVO_OnlyVoxelGridMap) {
+			createVGMRenderPass_nonBlock(renderPasses);
 		}
-
-		VkClearColorValue voxel_clearColor = {};
-		voxel_clearColor.uint32[0] = 0;
-		voxel_clearColor.uint32[1] = 0;
-		voxel_clearColor.uint32[2] = 0;
-		voxel_clearColor.uint32[3] = 0;
-		voxelGridMap.fzbClearTexture(commandBuffer, voxel_clearColor, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
-		voxelGridMapRenderPass.render(commandBuffer, 0, { &mainComponentScene }, {{voxelGridMapDescriptorSet}});
-
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.waitSemaphoreCount = 0;
-		submitInfo.pWaitSemaphores = nullptr;
-		submitInfo.pWaitDstStageMask = nullptr;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores =  &vgmSemaphore.semaphore;
-
-		//执行完后解开fence
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
-			throw std::runtime_error("failed to submit draw command buffer!");
+		/*
+		if (!(svoSetting.UseSVO_OnlyVoxelGridMap && svoSetting.UseBlock)) initDepthMap();
+		if (svoSetting.UseSVO_OnlyVoxelGridMap) {
+			if (!svoSetting.UseBlock) {
+				createVGMRenderPass_nonBlock(mainComponentDescriptorSetLayout);
+			}
+			else {
+				createVGMRenderPass_block(mainComponentDescriptorSetLayout);
+			}
 		}
-
-	}
-//---------------------------------------------------------------
-	void createSVOCuda() {
-
-		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle);
-
-		//由于不能从cuda中直接导出数组的handle，因此我们需要先创建一个buffer，然后在cuda中将数据copy进去
-		nodePool = fzbComponentCreateStorageBuffer(sizeof(FzbSVONode) * (8 * svoCuda->nodeBlockNum + 1), true);
-		voxelValueBuffer = fzbComponentCreateStorageBuffer(sizeof(FzbVoxelValue) * svoCuda->voxelNum, true);
-
-		svoCuda->getSVOCuda(physicalDevice, nodePool.handle, voxelValueBuffer.handle);
-
+		else {
+			createSVORenderPass(mainComponentDescriptorSetLayout);
+			//createSVORenderPassTest(mainComponentDescriptorSetLayout);
+		}
+		*/
 	}
 
-	void createSVODescriptor() {
-		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
-		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
-		svoDescriptorSetLayout = fzbComponentCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
-		svoDescriptorSet = fzbComponentCreateDescriptorSet(svoDescriptorSetLayout);
-
-		std::array<VkWriteDescriptorSet, 2> svoDescriptorWrites{};
-		VkDescriptorBufferInfo nodePoolBufferInfo{};
-		nodePoolBufferInfo.buffer = nodePool.buffer;
-		nodePoolBufferInfo.offset = 0;
-		nodePoolBufferInfo.range = sizeof(FzbSVONode) * (svoCuda->nodeBlockNum * 8 + 1);
-		svoDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		svoDescriptorWrites[0].dstSet = svoDescriptorSet;
-		svoDescriptorWrites[0].dstBinding = 0;
-		svoDescriptorWrites[0].dstArrayElement = 0;
-		svoDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		svoDescriptorWrites[0].descriptorCount = 1;
-		svoDescriptorWrites[0].pBufferInfo = &nodePoolBufferInfo;
-
-		VkDescriptorBufferInfo voxelValueBufferInfo{};
-		voxelValueBufferInfo.buffer = voxelValueBuffer.buffer;
-		voxelValueBufferInfo.offset = 0;
-		voxelValueBufferInfo.range = sizeof(FzbVoxelValue) * svoCuda->voxelNum;
-		svoDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		svoDescriptorWrites[1].dstSet = svoDescriptorSet;
-		svoDescriptorWrites[1].dstBinding = 1;
-		svoDescriptorWrites[1].dstArrayElement = 0;
-		svoDescriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		svoDescriptorWrites[1].descriptorCount = 1;
-		svoDescriptorWrites[1].pBufferInfo = &voxelValueBufferInfo;
-
-		vkUpdateDescriptorSets(logicalDevice, svoDescriptorWrites.size(), svoDescriptorWrites.data(), 0, nullptr);
-	}
-//---------------------------------------------------------------
 	void initDepthMap() {
 		depthMap = {};
 		depthMap.width = swapChainExtent.width;
@@ -538,15 +454,17 @@ private:
 		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
 	}
+	void createVGMRenderPass_nonBlock(std::vector<FzbRenderPass*>& renderPasses) {
+		initDepthMap();
 
-	void createVGMRenderPass_nonBlock(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
-
-		//不需要额外的mesh，只需要将现有的场景的shader换成采样VGM的shader即可
-		for (int i = 0; i < mainComponentScene.sceneMeshSet.size(); i++) {
-			mainComponentScene.sceneMeshSet[i].shader.clear();
-			mainComponentScene.sceneMeshSet[i].shader.vertexShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentVert.spv" };
-			mainComponentScene.sceneMeshSet[i].shader.fragmentShader = { true, "core/SceneDivision/SVO/shaders/present/spv/presentFrag.spv" };
+		presentMaterial = FzbMaterial(logicalDevice);
+		presentShader = FzbShader(logicalDevice, getRootPath() + "/core/SceneDivision/SVO/shaders/present");
+		presentShader.createShaderVariant(&presentMaterial, getComponentVertexFormat());
+		for (int i = 0; i < mainComponentScene->sceneMeshSet.size(); i++) {
+			presentShader.shaderVariants[0].meshBatch.meshes.push_back(&mainComponentScene->sceneMeshSet[i]);
 		}
+		presentShader.shaderVariants[0].meshBatch.useSameMaterial = true;
+		presentShader.shaderVariants[0].meshBatch.materials.push_back(&presentMaterial);
 
 		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
 		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -565,13 +483,13 @@ private:
 		presentRenderPass.createRenderPass(&attachments, subpasses, { dependency });
 		presentRenderPass.createFramebuffers(swapChainImageViews);
 
-		FzbPipelineCreateInfo pipelineCreateInfo(presentRenderPass.renderPass, presentRenderPass.setting.extent);
-		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-		presentSubPass.createMeshBatch(&mainComponentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
+		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, presentRenderPass.renderPass, { mainComponentScene->cameraAndLightsDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, 0, mainComponentScene, { &presentShader }, this->swapChainExtent);
 		presentRenderPass.subPasses.push_back(presentSubPass);
 
+		renderPasses.push_back(&voxelGridMapRenderPass);
 	}
 
+	/*
 	void createVGMRenderPass_block(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
 		
 		FzbMesh cubeMesh;
@@ -622,6 +540,55 @@ private:
 		presentSubPass.createMeshBatch(&componentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, false);
 		presentRenderPass.subPasses.push_back(presentSubPass);
 	}
+
+//---------------------------------------------------------------
+	void createSVOCuda() {
+
+		svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle);
+
+		//由于不能从cuda中直接导出数组的handle，因此我们需要先创建一个buffer，然后在cuda中将数据copy进去
+		nodePool = fzbComponentCreateStorageBuffer(sizeof(FzbSVONode) * (8 * svoCuda->nodeBlockNum + 1), true);
+		voxelValueBuffer = fzbComponentCreateStorageBuffer(sizeof(FzbVoxelValue) * svoCuda->voxelNum, true);
+
+		svoCuda->getSVOCuda(physicalDevice, nodePool.handle, voxelValueBuffer.handle);
+
+	}
+
+	void createSVODescriptor() {
+		std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+		std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
+		svoDescriptorSetLayout = fzbComponentCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
+		svoDescriptorSet = fzbComponentCreateDescriptorSet(svoDescriptorSetLayout);
+
+		std::array<VkWriteDescriptorSet, 2> svoDescriptorWrites{};
+		VkDescriptorBufferInfo nodePoolBufferInfo{};
+		nodePoolBufferInfo.buffer = nodePool.buffer;
+		nodePoolBufferInfo.offset = 0;
+		nodePoolBufferInfo.range = sizeof(FzbSVONode) * (svoCuda->nodeBlockNum * 8 + 1);
+		svoDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		svoDescriptorWrites[0].dstSet = svoDescriptorSet;
+		svoDescriptorWrites[0].dstBinding = 0;
+		svoDescriptorWrites[0].dstArrayElement = 0;
+		svoDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		svoDescriptorWrites[0].descriptorCount = 1;
+		svoDescriptorWrites[0].pBufferInfo = &nodePoolBufferInfo;
+
+		VkDescriptorBufferInfo voxelValueBufferInfo{};
+		voxelValueBufferInfo.buffer = voxelValueBuffer.buffer;
+		voxelValueBufferInfo.offset = 0;
+		voxelValueBufferInfo.range = sizeof(FzbVoxelValue) * svoCuda->voxelNum;
+		svoDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		svoDescriptorWrites[1].dstSet = svoDescriptorSet;
+		svoDescriptorWrites[1].dstBinding = 1;
+		svoDescriptorWrites[1].dstArrayElement = 0;
+		svoDescriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		svoDescriptorWrites[1].descriptorCount = 1;
+		svoDescriptorWrites[1].pBufferInfo = &voxelValueBufferInfo;
+
+		vkUpdateDescriptorSets(logicalDevice, svoDescriptorWrites.size(), svoDescriptorWrites.data(), 0, nullptr);
+	}
+//---------------------------------------------------------------
+
 
 	void createSVORenderPass(VkDescriptorSetLayout mainComponentDescriptorSetLayout) {
 
@@ -675,7 +642,7 @@ private:
 		wireframePresentSubPass.createMeshBatch(&componentScene, pipelineCreateInfo, { mainComponentDescriptorSetLayout, voxelGridMapDescriptorSetLayout, svoDescriptorSetLayout }, false);
 		presentRenderPass.subPasses.push_back(wireframePresentSubPass);
 	}
-
+	*/
 };
 
 #endif

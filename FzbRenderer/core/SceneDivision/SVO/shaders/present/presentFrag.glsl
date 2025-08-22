@@ -5,14 +5,12 @@ layout(location = 0) out vec4 FragColor;
 layout(location = 0) in vec4 worldPos;
 
 layout(set = 0, binding = 0) uniform cameraUniformBufferObject{
-	mat4 model;
 	mat4 view;
 	mat4 proj;
 	vec4 cameraPos;
 } cubo;
 
 layout(set = 1, binding = 0) uniform voxelBufferObject{
-	mat4 model;
 	mat4 VP[3];
 	vec4 voxelSize_Num;
 	vec4 voxelStartPos;
@@ -29,5 +27,4 @@ void main() {
 		discard;
 	}
 	FragColor = vec4(voxelValue.rgb, 1.0f);
-
 }

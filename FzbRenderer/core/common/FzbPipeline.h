@@ -1,12 +1,6 @@
 #pragma once
 
 #include "StructSet.h"
-#include <stdexcept>
-#include <string>
-#include <vector>
-#include<fstream>
-#include<filesystem>
-#include <map>
 
 #ifndef FZB_PIPELINE_H
 #define FZB_PIPELINE_H
@@ -177,6 +171,7 @@ VkPipelineDynamicStateCreateInfo createDynamicStateCreateInfo(const std::vector<
 //}
 VkPipelineViewportSwizzleStateCreateInfoNV getViewportSwizzleState(std::vector<VkViewportSwizzleNV>& swizzles, void* pNext = NULL);
 
+VkPipelineViewportStateCreateInfo fzbCreateViewStateCreateInfo(uint32_t viewportNum);
 VkPipelineViewportStateCreateInfo fzbCreateViewStateCreateInfo(std::vector<VkViewport>& viewports, std::vector<VkRect2D>& scissors, const void* pNext = nullptr);
 
 VkPipelineLayout fzbCreatePipelineLayout(VkDevice logicalDevice, std::vector<VkDescriptorSetLayout>* descriptorSetLayout = nullptr);

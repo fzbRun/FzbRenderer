@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 #include <variant>
+#include <map>
 
 #ifndef STRUCT_SET
 #define STRUCT_SET
@@ -32,9 +33,7 @@ struct FzbQueueFamilyIndices {
 	std::optional<uint32_t> presentFamily;
 	std::optional<uint32_t> graphicsAndComputeFamily;
 
-	bool isComplete() {
-		return graphicsAndComputeFamily.has_value() && presentFamily.has_value();
-	}
+	bool isComplete();
 
 };
 
@@ -358,116 +357,79 @@ struct FzbVertexFormat {
 	bool useTexCoord;
 	bool useTangent;
 
-	FzbVertexFormat() {
-		this->useNormal = false;
-		this->useTexCoord = false;
-		this->useTangent = false;
-	}
+	FzbVertexFormat();
 
-	FzbVertexFormat(bool useNormal, bool useTexCoord = false, bool useTangent = false) {
-		this->useNormal = useNormal;
-		this->useTexCoord = useTexCoord;
-		this->useTangent = useTangent;
-	}
+	FzbVertexFormat(bool useNormal, bool useTexCoord = false, bool useTangent = false);
 
-	uint32_t getVertexSize() const {
-		uint32_t attributeNum = 3 + useNormal * 3 + useTexCoord * 2 + useTangent * 3;
-		return attributeNum * sizeof(float);
-	}
+	uint32_t getVertexSize() const;
 
-	VkVertexInputBindingDescription getBindingDescription() {
+	VkVertexInputBindingDescription getBindingDescription();
 
-		VkVertexInputBindingDescription bindingDescription{};
-		bindingDescription.binding = 0;
-		bindingDescription.stride = getVertexSize();
-		bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-		return bindingDescription;
+	std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions();
 
-	}
-
-	std::vector<VkVertexInputAttributeDescription> getAttributeDescriptions() {
-
-		//VAO
-		std::vector<VkVertexInputAttributeDescription> attributeDescriptions{};
-		VkVertexInputAttributeDescription posDescriptor{};
-		VkVertexInputAttributeDescription normalDescriptor{};
-		VkVertexInputAttributeDescription texCoordDescriptor{};
-		VkVertexInputAttributeDescription tangentDescriptor{};
-
-		posDescriptor.binding = 0;
-		posDescriptor.location = 0;
-		posDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
-		posDescriptor.offset = 0;	//找pos在Vertex中的偏移
-		attributeDescriptions.push_back(posDescriptor);
-
-		uint32_t attributeOffset = 0;
-		if (useNormal) {
-			normalDescriptor.binding = 0;
-			normalDescriptor.location = 1;
-			normalDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
-			attributeOffset += 3 * sizeof(float);
-			normalDescriptor.offset = attributeOffset;
-			attributeDescriptions.push_back(normalDescriptor);
-		}
-		if (useTexCoord) {
-			texCoordDescriptor.binding = 0;
-			texCoordDescriptor.location = 2;
-			texCoordDescriptor.format = VK_FORMAT_R32G32_SFLOAT;
-			attributeOffset += 2 * sizeof(float);
-			texCoordDescriptor.offset = attributeOffset;
-			attributeDescriptions.push_back(texCoordDescriptor);
-		}
-		if (useTangent) {
-			tangentDescriptor.binding = 0;
-			tangentDescriptor.location = 3;
-			tangentDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
-			attributeOffset += 3 * sizeof(float);
-			tangentDescriptor.offset = attributeOffset;
-			attributeDescriptions.push_back(tangentDescriptor);
-		}
-
-		return attributeDescriptions;
-	}
-
-	void mergeUpward(FzbVertexFormat vertexFormat) {
-		this->useNormal |= vertexFormat.useNormal;
-		this->useTexCoord |= vertexFormat.useTexCoord;
-		this->useTangent |= vertexFormat.useTangent;
-	}
-
-	bool operator==(const FzbVertexFormat& other) const {
-		if (!(useNormal == other.useNormal && useTexCoord == other.useTexCoord && useTangent == other.useTangent)) {
-			return false;
-		}
-		return true;
-	}
+	void mergeUpward(FzbVertexFormat vertexFormat);
+	bool operator==(const FzbVertexFormat& other) const;
 
 };
+namespace std {
+	template<>
+	struct hash<FzbVertexFormat> {
+		std::size_t operator()(const FzbVertexFormat& vf) const {
+			using std::size_t;
+			using std::hash;
+
+			// 计算哈希值的种子
+			size_t seed = 0;
+
+			// 辅助函数：组合多个哈希值
+			auto combine_hash = [](size_t& seed, size_t hash) {
+				seed ^= hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			};
+
+			// 对 FzbVertexFormat 的成员进行哈希
+			combine_hash(seed, hash<bool>{}(vf.useNormal));
+			combine_hash(seed, hash<bool>{}(vf.useTexCoord));
+			combine_hash(seed, hash<bool>{}(vf.useTangent));
+
+			// 如果 FzbVertexFormat 有其他成员，也需要添加到这里
+
+			return seed;
+		}
+	};
+}
 
 struct FzbGlobalUniformBufferObject {
 	glm::vec4 swapChainExtent;
 };
 
 struct FzbCameraUniformBufferObject {
-	glm::mat4 model;
 	glm::mat4 view;
 	glm::mat4 proj;
 	glm::vec4 cameraPos;
 };
 
-struct FzbUniformLightBufferObject {
-	glm::mat4 model;
+struct FzbLightDate {
 	glm::mat4 view;
 	glm::mat4 proj;
-	glm::vec4 lightPos_strength;
+	glm::vec4 pos;
+	glm::vec4 strength;
 };
 
-struct FzbUniformAreaLightBufferObject : public FzbUniformLightBufferObject {
+struct FzbLightsUniformBufferObject {
+	FzbLightDate lightData[16];
+	uint32_t lightNum;
+
+	FzbLightsUniformBufferObject();
+	FzbLightsUniformBufferObject(uint32_t lightNum);
+};
+
+
+struct FzbAreaLightData : public FzbLightDate {
 	glm::vec4 normal;
 	glm::vec4 size;
 };
 
-struct FzbUniformPTAreaLightBufferObject : public FzbUniformAreaLightBufferObject {
+struct FzbPTAreaLightData : public FzbAreaLightData {
 	//球面矩形采样参数
 	glm::vec4 ex, ey;
 };
@@ -478,8 +440,77 @@ struct FzbDescriptorObject {
 };
 
 struct FzbSemaphore {
-	VkSemaphore semaphore;
-	HANDLE handle;
+	VkSemaphore semaphore = nullptr;
+	HANDLE handle = nullptr;
+
+	FzbSemaphore();
+	FzbSemaphore(VkDevice logicalDevice, bool UseExternal = false);
+	void clean(VkDevice logicalDevice);
 };
+
+struct FzbTexture {
+	std::string path = "";
+	VkFilter filter = VK_FILTER_LINEAR;
+
+	FzbTexture();
+	FzbTexture(std::string path, VkFilter filter);
+
+	bool operator==(const FzbTexture& other) const;
+};
+namespace std {
+	template<>
+	struct hash<FzbTexture> {
+		size_t operator()(const FzbTexture& tex) const noexcept {
+			using std::hash;
+			using std::size_t;
+
+			size_t seed = 0;
+
+			auto combine_hash = [](size_t& seed, size_t h) {
+				seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			};
+
+			// 对 path 做哈希
+			combine_hash(seed, hash<std::string>{}(tex.path));
+
+			// 对 filter 做哈希（枚举类型可直接用 hash<int>）
+			combine_hash(seed, hash<int>{}(static_cast<int>(tex.filter)));
+
+			return seed;
+		}
+	};
+}
+
+struct FzbNumberProperty {
+	glm::vec4 value = glm::vec4(0.0f);
+
+	FzbNumberProperty();
+	FzbNumberProperty(glm::vec4 value);
+
+	bool operator==(const FzbNumberProperty& other) const;
+};
+namespace std {
+	template<>
+	struct hash<FzbNumberProperty> {
+		size_t operator()(const FzbNumberProperty& prop) const noexcept {
+			size_t h1 = std::hash<float>{}(prop.value.x);
+			size_t h2 = std::hash<float>{}(prop.value.y);
+			size_t h3 = std::hash<float>{}(prop.value.z);
+			size_t h4 = std::hash<float>{}(prop.value.w);
+			// 混合哈希值
+			return ((h1 ^ (h2 << 1)) >> 1) ^ (h3 << 1) ^ (h4 << 2);
+		}
+	};
+}
+
+struct FzbShaderProperty {
+	std::map<std::string, FzbTexture> textureProperties;
+	std::map<std::string, FzbNumberProperty> numberProperties;
+
+	bool keyCompare(FzbShaderProperty& other);
+	bool operator==(const FzbShaderProperty& other) const;
+};
+
+std::string getRootPath();
 
 #endif

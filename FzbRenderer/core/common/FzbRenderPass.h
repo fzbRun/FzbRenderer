@@ -2,12 +2,12 @@
 
 #include "StructSet.h"
 #include "FzbScene.h"
+#include "FzbShader.h"
 #include "FzbMesh.h"
-#include <stdexcept>
 
 #ifndef FZB_RENDERPASS_H
 #define FZB_RENDERPASS_H
-
+/*
 namespace std {
 	template<>
 	struct hash<FzbVertexFormat> {
@@ -65,7 +65,7 @@ namespace std {
 			//hash_pair(seed, s.rayTracingShader);
 
 			// 对顶点格式进行哈希
-			combine_hash(seed, hash<FzbVertexFormat>{}(s.vertexFormat));
+			//combine_hash(seed, hash<FzbVertexFormat>{}(s.vertexFormat));
 
 			// 对其他布尔标志进行哈希
 			//combine_hash(seed, hash<bool>{}(s.useFaceNormal));
@@ -78,6 +78,20 @@ namespace std {
 		}
 	};
 }
+*/
+
+struct FzbSubPassCreateInfo {
+	VkPhysicalDevice physicalDevice;
+	VkDevice logicalDevice;
+	VkCommandPool commandPool;
+	VkQueue graphicsQueue;
+	VkRenderPass renderPass;
+	std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts;
+	uint32_t subPassIndex;
+	FzbScene* scene;
+	std::vector<FzbShader*> shaders;
+	VkExtent2D extent;
+};
 
 struct FzbSubPass {
 
@@ -87,26 +101,19 @@ struct FzbSubPass {
 	VkQueue graphicsQueue;
 	VkRenderPass renderPass;
 	uint32_t subPassIndex;
+	VkExtent2D extent;	//当前交换链extent
 
 	FzbPipelineCreateInfo pipelineCreateInfo;	//主要是pipeline的公共信息，如是否要背面剔除什么的
-	std::vector<FzbMeshBatch> meshBatchs;
+	//std::vector<FzbMeshBatch> meshBatchs;
+	//std::vector<FzbScene*> scene;	//这个subPass要对哪些scene进行渲染
+	std::vector<FzbShader*> shaders;	//这个subPass要渲染哪些shader
 
-	FzbSubPass() {};
-	FzbSubPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, VkRenderPass renderPass, uint32_t subPassIndex) {
-		this->physicalDevice = physicalDevice;
-		this->logicalDevice = logicalDevice;
-		this->commandPool = commandPool;
-		this->graphicsQueue = graphicsQueue;
-		this->renderPass = renderPass;
-		this->subPassIndex = subPassIndex;
-	}
+	FzbSubPass();
+	FzbSubPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, VkRenderPass renderPass, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, uint32_t subPassIndex, FzbScene* scene, std::vector<FzbShader*> shaders = std::vector<FzbShader*>(), VkExtent2D extent = VkExtent2D());
+	FzbSubPass(FzbSubPassCreateInfo* createInfo);
+	void clean();
 
-	void clean() {
-		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			meshBatchs[i].clean();
-		}
-	}
-
+	/*
 	//给定scene，就表明改subPass要处理的是这个scene中的mesh。excludShaderMap包含我不想在这个subpass中处理的shader
 	void createMeshBatch(FzbScene* scene, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, std::unordered_map<FzbShader, uint32_t> excludShaderMap = std::unordered_map<FzbShader, uint32_t>()) {
 		std::unordered_map<FzbShader, uint32_t> uniqueShaderMap{};
@@ -136,12 +143,9 @@ struct FzbSubPass {
 			material.shader.createPipeline(renderPass, subPassIndex, descriptorSetLayouts);
 		}
 	}
+	*/
 
-	void render(VkCommandBuffer commandBuffer, std::map<std::string, FzbMaterial>& sceneMaterials, std::vector<VkDescriptorSet> componentDescriptorSets) {
-		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			this->meshBatchs[i].render(commandBuffer, sceneMaterials, componentDescriptorSets);
-		}
-	}
+	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets);
 };
 
 struct FzbRenderPassSetting {
@@ -162,170 +166,38 @@ struct FzbRenderPass {
 	FzbRenderPassSetting setting;
 	std::vector<FzbImage*> images;
 
+	FzbScene* scene;
 	VkRenderPass renderPass = nullptr;
 	std::vector<VkFramebuffer> framebuffers;
 	std::vector<FzbSubPass> subPasses;
 
-	FzbRenderPass() {};
-	FzbRenderPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, FzbRenderPassSetting setting) {
-		this->physicalDevice = physicalDevice;
-		this->logicalDevice = logicalDevice;
-		this->commandPool = commandPool;
-		this->graphicsQueue = graphicsQueue;
-		this->setting = setting;
-	}
+	FzbRenderPass();
+	FzbRenderPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, FzbRenderPassSetting setting);
 
-	void createRenderPass(std::vector<VkAttachmentDescription>* attachments, std::vector<VkSubpassDescription> subpasses, std::vector<VkSubpassDependency> dependencies) {
-		VkRenderPassCreateInfo renderPassInfo{};
-		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-		renderPassInfo.attachmentCount = attachments ? attachments->size() : 0;
-		renderPassInfo.pAttachments = attachments ? attachments->data() : nullptr;
-		renderPassInfo.subpassCount = subpasses.size();
-		renderPassInfo.pSubpasses = subpasses.data();
-		renderPassInfo.dependencyCount = dependencies.size();
-		renderPassInfo.pDependencies = dependencies.data();
+	void createRenderPass(std::vector<VkAttachmentDescription>* attachments, std::vector<VkSubpassDescription> subpasses, std::vector<VkSubpassDependency> dependencies);
 
-		if (vkCreateRenderPass(logicalDevice, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-			throw std::runtime_error("failed to create render pass!");
-		}
-	}
+	void clean();
 
-	void clean() {
-		if(renderPass) vkDestroyRenderPass(logicalDevice, renderPass, nullptr);
-		for (int i = 0; i < subPasses.size(); i++) {
-			subPasses[i].clean();
-		}
-		for (int i = 0; i < framebuffers.size(); i++) {
-			vkDestroyFramebuffer(logicalDevice, framebuffers[i], nullptr);
-		}
-	}
+	void createFramebuffers(std::vector<VkImageView> swapChainImageViews = std::vector<VkImageView>());
 
-	void createFramebuffers(std::vector<VkImageView> swapChainImageViews) {
-		this->framebuffers.resize(setting.framebufferNum);
-		std::vector<std::vector<VkImageView>> attachmentViews;
-		attachmentViews.resize(setting.framebufferNum);
-		for (int i = 0; i < setting.framebufferNum; i++) {
-			if (setting.present) {
-				attachmentViews[i].push_back(swapChainImageViews[i]);
-			}
-			for (int j = 0; j < images.size(); j++) {
-				attachmentViews[i].push_back(images[j]->imageView);
-			}
-		}
-		for (int i = 0; i < setting.framebufferNum; i++) {
-			VkFramebufferCreateInfo framebufferInfo{};
-			framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-			framebufferInfo.renderPass = renderPass;
-			framebufferInfo.attachmentCount = attachmentViews[i].size();
-			framebufferInfo.pAttachments = attachmentViews[i].data();
-			framebufferInfo.width = setting.extent.width;
-			framebufferInfo.height = setting.extent.height;
-			framebufferInfo.layers = 1;
-
-			if (vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
-				throw std::runtime_error("failed to create framebuffer!");
-			}
-		}
-	}
-
-	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex, FzbScene* scene, std::vector<std::vector<VkDescriptorSet>> componentDescriptorSets) {
-
-		VkRenderPassBeginInfo renderPassBeginInfo{};
-		renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-		renderPassBeginInfo.renderPass = renderPass;
-		renderPassBeginInfo.framebuffer = framebuffers[imageIndex];
-		renderPassBeginInfo.renderArea.offset = { 0, 0 };
-		renderPassBeginInfo.renderArea.extent = setting.extent;
-
-		uint32_t clearAttachemtnNum = setting.useDepth + setting.colorAttachmentNum;
-		std::vector<VkClearValue> clearValues(clearAttachemtnNum);
-		for (int i = 0; i < clearAttachemtnNum - 1; i++) {
-			clearValues[i].color = { {0.0f, 0.0f, 0.0f, 1.0f} };
-		}
-		if(setting.useDepth) clearValues[clearAttachemtnNum - 1].depthStencil = { 1.0f, 0 };
-		renderPassBeginInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
-		renderPassBeginInfo.pClearValues = clearValues.data();
-
-		vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-		VkBuffer vertexBuffers[] = { scene->vertexBuffer.buffer };
-		VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-
-		uint32_t subPassNum = subPasses.size();
-		std::map<std::string, FzbMaterial>& sceneMaterials = scene->sceneMaterials;
-		for (int i = 0; i < subPasses.size(); i++) {
-			subPasses[i].render(commandBuffer, sceneMaterials, componentDescriptorSets[i]);	//这里其实可以将组件描述符放到subPass结构体中
-			if(--subPassNum > 0) vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
-		}
-
-		vkCmdEndRenderPass(commandBuffer);
-
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-			throw std::runtime_error("failed to record command buffer!");
-		}
-	}
+	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex, FzbScene* scene, std::vector<std::vector<VkDescriptorSet>> componentDescriptorSets);
 };
 
 //----------------------------------------------------------------------------------------------
 
-VkAttachmentDescription fzbCreateDepthAttachment(VkPhysicalDevice physicalDevice) {
-	VkAttachmentDescription depthMapAttachment{};
-	depthMapAttachment.format = fzbFindDepthFormat(physicalDevice);
-	depthMapAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	depthMapAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	depthMapAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	depthMapAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	depthMapAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	depthMapAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	depthMapAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-	return depthMapAttachment;
-}
+VkAttachmentDescription fzbCreateDepthAttachment(VkPhysicalDevice physicalDevice);
 
-VkAttachmentDescription fzbCreateColorAttachment(VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, VkImageLayout layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR) {
-	VkAttachmentDescription colorAttachmentResolve{};
-	colorAttachmentResolve.format = format;
-	colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
-	colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-	colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-	colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	colorAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	colorAttachmentResolve.finalLayout = layout;
-	return colorAttachmentResolve;
-}
+VkAttachmentDescription fzbCreateColorAttachment(VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, VkImageLayout layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
-VkAttachmentReference fzbCreateAttachmentReference(uint32_t attachmentIndex, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
-	VkAttachmentReference depthMapAttachmentResolveRef{};
-	depthMapAttachmentResolveRef.attachment = attachmentIndex;
-	depthMapAttachmentResolveRef.layout = layout;
-	return depthMapAttachmentResolveRef;
-}
+VkAttachmentReference fzbCreateAttachmentReference(uint32_t attachmentIndex, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 
 VkSubpassDescription fzbCreateSubPass(uint32_t colorAttachmentCount = 0, VkAttachmentReference* colorAttachmentRefs = nullptr,
 	VkAttachmentReference* depthStencilAttachmentRefs = nullptr,
-	uint32_t inputAttachmentCount = 0, VkAttachmentReference* inputAttachmentRefs = nullptr) {
-	VkSubpassDescription subPass{};
-	subPass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subPass.colorAttachmentCount = colorAttachmentCount;
-	subPass.pColorAttachments = colorAttachmentRefs;
-	subPass.pDepthStencilAttachment = depthStencilAttachmentRefs;
-	subPass.inputAttachmentCount = inputAttachmentCount;
-	subPass.pInputAttachments = inputAttachmentRefs;
-	return subPass;
-}
+	uint32_t inputAttachmentCount = 0, VkAttachmentReference* inputAttachmentRefs = nullptr);
 
 VkSubpassDependency fzbCreateSubpassDependency(uint32_t scrSubpass = VK_SUBPASS_EXTERNAL, uint32_t dstSubpass = 0,
 	VkPipelineStageFlags srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VkAccessFlags srcAccessMask = 0,
 	VkPipelineStageFlags dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VkAccessFlags dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT
-	) {
-	VkSubpassDependency dependency{};
-	dependency.srcSubpass = scrSubpass;
-	dependency.dstSubpass = dstSubpass;
-	dependency.srcStageMask = srcStageMask;
-	dependency.srcAccessMask = srcAccessMask;
-	dependency.dstStageMask = dstStageMask;
-	dependency.dstAccessMask = dstAccessMask;
-	return dependency;
-}
+);
 
 #endif

@@ -6,7 +6,6 @@ layout(triangle_strip, max_vertices = 3) out;
 layout(location = 0) out vec3 worldPos;
 
 layout(set = 0, binding = 0) uniform voxelBufferObject{
-	mat4 model;
 	mat4 VP[3];
 	vec4 voxelSize_Num;
 	vec4 voxelStartPos;

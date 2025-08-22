@@ -1,0 +1,33 @@
+<ShaderInfo>
+	<Properties>
+	</Properties>
+	<Macros>
+		<!--规定宏必须是use + 属性名-->
+		<macro name = "useVertexNormal" usability = "true" />
+		<macro name = "useVertexTexCoords" usability = "false" />
+		<macro name = "useVertexTangent" usability = "false" />
+
+		<macro name = "useTextureProperty" usability = "false" />
+		<macro name = "useNumberProperty" usability = "false" />
+		<macro name = "useAlbedoMap" usability = "false" />
+		<macro name = "useAlbedo" usability = "false" />
+		<macro name = "useNormalMap" usability = "false" />
+
+		<macro name = "useFaceNormal" usability = "false" />
+		<macro name = "useAreaLight" usability = "false" />
+	</Macros>
+	<Shaders>
+		<shader name = "vertexShader" path = "voxelVert.glsl" />
+		<shader name = "geometryShader" path = "voxelGemo.glsl" />
+		<shader name = "fragmentShader" path = "voxelFrag.glsl" />
+	</Shaders>
+	<Pipeline>
+		<rasterizerInfo>
+			<cullMode value = "VK_CULL_MODE_NONE" />
+		</rasterizerInfo>
+		<depthStencilInfo>
+			<depthTestEnable value="false" />
+			<depthWriteEnable value="false" />
+		</depthStencilInfo>
+	</Pipeline>
+</ShaderInfo>

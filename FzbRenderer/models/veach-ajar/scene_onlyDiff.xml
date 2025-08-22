@@ -1,4 +1,12 @@
 <scene version="3.0.0">
+	<default name="resy" value="720"/>
+	<default name="resx" value="1280"/>
+	<sensor type="perspective">
+		<float name="fov" value="60"/>
+		<transform name="to_world">
+			<matrix value="-0.137283 -0.0319925 -0.990015 4.05402 2.71355e-008 0.999478 -0.0322983 1.61647 0.990532 -0.00443408 -0.137213 -2.30652 0 0 0 1"/>
+		</transform>
+	</sensor>
 	<bsdf type="twosided" id="LandscapeBSDF">
 		<bsdf type="diffuse">
 			<texture name="reflectance" type="bitmap">
@@ -48,13 +56,13 @@
 			<rgb name="reflectance" value="0.8, 0.8, 0.8" />
 		</bsdf>
 	</bsdf>
-	<shape type="rectangle" id="Light">
+	<shape type="point" id="Light">
 		<transform name="to_world">
 			<matrix value="0.730445 0 0 -4.4391 0 -1.32136 -1.42138e-007 1.50656 0 1.42138e-007 -1.93037 -4.44377 0 0 0 1" />
 		</transform>
 		<ref id="LightBSDF" />
-		<emitter type="area">
-			<rgb name="radiance" value="1000, 1000, 1000" />
+		<emitter type="point">
+			<rgb name="radiance" value="1, 1, 1" />
 		</emitter>
 	</shape>
 	<shape type="obj" id="Landscape">

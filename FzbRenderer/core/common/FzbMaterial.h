@@ -1,8 +1,9 @@
 #pragma once
 
 #include "StructSet.h"
-#include "FzbShader.h"
+#include "FzbImage.h"
 #include "FzbDescriptor.h"
+#include "FzbShader.h"
 
 #ifndef FZB_MATERIAL_H
 #define FZB_MATERIAL_H
@@ -17,6 +18,7 @@ enum FzbBsdfType {
 	FZB_ROUGH_CONDUCTOR,
 };
 
+/*
 struct FzbCheckboradTexture : public FzbTexture {
 	glm::vec3 checkboardColor1;
 	glm::vec3 checkboardColor2;
@@ -25,62 +27,55 @@ struct FzbCheckboradTexture : public FzbTexture {
 		return path == other.path && filter == other.filter && checkboardColor1 == other.checkboardColor1 && checkboardColor2 == other.checkboardColor2;
 	}
 };
+*/
 
+/*
+material有两种数据：1.缓冲区数据；2.纹理数据。两种数据均采取键值对的方式，key是数据名，也是shader中的宏
+*/
+struct FzbShaderVariant;
 struct FzbMaterial {
+public:
 	VkDevice logicalDevice;
 
 	std::string id = "";
 	std::string type;
-	FzbShader shader;
+	//FzbShader shader;
+	//FzbShaderVariant* shader;
 	FzbShaderProperty properties;
+	FzbVertexFormat vertexFormat;
 
 	FzbBsdfDistribution distribution;
 	//FzbTexture spcularReflectanceTexture;
 
 	FzbBuffer numberPropertiesBuffer;
-	VkDescriptorSetLayout descriptorSetLayout = nullptr;
+	//VkDescriptorSetLayout descriptorSetLayout = nullptr;
 	VkDescriptorSet descriptorSet = nullptr;
 
-	FzbMaterial() {};
-	FzbMaterial(VkDevice logicalDevice) {
-		this->logicalDevice = logicalDevice;
-	};
-	FzbMaterial(VkDevice logicalDevice, std::string id) {
-		this->logicalDevice = logicalDevice;
-		this->id = id;
-	}
+	FzbMaterial();
+	FzbMaterial(VkDevice logicalDevice);
+	FzbMaterial(VkDevice logicalDevice, std::string id);
+	FzbMaterial(VkDevice logicalDevice, std::string id, std::string type);
 
-	void clean() {
-		this->shader.clean();
-		numberPropertiesBuffer.clean();
-		vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, nullptr);
-	}
+	void clean();
 
-	FzbVertexFormat getVertexFormat() {
-		//this->vertexFormat = FzbVertexFormat(true, false, false);
-		//if (albedoMap.path != "") {
-		//	vertexFormat.useTexCoord = true;
-		//}
-		return this->shader.vertexFormat;
-	}
+	//FzbVertexFormat getVertexFormat();
 
-	void changeVertexFormat(FzbVertexFormat newVertexFormat) {
-		this->shader.changeVertexFormat(newVertexFormat);
-	}
-
+	//void changeVertexFormat(FzbVertexFormat newVertexFormat);
+	/*
 	void changeVertexFormatAndMacros() {
 		if (this->properties.textureProperties.size() > 0) {
-			shader.vertexFormat.useTexCoord = true;
-			shader.macros["useTextureProperty"] = true;
-			shader.macros["useVertexTexCoords"] = true;
+			shader->vertexFormat.useTexCoord = true;
+			shader->macros["useTextureProperty"] = true;
+			shader->macros["useVertexTexCoords"] = true;
 		}
 		else {
-			shader.vertexFormat.useTexCoord = false;
-			shader.macros["useTextureProperty"] = false;
-			shader.macros["useVertexTexCoords"] = false;
+			shader->vertexFormat.useTexCoord = false;
+			shader->macros["useTextureProperty"] = false;
+			shader->macros["useVertexTexCoords"] = false;
 		}
-		shader.macros["useNumberProperty"] = this->properties.numberProperties.size() == 0 ? false : true;
+		shader->macros["useNumberProperty"] = this->properties.numberProperties.size() == 0 ? false : true;
 	}
+
 
 	//应该求material和shader的并集，但是实际上我们创建shader的时候要考虑更多，所以应该是material决定shader的宏
 	//如果shader开启了一个资源，但是material没有传入，则关闭该资源；如果shader没有或关闭了一个资源，但是material传入了，则报错
@@ -121,73 +116,38 @@ struct FzbMaterial {
 		this->shader = shader;
 		changeVertexFormatAndMacros();
 	}
+	*/
 
-	void createMaterialNumberPropertiesBuffer(VkPhysicalDevice physicalDevice) {
-		uint32_t numberNum = this->properties.numberProperties.size();
-		if (numberNum > 0) {
-			uint32_t bufferSize = numberNum * sizeof(glm::vec4);	//全部按floa4来存储，这个shader的布局方式很烦人的
-			std::vector<glm::vec4> numberProperties;
-			for (auto& property : shader.properties.numberProperties) {
-				numberProperties.push_back(property.second.value);
-			}
-			this->numberPropertiesBuffer = fzbCreateUniformBuffers(physicalDevice, logicalDevice, bufferSize);
-			memcpy(numberPropertiesBuffer.mapped, numberProperties.data(), numberProperties.size() * sizeof(glm::vec4));
-		}
-	}
+	void createSource(VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, std::string scenePath, uint32_t& numberBufferNum, std::map<std::string, FzbImage>& sceneImages);
+	void createMaterialNumberPropertiesBuffer(VkPhysicalDevice physicalDevice, uint32_t& numberBufferNum);
 
-	void createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage> sceneImages) {
-		uint32_t textureNum = this->properties.textureProperties.size();
-		uint32_t numberNum = this->properties.numberProperties.size() > 0 ? 1 : 0;	//所有数值属性用一个storageBuffer即可
-		if (textureNum + numberNum == 0) {
-			return;
-		}
-		std::vector<VkDescriptorType> type(textureNum + numberNum);
-		std::vector<VkShaderStageFlags> stage(textureNum + numberNum);
-		for (int i = 0; i < textureNum; i++) {
-			type[i] = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			stage[i] = VK_SHADER_STAGE_ALL;	//shaderStage设置为all和特地shader不会影响数据的读取速度，只是在编译时候检测范围不同而已（影响编译速度而已）。
-		}
-		if (numberNum) {
-			type[textureNum] = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			stage[textureNum] = VK_SHADER_STAGE_ALL;
-		}
-		this->descriptorSetLayout = fzbCreateDescriptLayout(logicalDevice, type.size(), type, stage);
+	void createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool, VkDescriptorSetLayout descriptorSetLayout, std::map<std::string, FzbImage>& sceneImages);
+	
+	bool operator==(const FzbMaterial& other) const;
 
-		descriptorSet = fzbCreateDescriptorSet(logicalDevice, sceneDescriptorPool, descriptorSetLayout);
-		uint32_t descriptorNum = textureNum + numberNum;
-		std::vector<VkWriteDescriptorSet> voxelGridMapDescriptorWrites(descriptorNum);
-		uint32_t binding = 0;
-		for (auto& pair : this->properties.textureProperties) {
-			VkDescriptorImageInfo textureInfo{};
-			textureInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			textureInfo.imageView = sceneImages[pair.second.path].imageView;
-			textureInfo.sampler = sceneImages[pair.second.path].textureSampler;
-			voxelGridMapDescriptorWrites[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			voxelGridMapDescriptorWrites[binding].dstSet = descriptorSet;
-			voxelGridMapDescriptorWrites[binding].dstBinding = binding;
-			voxelGridMapDescriptorWrites[binding].dstArrayElement = 0;
-			voxelGridMapDescriptorWrites[binding].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			voxelGridMapDescriptorWrites[binding].descriptorCount = 1;
-			voxelGridMapDescriptorWrites[binding].pImageInfo = &textureInfo;
-			binding++;
-		}
-		if (numberNum) {
-			VkDescriptorBufferInfo numberBufferInfo{};
-			numberBufferInfo.buffer = this->numberPropertiesBuffer.buffer;
-			numberBufferInfo.offset = 0;
-			numberBufferInfo.range = shader.properties.numberProperties.size() * sizeof(glm::vec4);
-			voxelGridMapDescriptorWrites[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			voxelGridMapDescriptorWrites[binding].dstSet = descriptorSet;
-			voxelGridMapDescriptorWrites[binding].dstBinding = binding;
-			voxelGridMapDescriptorWrites[binding].dstArrayElement = 0;
-			voxelGridMapDescriptorWrites[binding].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-			voxelGridMapDescriptorWrites[binding].descriptorCount = 1;
-			voxelGridMapDescriptorWrites[binding].pBufferInfo = &numberBufferInfo;
-		}
-
-		vkUpdateDescriptorSets(logicalDevice, voxelGridMapDescriptorWrites.size(), voxelGridMapDescriptorWrites.data(), 0, nullptr);
-	}
 };
+namespace std {
+	template<>
+	struct hash<FzbMaterial> {
+		size_t operator()(const FzbMaterial& mat) const noexcept {
+			using std::hash;
+			using std::size_t;
+
+			size_t seed = 0;
+
+			auto combine_hash = [](size_t& seed, size_t h) {
+				seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
+			};
+
+			// 假设我们用 id + type + distribution 来做哈希
+			combine_hash(seed, hash<std::string>{}(mat.id));
+			combine_hash(seed, hash<std::string>{}(mat.type));
+			combine_hash(seed, hash<int>{}(static_cast<int>(mat.distribution)));
+
+			return seed;
+		}
+	};
+}
 
 //struct FzbMaterial_Diffuse : public FzbMaterial {
 //	FzbTexture albedoMap;

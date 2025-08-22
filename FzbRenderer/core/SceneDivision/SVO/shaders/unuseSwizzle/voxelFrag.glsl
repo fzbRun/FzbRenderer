@@ -5,7 +5,6 @@ layout(location = 0) in vec3 worldPos;
 layout(location = 0) out vec4 FragColor;
 
 layout(set = 0, binding = 0) uniform voxelBufferObject{
-	mat4 model;
 	mat4 VP[3];
 	vec4 voxelSize_Num;
 	vec4 voxelStartPos;

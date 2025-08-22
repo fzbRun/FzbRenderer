@@ -1,5 +1,12 @@
 #include "FzbPipeline.h"
 
+#include <stdexcept>
+#include <string>
+#include <vector>
+#include<fstream>
+#include<filesystem>
+#include <map>
+
 VkPipelineVertexInputStateCreateInfo fzbCreateVertexInputCreateInfo(VkBool32 vertexInput, VkVertexInputBindingDescription* inputBindingDescriptor, std::vector<VkVertexInputAttributeDescription>* inputAttributeDescription) {
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -168,6 +175,13 @@ VkPipelineViewportSwizzleStateCreateInfoNV getViewportSwizzleState(std::vector<V
 	return viewportSwizzleState;
 }
 
+VkPipelineViewportStateCreateInfo fzbCreateViewStateCreateInfo(uint32_t viewportNum) {
+	VkPipelineViewportStateCreateInfo viewportState{};
+	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+	viewportState.viewportCount = viewportNum;
+	viewportState.scissorCount = viewportNum;
+	return viewportState;
+}
 VkPipelineViewportStateCreateInfo fzbCreateViewStateCreateInfo(std::vector<VkViewport>& viewports, std::vector<VkRect2D>& scissors, const void* pNext) {
 	VkPipelineViewportStateCreateInfo viewportState{};
 	viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;

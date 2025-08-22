@@ -85,6 +85,15 @@
     <Filter Include="资源文件\shaders\common">
       <UniqueIdentifier>{99bccb51-6cfa-4eb5-bc9c-d9f9325e93e6}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\core\ForwardRender">
+      <UniqueIdentifier>{34e4104b-f6d9-4142-8224-4f331e8d9daf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\ForwardRender\shaders">
+      <UniqueIdentifier>{876864bf-d15b-4808-8de3-fdb98f7ec63f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\ForwardRender\shaders\diffuse">
+      <UniqueIdentifier>{344b3d84-2547-4c6a-a4e8-40fe94396c8e}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
@@ -144,6 +153,9 @@
     <ClInclude Include="core\common\FzbMaterial.h">
       <Filter>资源文件\core\common</Filter>
     </ClInclude>
+    <ClInclude Include="core\ForwardRender\FzbForwardRender.h">
+      <Filter>资源文件\core\ForwardRender</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
@@ -164,6 +176,33 @@
       <Filter>资源文件\core\common</Filter>
     </ClCompile>
     <ClCompile Include="core\common\FzbPipeline.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbShader.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbScene.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbMaterial.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbMesh.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\StructSet.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbRenderPass.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbDescriptor.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbComponent.cpp">
+      <Filter>资源文件\core\common</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbCamera.cpp">
       <Filter>资源文件\core\common</Filter>
     </ClCompile>
   </ItemGroup>
@@ -219,6 +258,15 @@
     <None Include="shaders\common\getAttribute.glsl">
       <Filter>资源文件\shaders\common</Filter>
     </None>
+    <None Include="core\ForwardRender\shaders\diffuse\fragment.glsl">
+      <Filter>资源文件\core\ForwardRender\shaders\diffuse</Filter>
+    </None>
+    <None Include="core\ForwardRender\shaders\diffuse\vertex.glsl">
+      <Filter>资源文件\core\ForwardRender\shaders\diffuse</Filter>
+    </None>
+    <None Include="shaders\common\getIllumination.glsl">
+      <Filter>资源文件\shaders\common</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Text Include="shaders\LitShader\shaderInfo.xml">
@@ -228,6 +276,15 @@
   <ItemGroup>
     <Xml Include="shaders\forward\diffuse\shaderInfo.xml">
       <Filter>资源文件\shaders\forward\diffuse</Filter>
+    </Xml>
+    <Xml Include="core\ForwardRender\shaders\diffuse\shaderInfo.xml">
+      <Filter>资源文件\core\ForwardRender\shaders\diffuse</Filter>
+    </Xml>
+    <Xml Include="core\SceneDivision\SVO\shaders\unuseSwizzle\shaderInfo.xml">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\unuseSwizzle</Filter>
+    </Xml>
+    <Xml Include="core\SceneDivision\SVO\shaders\present\shaderInfo.xml">
+      <Filter>资源文件\core\SceneDivision\SVO\shaders\present</Filter>
     </Xml>
   </ItemGroup>
 </Project>

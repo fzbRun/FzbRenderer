@@ -5,6 +5,8 @@
 #include "stb_image.h"
 #endif
 
+#include <stdexcept>
+
 void FzbImage::fzbCreateImage(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue) {
 
 	this->physicalDevice = physicalDevice;
