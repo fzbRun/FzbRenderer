@@ -204,7 +204,7 @@ public:
 
 	std::vector<const char*> instanceExtensions = instanceExtensions_default;
 	std::vector<const char*> validationLayers = validationLayers_default;
-	uint32_t apiVersion = apiVersion_default;
+	inline static uint32_t apiVersion = apiVersion_default;
 
 	void fzbInitWindow(uint32_t width = 512, uint32_t height = 512, const char* windowName = "Î´ÃüÃû", VkBool32 windowResizable = VK_FALSE);
 

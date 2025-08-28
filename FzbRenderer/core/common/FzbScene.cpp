@@ -101,7 +101,13 @@ bool FzbVertexFormatLess::operator()(FzbVertexFormat const& a, FzbVertexFormat c
 
 //-----------------------------------------------场景----------------------------------------
 FzbScene::FzbScene() {};
-FzbScene::FzbScene(std::string scenePath) {
+FzbScene::FzbScene(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue) {
+	this->physicalDevice = physicalDevice;
+	this->logicalDevice = logicalDevice;
+	this->commandPool = commandPool;
+	this->graphicsQueue = graphicsQueue;
+};
+void FzbScene::getSceneGlobalInfo(std::string scenePath) {
 	this->scenePath = scenePath;
 	std::string xmlPath = scenePath + "/scene_onlyDiff.xml";
 	auto result = this->doc.load_file(xmlPath.c_str());
@@ -115,19 +121,45 @@ FzbScene::FzbScene(std::string scenePath) {
 	this->width = std::stoi(scene.select_node(".//default[@name='resx']").node().attribute("value").value());
 	this->height = std::stoi(scene.select_node(".//default[@name='resy']").node().attribute("value").value());
 }
-void FzbScene::initScene(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, FzbVertexFormat vertexFormat, bool compress) {
+void FzbScene::initScene(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, std::vector<FzbVertexFormat> componentVertexFormats, bool compress) {
 	this->physicalDevice = physicalDevice;
 	this->logicalDevice = logicalDevice;
 	this->commandPool = commandPool;
 	this->graphicsQueue = graphicsQueue;
-
 	createMeshDescriptor(logicalDevice, meshDescriptorSetLayout);
-	addSceneFromMitsubaXML(scenePath, vertexFormat);
-	getSceneVertics(compress);
-	createVertexBuffer();
+	FzbVertexFormat vertexFormat = FzbVertexFormat();
+	bool usePosData = false;
+	bool usePosNormalData = false;
+	for (int i = 0; i < componentVertexFormats.size(); i++) {
+		vertexFormat.mergeUpward(componentVertexFormats[i]);
+		if (componentVertexFormats[i] == FzbVertexFormat()) usePosData = true;
+		if (componentVertexFormats[i] == FzbVertexFormat(true)) usePosNormalData = true;
+	}
+	addSceneFromMitsubaXML(this->scenePath, vertexFormat);
+	createVertexBuffer(compress);
+	createVertexPairDataBuffer(usePosData, usePosNormalData, compress);
+	createShaderMeshBatch();
 	createBufferAndDescriptorOfMaterialAndMesh();
 	createCameraAndLightBufferAndDescriptor();
 }
+void FzbScene::initScene(std::vector<FzbVertexFormat> componentVertexFormats, bool compress) {
+	createMeshDescriptor(logicalDevice, meshDescriptorSetLayout);
+	FzbVertexFormat vertexFormat = FzbVertexFormat();
+	bool usePosData = false;
+	bool usePosNormalData = false;
+	for (int i = 0; i < componentVertexFormats.size(); i++) {
+		vertexFormat.mergeUpward(componentVertexFormats[i]);
+		if (componentVertexFormats[i] == FzbVertexFormat()) usePosData = true;
+		if (componentVertexFormats[i] == FzbVertexFormat(true)) usePosNormalData = true;
+	}
+	addSceneFromMitsubaXML(this->scenePath, vertexFormat);
+	createVertexBuffer(compress);
+	createVertexPairDataBuffer(usePosData, usePosNormalData, compress);
+	createShaderMeshBatch();
+	createBufferAndDescriptorOfMaterialAndMesh();
+	createCameraAndLightBufferAndDescriptor();
+}
+
 void FzbScene::clean() {
 
 	for (auto& materialPair : sceneMaterials) {
@@ -148,6 +180,10 @@ void FzbScene::clean() {
 
 	vertexBuffer.clean();
 	indexBuffer.clean();
+	vertexPosBuffer.clean();
+	indexPosBuffer.clean();
+	vertexPosNormalBuffer.clean();
+	indexPosNormalBuffer.clean();
 
 	cameraBuffer.clean();
 	lightsBuffer.clean();
@@ -157,79 +193,19 @@ void FzbScene::clear() {
 	clean();
 	sceneMeshSet.clear();
 	differentVertexFormatMeshIndexs.clear();
-	sceneVertices.clear();
-	sceneIndices.clear();
 	sceneMaterials.clear();
 }
 
-void FzbScene::addMeshToScene(FzbMesh mesh, bool reAdd) {
-
-	//bool skip = true;
-	//for (int i = 0; i < this->sceneTransformMatrixs.size(); i++) {
-	//	if (mesh.transforms == this->sceneTransformMatrixs[i]) {
-	//		mesh.materialUniformObject.transformIndex = i;
-	//		skip = false;
-	//		break;
-	//	}
-	//}
-	//if (skip) {
-	//	mesh.materialUniformObject.transformIndex = this->sceneTransformMatrixs.size();
-	//	this->sceneTransformMatrixs.push_back(mesh.transforms);
-	//}
-	//
-	//skip = true;
-	//for (int i = 0; i < this->sceneMaterials.size(); i++) {
-	//	if (mesh.material == this->sceneMaterials[i]) {
-	//		mesh.materialUniformObject.materialIndex = i;
-	//		skip = false;
-	//		break;
-	//	}
-	//}
-	//if (skip) {
-	//	mesh.materialUniformObject.materialIndex = this->sceneMaterials.size();
-	//	this->sceneMaterials.push_back(mesh.material);
-	//}
-	//
-	//skip = true;
-	//if (mesh.albedoTexture.path != "") {
-	//	for (int i = 0; i < this->sceneAlbedoTextures.size(); i++) {
-	//		if (mesh.albedoTexture == this->sceneAlbedoTextures[i]) {
-	//			mesh.materialUniformObject.albedoTextureIndex = i;
-	//			skip = false;
-	//			break;
-	//		}
-	//	}
-	//	if (skip) {
-	//		mesh.materialUniformObject.albedoTextureIndex = this->sceneAlbedoTextures.size();
-	//		this->sceneAlbedoTextures.push_back(mesh.albedoTexture);
-	//	}
-	//}
-	//
-	//skip = true;
-	//if (mesh.normalTexture.path != "") {
-	//	for (int i = 0; i < this->sceneNormalTextures.size(); i++) {
-	//		if (mesh.normalTexture == this->sceneNormalTextures[i]) {
-	//			mesh.materialUniformObject.normalTextureIndex = i;
-	//			skip = false;
-	//			break;
-	//		}
-	//
-	//	}
-	//	if (skip) {
-	//		mesh.materialUniformObject.normalTextureIndex = this->sceneNormalTextures.size();
-	//		this->sceneNormalTextures.push_back(mesh.normalTexture);
-	//	}
-	//}
-
+void FzbScene::addMeshToScene(FzbMesh mesh, FzbMaterial material, std::string shaderPath) {
+	this->sceneMaterials.insert({ material.id, material });
+	mesh.material = &this->sceneMaterials[material.id];
+	if (!this->sceneShaders.count(shaderPath)) {
+		this->sceneShaders.insert({ shaderPath, FzbShader(logicalDevice, shaderPath) });
+	}
+	this->sceneShaders[shaderPath].createShaderVariant(&this->sceneMaterials[material.id], mesh.vertexFormat);
 	this->differentVertexFormatMeshIndexs[mesh.vertexFormat].push_back(this->sceneMeshSet.size());
-	if (!reAdd) this->sceneMeshSet.push_back(mesh);
+	this->sceneMeshSet.push_back(mesh);
 }
-/*
-std::string FzbScene::getRootPath() {
-	std::filesystem::path thisFile = __FILE__;
-	return thisFile.parent_path().parent_path().parent_path().string();	//得到Renderer文件夹
-}
-*/
 void FzbScene::createDefaultMaterial(FzbVertexFormat vertexFormat) {
 	FzbMaterial defaultMaterial = FzbMaterial(logicalDevice, "defaultMaterial", "diffuse");
 	this->sceneMaterials.insert({ "defaultMaterial", defaultMaterial });
@@ -238,6 +214,7 @@ void FzbScene::createDefaultMaterial(FzbVertexFormat vertexFormat) {
 	this->sceneShaders[shaderPath].createShaderVariant(&this->sceneMaterials["defaultMaterial"], vertexFormat);
 }
 void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFormat) {
+	if (path == "") return;
 	createDefaultMaterial(vertexFormat);
 
 	pugi::xml_node scene = doc.document_element();	//获取根节点，即<scene>
@@ -339,7 +316,6 @@ void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFo
 		if (meshType == "obj") {
 			if (pugi::xml_node pathNode = node.select_node(".//string[@name='filename']").node()) {
 				std::string objPath = path + "/" + std::string(pathNode.attribute("value").value());
-
 				meshes = fzbGetMeshFromOBJ(logicalDevice, objPath, sceneMaterials[materialID].vertexFormat);
 			}
 			else {
@@ -359,18 +335,19 @@ void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFo
 			meshes[i].transforms = modelMatrix;
 			meshes[i].material = &sceneMaterials[materialID];
 			meshes[i].id = meshID;
-			addMeshToScene(meshes[i]);
+			this->differentVertexFormatMeshIndexs[meshes[i].vertexFormat].push_back(this->sceneMeshSet.size());
+			this->sceneMeshSet.push_back(meshes[i]);
 		}
 	}
-
+	doc.reset();
+}
+void FzbScene::createShaderMeshBatch() {
 	for (auto& pair : sceneShaders) {
 		FzbShader& shader = pair.second;
 		shader.createMeshBatch(physicalDevice, commandPool, graphicsQueue, sceneMeshSet);
+		this->sceneShaders_vector.push_back(&shader);
 	}
-
-	doc.reset();
 }
-
 void FzbScene::createBufferAndDescriptorOfMaterialAndMesh() {
 	uint32_t textureNum = 0;
 	uint32_t numberBufferNum = 0;
@@ -397,7 +374,7 @@ void FzbScene::createBufferAndDescriptorOfMaterialAndMesh() {
 		*/
 	}
 	textureNum = this->sceneImages.size();
-	numberBufferNum += 2;	// sceneCameras.size() + sceneLights.size();
+	numberBufferNum += sceneCameras.size() > 0 ? 1 : 0 + sceneLights.size() > 0 ? 1 : 0;
 	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum = { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, this->sceneMeshSet.size()},	//mesh特有信息
 																{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, textureNum},		//纹理信息
 																{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, numberBufferNum} };	//材质信息
@@ -435,11 +412,12 @@ void FzbScene::compressSceneVertics(std::vector<float>& vertices, FzbVertexForma
 	}
 	indices = uniqueIndices;
 }
-void FzbScene::getSceneVertics(bool compress) {	//目前只处理静态mesh
+void FzbScene::createVertexBuffer(bool compress) {	//目前只处理静态mesh
+	std::vector<float> sceneVertices;
+	std::vector<uint32_t> sceneIndices;
 	uint32_t FzbVertexByteSize = 0;
-	FzbVertexFormat vertexFormat;
 	for (auto& pair : differentVertexFormatMeshIndexs) {
-		vertexFormat = pair.first;
+		FzbVertexFormat vertexFormat = pair.first;
 		uint32_t vertexSize = vertexFormat.getVertexSize();	//字节数
 
 		std::vector<uint32_t> meshIndexs = pair.second;
@@ -459,8 +437,8 @@ void FzbScene::getSceneVertics(bool compress) {	//目前只处理静态mesh
 			uint32_t meshIndex = meshIndexs[i];
 			this->sceneMeshIndices.push_back(meshIndex);
 
-			sceneMeshSet[meshIndex].indexArrayOffset = this->sceneIndices.size() + compressIndices.size();
-			sceneMeshSet[meshIndex].indeArraySize = sceneMeshSet[meshIndex].indices.size();	//压缩顶点数据不会改变索引数组的大小和索引的偏移位置
+			sceneMeshSet[meshIndex].indexArrayOffset = sceneIndices.size() + compressIndices.size();
+			//sceneMeshSet[meshIndex].indeArraySize = sceneMeshSet[meshIndex].indices.size();	//压缩顶点数据不会改变索引数组的大小和索引的偏移位置
 
 			//这里用临时数组，因为可能同一个mesh被添加多次，如果每次都直接对mesh的indices加上offset就会出错，所以需要使用临时数据
 			//同时这不会影响meshBatch的indexBuffer创建，因此indices的大小和在sceneIndices中的偏移都不变。
@@ -469,20 +447,16 @@ void FzbScene::getSceneVertics(bool compress) {	//目前只处理静态mesh
 				meshIndices[j] += compressVertics.size() / (vertexSize / sizeof(float));
 			}
 
-			std::vector<float> meshVertices = sceneMeshSet[meshIndex].getVetices();
+			std::vector<float> meshVertices = sceneMeshSet[meshIndex].getVertices(vertexFormat);
 			compressVertics.insert(compressVertics.end(), meshVertices.begin(), meshVertices.end());
 			compressIndices.insert(compressIndices.end(), meshIndices.begin(), meshIndices.end());
 			//sceneMeshSet[meshIndex].indices.clear();
 		}
 
-		//std::vector<float> testVertices = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 2.0f, 0.0f };
-		//std::vector<uint32_t> testIndices = { 0, 2, 4, 1, 2, 4, 1, 3, 4 };
-		//compressSceneVertics(testVertices, FzbVertexFormat(), testIndices);
-
 		if (compress)
 			compressSceneVertics(compressVertics, vertexFormat, compressIndices);
 		while (FzbVertexByteSize % vertexSize > 0) {
-			this->sceneVertices.push_back(0.0f);
+			sceneVertices.push_back(0.0f);
 			FzbVertexByteSize += sizeof(float);
 		}
 		if (FzbVertexByteSize > 0) {
@@ -492,23 +466,150 @@ void FzbScene::getSceneVertics(bool compress) {	//目前只处理静态mesh
 		}
 		FzbVertexByteSize += compressVertics.size() * sizeof(float);
 
-		this->sceneVertices.insert(sceneVertices.end(), compressVertics.begin(), compressVertics.end());
-		this->sceneIndices.insert(sceneIndices.end(), compressIndices.begin(), compressIndices.end());
+		sceneVertices.insert(sceneVertices.end(), compressVertics.begin(), compressVertics.end());
+		sceneIndices.insert(sceneIndices.end(), compressIndices.begin(), compressIndices.end());
+	}
+
+	vertexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneVertices.data(), sceneVertices.size() * sizeof(float));
+	indexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneIndices.data(), sceneIndices.size() * sizeof(uint32_t));
+}
+void FzbScene::createVertexPairDataBuffer(bool usePosData, bool usePosNormalData, bool compress) {
+	if (usePosData) {
+		std::vector<float> sceneVertices;
+		std::vector<uint32_t> sceneIndices;
+		uint32_t sceneVertexFloatNum = 0;
+		uint32_t sceneIndexNum = 0;
+		for (int i = 0; i < this->sceneMeshSet.size(); i++) {
+			FzbMesh& mesh = this->sceneMeshSet[i];
+			sceneVertexFloatNum += mesh.vertices.size() / (mesh.vertexFormat.getVertexSize() / sizeof(float)) * 3;
+			sceneIndexNum += mesh.indices.size();
+		}
+		sceneVertices.reserve(sceneVertexFloatNum);
+		sceneIndices.reserve(sceneIndexNum);
+		for (int i = 0; i < this->sceneMeshIndices.size(); i++) {
+			FzbMesh& mesh = this->sceneMeshSet[sceneMeshIndices[i]];
+			std::vector<float> meshVertices = mesh.getVertices(FzbVertexFormat());
+			std::vector<uint32_t> meshIndices = mesh.indices;
+			for (int j = 0; j < meshIndices.size(); j++) {
+				meshIndices[j] += sceneVertices.size() / 3;
+			}
+			sceneVertices.insert(sceneVertices.end(), meshVertices.begin(), meshVertices.end());
+			sceneIndices.insert(sceneIndices.end(), meshIndices.begin(), meshIndices.end());
+		}
+		if (compress)
+			compressSceneVertics(sceneVertices, FzbVertexFormat(), sceneIndices);
+		vertexPosBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneVertices.data(), sceneVertices.size() * sizeof(float));
+		indexPosBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneIndices.data(), sceneIndices.size() * sizeof(uint32_t));
+	}
+	if (usePosNormalData) {
+		std::vector<float> sceneVertices;
+		std::vector<uint32_t> sceneIndices;
+		uint32_t sceneVertexFloatNum = 0;
+		uint32_t sceneIndexNum = 0;
+		for (int i = 0; i < this->sceneMeshSet.size(); i++) {
+			FzbMesh& mesh = this->sceneMeshSet[i];
+			sceneVertexFloatNum += mesh.vertices.size() / (mesh.vertexFormat.getVertexSize() / sizeof(float)) * 6;
+			sceneIndexNum += mesh.indices.size();
+		}
+		sceneVertices.reserve(sceneVertexFloatNum);
+		sceneIndices.reserve(sceneIndexNum);
+		for (int i = 0; i < this->sceneMeshIndices.size(); i++) {
+			FzbMesh& mesh = this->sceneMeshSet[sceneMeshIndices[i]];
+			std::vector<float> meshVertices = mesh.getVertices(FzbVertexFormat(true));
+			std::vector<uint32_t> meshIndices = mesh.indices;
+			for (int j = 0; j < meshIndices.size(); j++) {
+				meshIndices[j] += sceneVertices.size() / 6;
+			}
+			sceneVertices.insert(sceneVertices.end(), meshVertices.begin(), meshVertices.end());
+			sceneIndices.insert(sceneIndices.end(), meshIndices.begin(), meshIndices.end());
+		}
+		if (compress)
+			compressSceneVertics(sceneVertices, FzbVertexFormat(true), sceneIndices);
+		vertexPosNormalBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneVertices.data(), sceneVertices.size() * sizeof(float));
+		indexPosNormalBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneIndices.data(), sceneIndices.size() * sizeof(uint32_t));
 	}
 }
-void FzbScene::createVertexBuffer() {
-	this->vertexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneVertices.data(), sceneVertices.size() * sizeof(float));
-	this->sceneVertices.clear();
 
-	this->indexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, sceneIndices.data(), sceneIndices.size() * sizeof(uint32_t));
-	this->sceneIndices.clear();
+void FzbScene::createCameraAndLightBufferAndDescriptor() {
+	if (this->sceneCameras.size() == 0 && this->sceneLights.size() == 0) return;
+	bool useCameras = this->sceneCameras.size();
+	bool useLights = this->sceneLights.size();
+	std::vector<VkDescriptorType> descriptorTypes;
+	std::vector<VkShaderStageFlags> descriptorShaderFlags;
+
+	//camera的数据每帧都会变化，所以这里只是创建buffer，但是不填入数据，具体数据由渲染组件填入
+	if (useCameras) {
+		cameraBuffer = fzbCreateUniformBuffers(physicalDevice, logicalDevice, sizeof(FzbCameraUniformBufferObject));
+		descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	}
+
+	if (useLights) {
+		lightsBuffer = fzbCreateUniformBuffers(physicalDevice, logicalDevice, sizeof(FzbLightsUniformBufferObject));
+		FzbLightsUniformBufferObject lightsData(sceneLights.size());
+		for (int i = 0; i < sceneLights.size(); i++) {
+			FzbLight& light = sceneLights[i];
+			lightsData.lightData[i].pos = glm::vec4(light.position, 1.0f);
+			lightsData.lightData[i].strength = glm::vec4(light.strength, 1.0f);
+		}
+		memcpy(lightsBuffer.mapped, &lightsData, sizeof(FzbLightsUniformBufferObject));
+		descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	}
+
+	cameraAndLightsDescriptorSetLayout = fzbCreateDescriptLayout(logicalDevice, descriptorTypes.size(), descriptorTypes, descriptorShaderFlags);
+	cameraAndLightsDescriptorSet = fzbCreateDescriptorSet(logicalDevice, sceneDescriptorPool, cameraAndLightsDescriptorSetLayout);
+
+	std::vector<VkWriteDescriptorSet> uniformDescriptorWrites(sceneCameras.size() + sceneLights.size());
+	int index = 0;
+	if (useCameras) {
+		VkDescriptorBufferInfo cameraUniformBufferInfo{};
+		cameraUniformBufferInfo.buffer = cameraBuffer.buffer;
+		cameraUniformBufferInfo.offset = 0;
+		cameraUniformBufferInfo.range = sizeof(FzbCameraUniformBufferObject);
+		uniformDescriptorWrites[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		uniformDescriptorWrites[index].dstSet = cameraAndLightsDescriptorSet;
+		uniformDescriptorWrites[index].dstBinding = 0;
+		uniformDescriptorWrites[index].dstArrayElement = 0;
+		uniformDescriptorWrites[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformDescriptorWrites[index].descriptorCount = 1;
+		uniformDescriptorWrites[index].pBufferInfo = &cameraUniformBufferInfo;
+		++index;
+	}
+
+	if (useLights) {
+		VkDescriptorBufferInfo lightUniformBufferInfo{};
+		lightUniformBufferInfo.buffer = lightsBuffer.buffer;
+		lightUniformBufferInfo.offset = 0;
+		lightUniformBufferInfo.range = sizeof(FzbLightsUniformBufferObject);
+		uniformDescriptorWrites[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		uniformDescriptorWrites[index].dstSet = cameraAndLightsDescriptorSet;
+		uniformDescriptorWrites[index].dstBinding = 1;
+		uniformDescriptorWrites[index].dstArrayElement = 0;
+		uniformDescriptorWrites[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformDescriptorWrites[index].descriptorCount = 1;
+		uniformDescriptorWrites[index].pBufferInfo = &lightUniformBufferInfo;
+	}
+
+	vkUpdateDescriptorSets(logicalDevice, uniformDescriptorWrites.size(), uniformDescriptorWrites.data(), 0, nullptr);
+}
+void FzbScene::updateCameraBuffer() {
+	FzbCameraUniformBufferObject ubo{};
+	FzbCamera& camera = this->sceneCameras[0];
+	ubo.view = camera.GetViewMatrix();
+	ubo.proj = camera.GetProjMatrix();
+	ubo.cameraPos = glm::vec4(camera.position, 0.0f);
+	memcpy(cameraBuffer.mapped, &ubo, sizeof(ubo));
+}
+
+FzbAABBBox FzbScene::getAABB() {
+	if (this->AABB.isEmpty()) this->createAABB();
+	return this->AABB;
 }
 void FzbScene::createAABB() {
 	this->AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	for (int i = 0; i < this->sceneMeshSet.size(); i++) {
-		if (sceneMeshSet[i].AABB.isEmpty())
-			sceneMeshSet[i].createAABB();
-		FzbAABBBox meshAABB = sceneMeshSet[i].AABB;
+		FzbAABBBox meshAABB = sceneMeshSet[i].getAABB();
 		AABB.leftX = meshAABB.leftX < AABB.leftX ? meshAABB.leftX : AABB.leftX;
 		AABB.rightX = meshAABB.rightX > AABB.rightX ? meshAABB.rightX : AABB.rightX;
 		AABB.leftY = meshAABB.leftY < AABB.leftY ? meshAABB.leftY : AABB.leftY;
@@ -516,7 +617,7 @@ void FzbScene::createAABB() {
 		AABB.leftZ = meshAABB.leftZ < AABB.leftZ ? meshAABB.leftZ : AABB.leftZ;
 		AABB.rightZ = meshAABB.rightZ > AABB.rightZ ? meshAABB.rightZ : AABB.rightZ;
 	}
-	//对于面，我们给个0.2的宽度
+	//对于面，我们给个0.02的宽度
 	if (AABB.leftX == AABB.rightX) {
 		AABB.leftX = AABB.leftX - 0.01;
 		AABB.rightX = AABB.rightX + 0.01;
@@ -531,62 +632,4 @@ void FzbScene::createAABB() {
 	}
 }
 
-void FzbScene::createCameraAndLightBufferAndDescriptor() {
-	//camera的数据每帧都会变化，所以这里只是创建buffer，但是不填入数据，具体数据由渲染组件填入
-	cameraBuffer = fzbCreateUniformBuffers(physicalDevice, logicalDevice, sizeof(FzbCameraUniformBufferObject));
-	//FzbCameraUniformBufferObject cameraData{};
-	//cameraData.view = sceneCameras[0].GetViewMatrix();
-	//cameraData.proj = glm::perspectiveRH_ZO(glm::radians(45.0f), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
-	//cameraData.proj[1][1] *= -1;
-	//cameraData.cameraPos = glm::vec4(sceneCameras[0].Position, 0.0f);
-	//memcpy(cameraBuffer.mapped, &cameraData, sizeof(FzbCameraUniformBufferObject));
-
-	lightsBuffer = fzbCreateUniformBuffers(physicalDevice, logicalDevice, sizeof(FzbLightsUniformBufferObject));
-	FzbLightsUniformBufferObject lightsData(sceneLights.size());
-	for (int i = 0; i < sceneLights.size(); i++) {
-		FzbLight& light = sceneLights[i];
-		lightsData.lightData[i].pos = glm::vec4(light.position, 1.0f);
-		lightsData.lightData[i].strength = glm::vec4(light.strength, 1.0f);
-	}
-	memcpy(lightsBuffer.mapped, &lightsData, sizeof(FzbLightsUniformBufferObject));
-
-	std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER };
-	std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
-	cameraAndLightsDescriptorSetLayout = fzbCreateDescriptLayout(logicalDevice, 2, descriptorTypes, descriptorShaderFlags);
-	cameraAndLightsDescriptorSet = fzbCreateDescriptorSet(logicalDevice, sceneDescriptorPool, cameraAndLightsDescriptorSetLayout);
-
-	std::vector<VkWriteDescriptorSet> uniformDescriptorWrites(sceneCameras.size() + sceneLights.size());
-	VkDescriptorBufferInfo cameraUniformBufferInfo{};
-	cameraUniformBufferInfo.buffer = cameraBuffer.buffer;
-	cameraUniformBufferInfo.offset = 0;
-	cameraUniformBufferInfo.range = sizeof(FzbCameraUniformBufferObject);
-	uniformDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	uniformDescriptorWrites[0].dstSet = cameraAndLightsDescriptorSet;
-	uniformDescriptorWrites[0].dstBinding = 0;
-	uniformDescriptorWrites[0].dstArrayElement = 0;
-	uniformDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	uniformDescriptorWrites[0].descriptorCount = 1;
-	uniformDescriptorWrites[0].pBufferInfo = &cameraUniformBufferInfo;
-
-	VkDescriptorBufferInfo lightUniformBufferInfo{};
-	lightUniformBufferInfo.buffer = lightsBuffer.buffer;
-	lightUniformBufferInfo.offset = 0;
-	lightUniformBufferInfo.range = sizeof(FzbLightsUniformBufferObject);
-	uniformDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	uniformDescriptorWrites[1].dstSet = cameraAndLightsDescriptorSet;
-	uniformDescriptorWrites[1].dstBinding = 1;
-	uniformDescriptorWrites[1].dstArrayElement = 0;
-	uniformDescriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	uniformDescriptorWrites[1].descriptorCount = 1;
-	uniformDescriptorWrites[1].pBufferInfo = &lightUniformBufferInfo;
-
-	vkUpdateDescriptorSets(logicalDevice, uniformDescriptorWrites.size(), uniformDescriptorWrites.data(), 0, nullptr);
-}
-void FzbScene::updateCameraBuffer() {
-	FzbCameraUniformBufferObject ubo{};
-	FzbCamera& camera = this->sceneCameras[0];
-	ubo.view = camera.GetViewMatrix();
-	ubo.proj = camera.GetProjMatrix();
-	ubo.cameraPos = glm::vec4(camera.position, 0.0f);
-	memcpy(cameraBuffer.mapped, &ubo, sizeof(ubo));
-}
+//-----------------------------------------------组件场景----------------------------------------

@@ -752,7 +752,7 @@ void FzbMainComponent::recreateSwapChain(std::vector<FzbRenderPass*> renderPasse
 
 	vkDeviceWaitIdle(logicalDevice);
 	for (int i = 0; i < renderPasses.size(); i++) {
-		if (renderPasses[i]->setting.extent.width == swapChainExtent.width && renderPasses[i]->setting.extent.height == swapChainExtent.height) {
+		if (renderPasses[i]->setting.resolution.width == swapChainExtent.width && renderPasses[i]->setting.resolution.height == swapChainExtent.height) {
 			for (int j = 0; j < renderPasses[i]->framebuffers.size(); j++) {
 				vkDestroyFramebuffer(logicalDevice, renderPasses[i]->framebuffers[j], nullptr);
 			}
@@ -762,7 +762,7 @@ void FzbMainComponent::recreateSwapChain(std::vector<FzbRenderPass*> renderPasse
 	fzbCreateSwapChain();
 	createImages();
 	for (int i = 0; i < renderPasses.size(); i++) {
-		if (renderPasses[i]->setting.extent.width == swapChainExtent.width && renderPasses[i]->setting.extent.height == swapChainExtent.height) {
+		if (renderPasses[i]->setting.resolution.width == swapChainExtent.width && renderPasses[i]->setting.resolution.height == swapChainExtent.height) {
 			renderPasses[i]->createFramebuffers(swapChainImageViews);
 		}
 	}

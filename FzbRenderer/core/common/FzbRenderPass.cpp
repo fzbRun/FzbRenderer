@@ -3,52 +3,36 @@
 #include <stdexcept>
 
 FzbSubPass::FzbSubPass() {};
-FzbSubPass::FzbSubPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, VkRenderPass renderPass, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, uint32_t subPassIndex, FzbScene* scene, std::vector<FzbShader*> shaders, VkExtent2D extent) {
-	this->physicalDevice = physicalDevice;
+FzbSubPass::FzbSubPass(VkDevice logicalDevice, VkRenderPass renderPass, uint32_t subPassIndex,
+	std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, std::vector<VkDescriptorSet> componentDescriptorSets,
+	VkBuffer vertexBuffer, VkBuffer indexBuffer, std::vector<FzbShader*> shaders, VkExtent2D resolution) {
 	this->logicalDevice = logicalDevice;
-	this->commandPool = commandPool;
-	this->graphicsQueue = graphicsQueue;
 	this->renderPass = renderPass;
 	this->subPassIndex = subPassIndex;
-	this->extent = extent;
-
+	this->resolution = resolution;
+	this->componentDescriptorSetLayouts = componentDescriptorSetLayouts;
+	this->componentDescriptorSets = componentDescriptorSets;
+	this->vertexBuffer = vertexBuffer;
+	this->indexBuffer = indexBuffer;
 	this->shaders = shaders;
-	if (shaders.size() == 0) {
-		for (auto& shader : scene->sceneShaders) {
-			this->shaders.push_back(&shader.second);
-		}
-	}
-	for (int i = 0; i < this->shaders.size(); i++) {
-		FzbShader* shader = this->shaders[i];
-		//shader->createMeshBatch(scene->sceneMeshSet, scene->sceneIndices, physicalDevice, commandPool, graphicsQueue);
-		shader->createPipeline(renderPass, subPassIndex, scene->meshDescriptorSetLayout, componentDescriptorSetLayouts);
-	}
-}
-FzbSubPass::FzbSubPass(FzbSubPassCreateInfo* createInfo) {
-	this->physicalDevice = createInfo->physicalDevice;
-	this->logicalDevice = createInfo->logicalDevice;
-	this->commandPool = createInfo->commandPool;
-	this->graphicsQueue = createInfo->graphicsQueue;
-	this->renderPass = createInfo->renderPass;
-	this->subPassIndex = createInfo->subPassIndex;
-	this->extent = createInfo->extent;
-
-	this->shaders = shaders;
-	if (shaders.size() == 0) {
-		for (auto& shader : createInfo->scene->sceneShaders) {
-			this->shaders.push_back(&shader.second);
-		}
-	}
-	for (int i = 0; i < this->shaders.size(); i++) {
-		FzbShader* shader = this->shaders[i];
-		//shader->createMeshBatch(scene->sceneMeshSet, scene->sceneIndices, physicalDevice, commandPool, graphicsQueue);
-		shader->createPipeline(renderPass, subPassIndex, createInfo->scene->meshDescriptorSetLayout, createInfo->componentDescriptorSetLayouts);
-	}
 }
 void FzbSubPass::clean() {}
-void FzbSubPass::render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets) {
+void FzbSubPass::createPipeline(VkDescriptorSetLayout meshDescriptorSetLayout) {
 	for (int i = 0; i < this->shaders.size(); i++) {
-		this->shaders[i]->render(commandBuffer, componentDescriptorSets, extent);
+		FzbShader* shader = this->shaders[i];
+		shader->createPipeline(renderPass, subPassIndex, meshDescriptorSetLayout, this->componentDescriptorSetLayouts);
+	}
+}
+void FzbSubPass::render(VkCommandBuffer commandBuffer, VkBuffer& vertexBuffer) {
+	if (vertexBuffer != this->vertexBuffer || vertexBuffer == nullptr) {
+		VkBuffer vertexBuffers[] = { this->vertexBuffer };
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
+		vkCmdBindIndexBuffer(commandBuffer, this->indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+		vertexBuffer = this->vertexBuffer;
+	}
+	for (int i = 0; i < this->shaders.size(); i++) {
+		this->shaders[i]->render(commandBuffer, this->componentDescriptorSets, this->resolution);
 	}
 }
 
@@ -101,8 +85,8 @@ void FzbRenderPass::createFramebuffers(std::vector<VkImageView> swapChainImageVi
 		framebufferInfo.renderPass = renderPass;
 		framebufferInfo.attachmentCount = attachmentViews[i].size();
 		framebufferInfo.pAttachments = attachmentViews[i].data();
-		framebufferInfo.width = setting.extent.width;
-		framebufferInfo.height = setting.extent.height;
+		framebufferInfo.width = setting.resolution.width;	//当前renderPass的分辨率
+		framebufferInfo.height = setting.resolution.height;
 		framebufferInfo.layers = 1;
 
 		if (vkCreateFramebuffer(logicalDevice, &framebufferInfo, nullptr, &framebuffers[i]) != VK_SUCCESS) {
@@ -110,14 +94,14 @@ void FzbRenderPass::createFramebuffers(std::vector<VkImageView> swapChainImageVi
 		}
 	}
 }
-void FzbRenderPass::render(VkCommandBuffer commandBuffer, uint32_t imageIndex, FzbScene* scene, std::vector<std::vector<VkDescriptorSet>> componentDescriptorSets) {
+void FzbRenderPass::render(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
 
 	VkRenderPassBeginInfo renderPassBeginInfo{};
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.renderPass = renderPass;
 	renderPassBeginInfo.framebuffer = framebuffers[imageIndex];
 	renderPassBeginInfo.renderArea.offset = { 0, 0 };
-	renderPassBeginInfo.renderArea.extent = setting.extent;
+	renderPassBeginInfo.renderArea.extent = setting.resolution;
 
 	uint32_t clearAttachemtnNum = setting.useDepth + setting.colorAttachmentNum;
 	std::vector<VkClearValue> clearValues(clearAttachemtnNum);
@@ -129,15 +113,11 @@ void FzbRenderPass::render(VkCommandBuffer commandBuffer, uint32_t imageIndex, F
 	renderPassBeginInfo.pClearValues = clearValues.data();
 
 	vkCmdBeginRenderPass(commandBuffer, &renderPassBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
-	VkBuffer vertexBuffers[] = { scene->vertexBuffer.buffer };
-	VkDeviceSize offsets[] = { 0 };
-	vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);
-	vkCmdBindIndexBuffer(commandBuffer, scene->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
 	uint32_t subPassNum = subPasses.size();
 	//std::map<std::string, FzbMaterial>& sceneMaterials = scene->sceneMaterials;
+	VkBuffer vertexBuffer = nullptr;
 	for (int i = 0; i < subPasses.size(); i++) {
-		subPasses[i].render(commandBuffer, componentDescriptorSets[i]);	//这里其实可以将组件描述符放到subPass结构体中
+		subPasses[i].render(commandBuffer, vertexBuffer);	//这里其实可以将组件描述符放到subPass结构体中
 		if (--subPassNum > 0) vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
 	}
 

@@ -35,53 +35,49 @@ FzbMesh::FzbMesh() {
 FzbMesh::FzbMesh(VkDevice logicalDevice) {
 	this->logicalDevice = logicalDevice;
 }
-std::vector<float> FzbMesh::getVetices() {
-	return this->vertices;
-	/*
-	if (shader.vertexFormat == vertexFormat) {
-		return vertices;
-	}
-	bool skip = (vertexFormat.useNormal == false && shader.vertexFormat.useNormal == true) || (vertexFormat.useNormal == shader.vertexFormat.useNormal);
-	skip = skip && ((vertexFormat.useTangent == false && shader.vertexFormat.useTangent == true) || (vertexFormat.useTangent == shader.vertexFormat.useTangent));
-	skip = skip && ((vertexFormat.useTangent == false && shader.vertexFormat.useTangent == true) || (vertexFormat.useTangent == shader.vertexFormat.useTangent));
-	if (skip) {
-		return vertices;
-	}
-
-	uint32_t vertexSize = vertexFormat.getVertexSize() / sizeof(float);
-	std::vector<float> vertices_temp;
-	vertices_temp.reserve(this->vertices.size());
-	for (int i = 0; i < vertices.size(); i += vertexSize) {
-		for (int j = 0; j < 3; j++) {	//pos
-			vertices_temp.push_back(vertices[i + j]);
-		}
-		uint32_t oriOffset = 3;
+std::vector<float> FzbMesh::getVertices(FzbVertexFormat vertexFormat) {
+	if(vertexFormat == this->vertexFormat) return this->vertices;
+	uint32_t vertexSize = this->vertexFormat.getVertexSize() / sizeof(float);
+	uint32_t vertexNum = this->vertices.size() / vertexSize;	//mesh有几个顶点
+	uint32_t newVertexFloatNum = vertexFormat.getVertexSize() / sizeof(float) * vertexNum;
+	std::vector<float> vertexData;
+	vertexData.reserve(newVertexFloatNum);
+	for (int i = 0; i < vertexNum; i++) {
+		uint32_t vertexFloatOffset = i * vertexSize;
+		vertexData.insert(vertexData.end(), this->vertices.begin() + vertexFloatOffset, this->vertices.begin() + vertexFloatOffset + 3);	//加入pos
+		vertexFloatOffset += 3;
 		if (vertexFormat.useNormal) {
-			if (shader.vertexFormat.useNormal) {
-				for (int j = 3; j < 6; j++) {
-					vertices_temp.push_back(vertices[i + j]);
-				}
+			if (!this->vertexFormat.useNormal) {
+				//throw std::runtime_error("mesh " + id + "没有normal，没法获取");
+				vertexData.push_back(0.0f); vertexData.push_back(0.0f); vertexData.push_back(0.0f);
 			}
-			oriOffset = 6;
+			else {
+				vertexData.insert(vertexData.end(), this->vertices.begin() + vertexFloatOffset, this->vertices.begin() + vertexFloatOffset + 3);	//加入normal
+				vertexFloatOffset += 3;
+			}
 		}
 		if (vertexFormat.useTexCoord) {
-			if (shader.vertexFormat.useTexCoord) {
-				for (int j = 0; j < 2; j++) {
-					vertices_temp.push_back(vertices[i + oriOffset + j]);
-				}
+			if (!this->vertexFormat.useTexCoord) {
+				//throw std::runtime_error("mesh " + id + "没有texCoords，没法获取");
+				vertexData.push_back(0.0f); vertexData.push_back(0.0f);
 			}
-			oriOffset += 2;
+			else {
+				vertexData.insert(vertexData.end(), this->vertices.begin() + vertexFloatOffset, this->vertices.begin() + vertexFloatOffset + 2);	//加入texCoords
+				vertexFloatOffset += 2;
+			}
 		}
 		if (vertexFormat.useTangent) {
-			if (shader.vertexFormat.useTangent) {
-				for (int j = 0; j < 3; j++) {
-					vertices_temp.push_back(vertices[i + oriOffset + j]);
-				}
+			if (!this->vertexFormat.useTangent) {
+				//throw std::runtime_error("mesh " + id + "没有tangent，没法获取");
+				vertexData.push_back(0.0f); vertexData.push_back(0.0f); vertexData.push_back(0.0f);
+			}
+			else {
+				vertexData.insert(vertexData.end(), this->vertices.begin() + vertexFloatOffset, this->vertices.begin() + vertexFloatOffset + 3);	//加入tangent
+				vertexFloatOffset += 3;
 			}
 		}
 	}
-	return vertices_temp;
-	*/
+	return vertexData;
 }
 void FzbMesh::clean() {
 	meshBuffer.clean();
@@ -111,6 +107,15 @@ void FzbMesh::createDescriptor(VkDescriptorPool descriptorPool, VkDescriptorSetL
 
 	vkUpdateDescriptorSets(logicalDevice, voxelGridMapDescriptorWrites.size(), voxelGridMapDescriptorWrites.data(), 0, nullptr);
 }
+void FzbMesh::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t descriptorSetIndex) {
+	//if (this->material->descriptorSet) vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, descriptorSetIndex++, 1, &this->material->descriptorSet, 0, nullptr);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, descriptorSetIndex, 1, &this->descriptorSet, 0, nullptr);
+	vkCmdDrawIndexed(commandBuffer, this->indeArraySize, this->instanceNum, indexArrayOffset, 0, 0);
+}
+FzbAABBBox FzbMesh::getAABB() {
+	if (this->AABB.isEmpty()) this->createAABB();
+	return this->AABB;
+}
 void FzbMesh::createAABB() {
 	uint32_t vertexSize = this->vertexFormat.getVertexSize() / sizeof(float);
 
@@ -126,7 +131,7 @@ void FzbMesh::createAABB() {
 		AABB.leftZ = z < AABB.leftZ ? z : AABB.leftZ;
 		AABB.rightZ = z > AABB.rightZ ? z : AABB.rightZ;
 	}
-	//对于面，我们给个0.2的宽度
+	//对于面，我们给个0.02的宽度
 	if (AABB.leftX == AABB.rightX) {
 		AABB.leftX = AABB.leftX - 0.01;
 		AABB.rightX = AABB.rightX + 0.01;
@@ -140,11 +145,6 @@ void FzbMesh::createAABB() {
 		AABB.rightZ = AABB.rightZ + 0.01;
 	}
 
-}
-void FzbMesh::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t descriptorSetIndex) {
-	//if (this->material->descriptorSet) vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, descriptorSetIndex++, 1, &this->material->descriptorSet, 0, nullptr);
-	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, descriptorSetIndex, 1, &this->descriptorSet, 0, nullptr);
-	vkCmdDrawIndexed(commandBuffer, this->indeArraySize, this->instanceNum, indexArrayOffset, 0, 0);
 }
 
 void createMeshDescriptor(VkDevice logicalDevice, VkDescriptorSetLayout& descriptorSetLayout) {
@@ -292,10 +292,10 @@ std::vector<FzbMesh> fzbGetMeshFromOBJ(VkDevice logicalDevice, std::string path,
 	return meshes;
 
 }
-void fzbCreateCube(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices) {
-	cubeVertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+void fzbCreateCube(FzbMesh& mesh) {
+	mesh.vertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f };
-	cubeIndices = {
+	mesh.indices = {
 					1, 0, 3, 1, 3, 2,
 					4, 5, 6, 4, 6, 7,
 					5, 1, 2, 5, 2, 6,
@@ -303,15 +303,19 @@ void fzbCreateCube(std::vector<float>& cubeVertices, std::vector<uint32_t>& cube
 					7, 6, 2, 7, 2, 3,
 					0, 1, 5, 0, 5, 4
 	};
+	mesh.indeArraySize = mesh.indices.size();
+	mesh.vertexFormat = FzbVertexFormat();
 }
-void fzbCreateCubeWireframe(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices) {
-	cubeVertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+void fzbCreateCubeWireframe(FzbMesh& mesh) {
+	mesh.vertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
 	0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f };
-	cubeIndices = {
+	mesh.indices = {
 		0, 1, 1, 2, 2, 3, 3, 0,
 		4, 5, 5, 6, 6, 7, 7, 4,
 		0, 4, 1, 5, 2, 6, 3, 7
 	};
+	mesh.indeArraySize = mesh.indices.size();
+	mesh.vertexFormat = FzbVertexFormat();
 }
 void fzbCreateRectangle(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices, bool world) {
 	if (world) {
@@ -340,11 +344,12 @@ FzbMeshBatch::FzbMeshBatch(VkPhysicalDevice physicalDevice, VkDevice logicalDevi
 	this->graphicsQueue = graphicsQueue;
 }
 void FzbMeshBatch::clean() {
-	indexBuffer.clean();
+	//indexBuffer.clean();
 	//materialIndexBuffer.clean();
 	//drawIndexedIndirectCommandBuffer.clean();
 
 }
+/*
 void FzbMeshBatch::createMeshBatchIndexBuffer(std::vector<uint32_t>& sceneIndices) {
 	if (this->meshes.size() == 0) return;
 	std::vector<uint32_t> batchIndices;
@@ -356,6 +361,7 @@ void FzbMeshBatch::createMeshBatchIndexBuffer(std::vector<uint32_t>& sceneIndice
 	
 	indexBuffer = fzbCreateStorageBuffer(physicalDevice, logicalDevice, commandPool, graphicsQueue, batchIndices.data(), batchIndices.size() * sizeof(uint32_t));
 }
+*/
 void FzbMeshBatch::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t componentDescriptorSetNum) {
 	//vkCmdBindIndexBuffer(commandBuffer, indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 	if (materials[0]->descriptorSet && this->useSameMaterial) vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, componentDescriptorSetNum++, 1, &materials[0]->descriptorSet, 0, nullptr);

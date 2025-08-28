@@ -116,10 +116,13 @@
       <AdditionalDependencies>vulkan-1.lib;glfw3.lib;assimp-vc143-mt.lib;meshoptimizer.lib;cuda.lib;cudart.lib;pugixml.lib;glslangd.lib;glslang-default-resource-limitsd.lib;OSDependentd.lib;SPIRVd.lib;MachineIndependentd.lib;GenericCodeGend.lib;SPIRV-Toolsd.lib;SPIRV-Tools-optd.lib;SPIRV-Tools-linkd.lib;SPIRV-Tools-lintd.lib;SPIRV-Tools-reduced.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
     <CudaCompile>
-      <CodeGeneration>compute_86,sm_86;%(CodeGeneration)</CodeGeneration>
-      <AdditionalOptions> -rdc=true -lcudadevrt -std=c++17 %(AdditionalOptions)</AdditionalOptions>
+      <CodeGeneration>compute_86,sm_86</CodeGeneration>
+      <AdditionalOptions> -rdc=true -lcudadevrt -std=c++17 </AdditionalOptions>
       <GenerateRelocatableDeviceCode>true</GenerateRelocatableDeviceCode>
     </CudaCompile>
+    <CudaLink>
+      <AdditionalOptions />
+    </CudaLink>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -159,10 +162,8 @@
     <ClInclude Include="core\common\FzbScene.h" />
     <ClInclude Include="core\common\FzbShader.h" />
     <ClInclude Include="core\common\StructSet.h" />
-    <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </ClInclude>
+    <ClInclude Include="core\CUDA\commonCudaFunction.cuh" />
+    <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh" />
     <ClInclude Include="core\ForwardRender\FzbForwardRender.h" />
     <ClInclude Include="core\O-CNN\FzbOCNN.h" />
     <ClInclude Include="core\RayTracing\PathTracing\AccelerationStructure\accelerationStructure.h" />
@@ -187,10 +188,8 @@
     <ClCompile Include="FzbRenderer.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</ExcludedFromBuild>
-    </CudaCompile>
+    <CudaCompile Include="core\CUDA\commonCudaFunction.cu" />
+    <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu" />
     <CudaCompile Include="core\SceneDivision\SVO\CUDA\createSVO.cu" />
   </ItemGroup>
   <ItemGroup>
@@ -221,7 +220,10 @@
   <ItemGroup>
     <Xml Include="core\ForwardRender\shaders\diffuse\shaderInfo.xml" />
     <Xml Include="core\SceneDivision\SVO\shaders\present\shaderInfo.xml" />
+    <Xml Include="core\SceneDivision\SVO\shaders\present_SVO\shaderInfo.xml" />
+    <Xml Include="core\SceneDivision\SVO\shaders\present_VGM\shaderInfo.xml" />
     <Xml Include="core\SceneDivision\SVO\shaders\unuseSwizzle\shaderInfo.xml" />
+    <Xml Include="core\SceneDivision\SVO\shaders\useSwizzle\shaderInfo.xml" />
     <Xml Include="shaders\forward\diffuse\shaderInfo.xml" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

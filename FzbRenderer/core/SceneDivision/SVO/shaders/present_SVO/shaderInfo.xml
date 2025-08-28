@@ -3,7 +3,7 @@
 	</Properties>
 	<Macros>
 		<!--规定宏必须是use + 属性名-->
-		<macro name = "useVertexNormal" usability = "true" />
+		<macro name = "useVertexNormal" usability = "false" />
 		<macro name = "useVertexTexCoords" usability = "false" />
 		<macro name = "useVertexTangent" usability = "false" />
 
@@ -18,23 +18,20 @@
 	</Macros>
 	<Shaders>
 		<shaderVersion value = "450" />
-		<shader name = "vertexShader" path = "voxelVert.glsl" />
-		<shader name = "geometryShader" path = "voxelGemo.glsl" />
-		<shader name = "fragmentShader" path = "voxelFrag.glsl" />
+		<shader name = "vertexShader" path = "wireFrameVert.glsl" />
+		<shader name = "geometryShader" path = "wireFrameGemo.glsl" />
+		<shader name = "fragmentShader" path = "wireFrameFrag.glsl" />
 	</Shaders>
 	<Pipeline>
+		<inputAssemblyInfo>
+			<primitiveTopology value = "VK_PRIMITIVE_TOPOLOGY_LINE_LIST"/>
+		</inputAssemblyInfo>
 		<rasterizerInfo>
-			<cullMode value = "VK_CULL_MODE_NONE" />
-			<rasterizerExtensions value = "conservativeRasterization" OverestimationSize = "0.5" />
+			<polyMode value = "VK_POLYGON_MODE_LINE" />
+			<lineWidth value = "1.0" />
 		</rasterizerInfo>
-		<depthStencilInfo>
-			<depthTestEnable value="false" />
-			<depthWriteEnable value="false" />
-		</depthStencilInfo>
-		<viewportStateInfo>
-			<resolution width = "512" height = "512" />
-			<viewport x = "0" y = "0" width = "512" height = "512"/>
-			<scissor offset = "0, 0" extent = "512, 512" />
-		</viewportStateInfo>
+		<dynamicStateInfo>
+			<dynamicView />
+		</dynamicStateInfo>
 	</Pipeline>
 </ShaderInfo>

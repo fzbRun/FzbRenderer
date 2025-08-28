@@ -1,11 +1,8 @@
-#version 450
-
 layout(location = 0) in vec3 worldPos;
 
 layout(location = 0) out vec4 FragColor;
 
 layout(set = 0, binding = 0) uniform voxelBufferObject{
-	mat4 model;
 	mat4 VP[3];
 	vec4 voxelSize_Num;
 	vec4 voxelStartPos;
@@ -74,7 +71,7 @@ void main() {
 	//ivec2 texCoords = ivec2((ndcPos.xy * 0.5f + 0.5f) * cubo.swapChainExtent.xy);
 	//imageAtomicDepthTest(texCoords, depth);
 
-	ivec3 voxelIndex = ivec3((worldPos - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.x);
+	ivec3 voxelIndex = ivec3((worldPos - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.xyz);
 	imageAtomicRGBA8Avg(voxelIndex, vec4(normalize(abs(worldPos)), 1.0f));
 
 }

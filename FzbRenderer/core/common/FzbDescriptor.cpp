@@ -54,11 +54,11 @@ VkDescriptorPool fzbCreateDescriptorPool(VkDevice logicalDevice, std::vector<VkD
 	return descriptorPool;
 }
 
-VkDescriptorSetLayout fzbCreateDescriptLayout(VkDevice logicalDevice, uint32_t descriptorSetNum, std::vector<VkDescriptorType> descriptorTypes, std::vector<VkShaderStageFlags> descriptorStagesFlags, std::vector<uint32_t> descriptorCounts, std::vector<bool> bindless) {
+VkDescriptorSetLayout fzbCreateDescriptLayout(VkDevice logicalDevice, uint32_t descriptorNum, std::vector<VkDescriptorType> descriptorTypes, std::vector<VkShaderStageFlags> descriptorStagesFlags, std::vector<uint32_t> descriptorCounts, std::vector<bool> bindless) {
 	VkDescriptorSetLayout descriptorSetLayout;
 	std::vector<VkDescriptorSetLayoutBinding> layoutBindings;
 	uint32_t descriptorBinding = 0;
-	for (int i = 0; i < descriptorSetNum; i++) {
+	for (int i = 0; i < descriptorNum; i++) {
 		if (descriptorCounts.size() > 0) {
 			if (descriptorCounts[i] == 0) {
 				continue;

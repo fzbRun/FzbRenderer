@@ -35,7 +35,7 @@ struct FzbPipelineCreateInfo {
 	VkCompareOp depthCompareOp = VK_COMPARE_OP_LESS;
 	bool dynamicView = false;
 	std::vector<VkDynamicState> dynamicStates;
-	VkExtent2D extent = { 512, 512 };
+	VkExtent2D resolution = { 512, 512 };
 	std::vector<VkViewport> viewports;
 	std::vector<VkRect2D> scissors;
 
@@ -44,7 +44,7 @@ struct FzbPipelineCreateInfo {
 
 //----------------------------------------------光栅拓展--------------------------------------------
 	//std::vector<std::shared_ptr<void>> rasterizerExtensionSet;
-	VkPipelineRasterizationConservativeStateCreateInfoEXT conservativeState;
+	VkPipelineRasterizationConservativeStateCreateInfoEXT conservativeRasterizationState;
 	void* rasterizerExtensions = nullptr;
 
 	//----------------------------------------------视口拓展--------------------------------------------
@@ -55,7 +55,7 @@ struct FzbPipelineCreateInfo {
 
 	//--------------------------------------------------------------------------------------------------
 	FzbPipelineCreateInfo();
-	FzbPipelineCreateInfo(VkExtent2D extent);
+	FzbPipelineCreateInfo(VkExtent2D resolution);
 
 };
 

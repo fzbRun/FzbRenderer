@@ -244,17 +244,15 @@ public:
 	std::string path;
 	std::vector<float> vertices;	//压缩前的顶点数据，压缩后就会被释放
 	std::vector<uint32_t> indices;	//压缩前的顶点索引数据，压缩后就会被释放
-	uint32_t indexArrayOffset;
 	uint32_t indeArraySize;
-	//uint32_t indexOffsetInMeshBatchIndexArray;
+	//std::vector<uint32_t> indexArrayOffset;
+	uint32_t indexArrayOffset;
 
-	glm::mat4 transforms;	//一个mesh对应一种变换
-	//std::string materialID;
+	glm::mat4 transforms = glm::mat4(1.0f);	//一个mesh对应一种变换
 	FzbMaterial* material;	//sceneXML中指定的material
 	FzbVertexFormat vertexFormat;	//从obj中获取到的mesh的顶点格式
 
 	FzbBuffer meshBuffer;
-	//VkDescriptorSetLayout descriptorSetLayout = nullptr;
 	VkDescriptorSet descriptorSet = nullptr;	//model矩阵
 
 	uint32_t instanceNum = 1;
@@ -263,7 +261,7 @@ public:
 	FzbMesh();
 	FzbMesh(VkDevice logicalDevice);
 
-	std::vector<float> getVetices();
+	std::vector<float> getVertices(FzbVertexFormat vertexFormat);
 
 	void clean();
 
@@ -271,6 +269,7 @@ public:
 
 	void createDescriptor(VkDescriptorPool descriptorPool, VkDescriptorSetLayout descriptorSetLayout);
 
+	FzbAABBBox getAABB();
 	void createAABB();
 
 	void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t descriptorSetIndex);
@@ -286,9 +285,9 @@ std::vector<FzbMesh> processNode(aiNode* node, const aiScene* scene, FzbVertexFo
 
 std::vector<FzbMesh> fzbGetMeshFromOBJ(VkDevice logicalDevice, std::string path, FzbVertexFormat vertexFormat);
 
-void fzbCreateCube(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices);
+void fzbCreateCube(FzbMesh& mesh);
 
-void fzbCreateCubeWireframe(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices);
+void fzbCreateCubeWireframe(FzbMesh& mesh);
 
 void fzbCreateRectangle(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices, bool world = true);
 //--------------------------------------------------------------------------------------------------------------------
@@ -309,18 +308,16 @@ public:
 	bool useSameMaterial = false;
 	std::vector<FzbMaterial*> materials;
 
-	uint32_t vertexBufferOffset = 0;
-	FzbBuffer indexBuffer;
-	//FzbBuffer materialIndexBuffer;
-	//uint32_t drawIndexedIndirectCommandSize = 0;
-	//FzbBuffer drawIndexedIndirectCommandBuffer;
+	//uint32_t vertexBufferOffset = 0;
+	//FzbBuffer indexBuffer;
+	//uint32_t indexBufferType = 0;
 	
 	FzbMeshBatch();
 	FzbMeshBatch(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue);
 
 	void clean();
 
-	void createMeshBatchIndexBuffer(std::vector<uint32_t>& sceneIndices);
+	//void createMeshBatchIndexBuffer(std::vector<uint32_t>& sceneIndices);
 
 	/*
 	void createDrawIndexedIndirectCommandBuffer() {

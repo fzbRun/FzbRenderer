@@ -27,7 +27,7 @@ private:
 	VkFence fence;
 
 	std::vector<FzbRenderPass*> renderPasses;	//当窗口大小改变后，所有使用到swapChain的帧缓冲都需要重新创建，绑定一个数组方便修改
-	FzbVertexFormat vertexFormat;
+	std::vector<FzbVertexFormat> componentVertexFormats;
 	FzbForwardRenderSetting forwardRenderSetting;
 	std::unique_ptr<FzbForwardRender> fzbForwardRender;
 	FzbSVOSetting svoSetting = {};
@@ -35,28 +35,28 @@ private:
 //---------------------------------------------创建全局变量---------------------------------------------
 	void createGlobalData() {
 		glslang::InitializeProcess();	//初始化GLSLang库，全局初始化，在程序启动时调用一次
-		vertexFormat = FzbVertexFormat();
-		this->scene = FzbScene("./models/veach-ajar");	//获取sceneXML中的全局信息
+		this->scene.getSceneGlobalInfo("./models/veach-ajar");	//获取sceneXML中的全局信息
 		createComponent();
 	}
 	void createComponent() {
 		svoSetting.UseSVO = true;
 		if (svoSetting.UseSVO) {
 			fzbSVO = std::make_unique<FzbSVO>();
-			svoSetting.UseSVO_OnlyVoxelGridMap = true;
-			svoSetting.UseBlock = false;
+			svoSetting.UseSVO_OnlyVoxelGridMap = false;
 			svoSetting.UseConservativeRasterization = false;
-			svoSetting.UseSwizzle = false;
+			svoSetting.UseSwizzle = false;	//这里有点问题，不太能用（感觉和vulkan裁剪坐标z在[0,1]而不是[-1,1]有关）
+			svoSetting.UseBlock = false;
 			svoSetting.Present = true;
+			svoSetting.useCube = true;
 			svoSetting.voxelNum = 64;
 			fzbSVO->addExtensions(svoSetting, instanceExtensions, deviceExtensions, deviceFeatures);
-			vertexFormat.mergeUpward(fzbSVO->getComponentVertexFormat());
+			componentVertexFormats.push_back(fzbSVO->getComponentVertexFormat());
 		}
 		forwardRenderSetting.useForwardRender = false;
 		if (forwardRenderSetting.useForwardRender) {
 			fzbForwardRender = std::make_unique<FzbForwardRender>();
 			fzbForwardRender->addExtensions(forwardRenderSetting, instanceExtensions, deviceExtensions, deviceFeatures);
-			vertexFormat.mergeUpward(fzbForwardRender->getComponentVertexFormat());
+			//componentVertexFormats.push_back(fzbForwardRender->getComponentVertexFormat());
 		}
 	}
 //-----------------------------------------------初始化Vulkan-------------------------------------------------
@@ -96,7 +96,7 @@ private:
 		fzbCreateCommandBuffers(1);
 	}
 	void createScene() {
-		scene.initScene(physicalDevice, logicalDevice, commandPool, graphicsQueue, vertexFormat);
+		scene.initScene(physicalDevice, logicalDevice, commandPool, graphicsQueue, componentVertexFormats);
 		this->camera = &scene.sceneCameras[0];
 	}
 	void initComponent() {
@@ -107,28 +107,6 @@ private:
 		imageAvailableSemaphore = FzbSemaphore(logicalDevice, false);
 		fence = fzbCreateFence();
 	}
-//----------------------组件展示----------------------------------
-
-	//void initComponent() {
-	//	if (svoSetting.UseSVO)
-	//		fzbSVO->init(this, &scene, svoSetting);
-	//}
-
-	//void activateComponent() {
-	//	if (svoSetting.UseSVO)
-	//		fzbSVO->activate();
-	//}
-
-	//void prepareComponentPresent() {
-	//	if (svoSetting.UseSVO && svoSetting.Present)
-	//		fzbSVO->presentPrepare(uniformDescriptorSetLayout);
-	//}
-
-	//void activateSVOComponent() {
-	//	initComponent();
-	//	activateComponent();
-	//	prepareComponentPresent();
-	//}
 
 //--------------------------------------------------------
 	void drawFrame() {

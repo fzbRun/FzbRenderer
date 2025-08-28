@@ -1,5 +1,3 @@
-#version 450
-
 layout(location = 0) out vec4 FragColor;
 
 layout(location = 0) in vec4 worldPos;
@@ -20,7 +18,7 @@ layout(set = 1, binding = 1, r32ui) uniform coherent uimage3D voxelMap;
 
 void main() {
 
-	ivec3 voxelIndex = ivec3((worldPos.xyz - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.x);
+	ivec3 voxelIndex = ivec3((worldPos.xyz - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.xyz);
 	uint voxelValueU = imageLoad(voxelMap, voxelIndex).r;
 	vec4 voxelValue = unpackUnorm4x8(voxelValueU);
 	if (voxelValue.w == 0) {

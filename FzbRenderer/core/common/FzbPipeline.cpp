@@ -220,20 +220,20 @@ FzbPipelineCreateInfo::FzbPipelineCreateInfo() {
 
 	this->colorBlendAttachments = { fzbCreateColorBlendAttachmentState() };
 
-	VkViewport viewport;
-	viewport.x = 0;
-	viewport.y = 0;
-	viewport.width = static_cast<float>(512);
-	viewport.height = static_cast<float>(512);
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-	VkRect2D scissor;
-	scissor.offset = { 0, 0 };
-	scissor.extent = { 512, 512 };
-	this->viewports.push_back(viewport);
-	this->scissors.push_back(scissor);
+	//VkViewport viewport;
+	//viewport.x = 0;
+	//viewport.y = 0;
+	//viewport.width = static_cast<float>(512);
+	//viewport.height = static_cast<float>(512);
+	//viewport.minDepth = 0.0f;
+	//viewport.maxDepth = 1.0f;
+	//VkRect2D scissor;
+	//scissor.offset = { 0, 0 };
+	//scissor.extent = { 512, 512 };
+	//this->viewports.push_back(viewport);
+	//this->scissors.push_back(scissor);
 };
-FzbPipelineCreateInfo::FzbPipelineCreateInfo(VkExtent2D extent) {
+FzbPipelineCreateInfo::FzbPipelineCreateInfo(VkExtent2D resolution) {
 	this->colorBlendAttachments = { fzbCreateColorBlendAttachmentState() };
-	this->extent = extent;
+	this->resolution = resolution;
 }

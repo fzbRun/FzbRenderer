@@ -82,7 +82,10 @@ public:
 		renderPass.createRenderPass(&attachments, subpasses, dependencies);
 		renderPass.createFramebuffers(swapChainImageViews);
 
-		FzbSubPass presentSubPass = FzbSubPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, renderPass.renderPass, { descriptorSetLayout }, 0, scene, {}, swapChainExtent);
+		FzbSubPass presentSubPass = FzbSubPass(logicalDevice, renderPass.renderPass, 0, 
+			{ descriptorSetLayout }, { descriptorSet },
+			scene->vertexBuffer.buffer, scene->indexBuffer.buffer, scene->sceneShaders_vector, swapChainExtent);
+		presentSubPass.createPipeline(scene->meshDescriptorSetLayout);
 		renderPass.subPasses.push_back(presentSubPass);
 
 		renderPasses.push_back(&renderPass);
@@ -103,7 +106,7 @@ public:
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
-		renderPass.render(commandBuffer, imageIndex, { scene }, { {descriptorSet} });
+		renderPass.render(commandBuffer, imageIndex);
 
 		VkSemaphore waitSemaphores[] = { startSemaphore };
 		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };

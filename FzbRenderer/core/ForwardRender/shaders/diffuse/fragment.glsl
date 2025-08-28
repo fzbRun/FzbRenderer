@@ -1,5 +1,3 @@
-#version 460
-
 layout(location = 0) in vec3 vertexWorldPos;
 #ifdef useVertexNormal
 layout(location = 1) in vec3 vertexNormal;

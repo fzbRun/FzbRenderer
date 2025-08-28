@@ -3,6 +3,7 @@
 #include<iostream>
 #include <chrono>
 #include "../common/FzbImage.h"
+#include "./commonCudaFunction.cuh"
 
 //#ifndef __CUDACC__
 //#define __CUDACC__
@@ -19,27 +20,6 @@
 
 #ifndef VULKAN_CUDA_INTEROP_CUH
 #define VULKAN_CUDA_INTEROP_CUH
-
-#define CHECK(call)\
-{\
-  const cudaError_t error=call;\
-  if(error!=cudaSuccess)\
-  {\
-      printf("ERROR: %s:%d,",__FILE__,__LINE__);\
-      printf("code:%d,reason:%s\n",error,cudaGetErrorString(error));\
-      exit(1);\
-  }\
-}
-
-/*
-clock()会计算CPU时间，而非挂钟时间。即若有3个线程并行运行，执行3秒，那么clock会返回3x3=9秒，并且挂起时间不算在内，因此无法得到核函数运行时间。
-*/
-double cpuSecond();
-
-__device__ int warpReduce(int localSum);
-
-__device__ uint32_t packUint3(uint3 valueU3);
-__device__ uint3 unpackUint(uint32_t value);
 
 int getCudaDeviceForVulkanPhysicalDevice(VkPhysicalDevice vkPhysicalDevice);
 cudaExternalMemory_t importVulkanMemoryObjectFromFileDescriptor(int fd, unsigned long long size, bool isDedicated);

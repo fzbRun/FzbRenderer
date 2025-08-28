@@ -80,28 +80,16 @@ namespace std {
 }
 */
 
-struct FzbSubPassCreateInfo {
-	VkPhysicalDevice physicalDevice;
-	VkDevice logicalDevice;
-	VkCommandPool commandPool;
-	VkQueue graphicsQueue;
-	VkRenderPass renderPass;
-	std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts;
-	uint32_t subPassIndex;
-	FzbScene* scene;
-	std::vector<FzbShader*> shaders;
-	VkExtent2D extent;
-};
-
 struct FzbSubPass {
 
-	VkPhysicalDevice physicalDevice;
 	VkDevice logicalDevice;
-	VkCommandPool commandPool;
-	VkQueue graphicsQueue;
 	VkRenderPass renderPass;
+	std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts;
+	std::vector<VkDescriptorSet> componentDescriptorSets;
 	uint32_t subPassIndex;
-	VkExtent2D extent;	//当前交换链extent
+	VkExtent2D resolution;	//当前交换链extent
+	VkBuffer vertexBuffer;
+	VkBuffer indexBuffer;
 
 	FzbPipelineCreateInfo pipelineCreateInfo;	//主要是pipeline的公共信息，如是否要背面剔除什么的
 	//std::vector<FzbMeshBatch> meshBatchs;
@@ -109,49 +97,20 @@ struct FzbSubPass {
 	std::vector<FzbShader*> shaders;	//这个subPass要渲染哪些shader
 
 	FzbSubPass();
-	FzbSubPass(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, VkRenderPass renderPass, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, uint32_t subPassIndex, FzbScene* scene, std::vector<FzbShader*> shaders = std::vector<FzbShader*>(), VkExtent2D extent = VkExtent2D());
-	FzbSubPass(FzbSubPassCreateInfo* createInfo);
+	FzbSubPass(VkDevice logicalDevice, VkRenderPass renderPass, uint32_t subPassIndex, 
+		std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, std::vector<VkDescriptorSet> componentDescriptorSets,
+		VkBuffer vertexBuffer, VkBuffer indexBuffer, std::vector<FzbShader*> shaders, VkExtent2D resolution = VkExtent2D());
 	void clean();
 
-	/*
-	//给定scene，就表明改subPass要处理的是这个scene中的mesh。excludShaderMap包含我不想在这个subpass中处理的shader
-	void createMeshBatch(FzbScene* scene, std::vector<VkDescriptorSetLayout> componentDescriptorSetLayouts, std::unordered_map<FzbShader, uint32_t> excludShaderMap = std::unordered_map<FzbShader, uint32_t>()) {
-		std::unordered_map<FzbShader, uint32_t> uniqueShaderMap{};
-		for (int i = 0; i < scene->sceneMeshSet.size(); i++) {
-			FzbMesh& mesh = scene->sceneMeshSet[i];
-			FzbMaterial material = scene->sceneMaterials[mesh.materialID];
-			if (excludShaderMap.count(material.shader) > 0)		//如果材质的shader在排除集合之中，则不处理
-				continue;
-			if (uniqueShaderMap.count(material.shader) == 0) {	//如果当前subPass没有这种shader，则创建相应的meshBatch
-				uniqueShaderMap[material.shader] = this->meshBatchs.size();
+	void createPipeline(VkDescriptorSetLayout meshDescriptorSetLayout);
 
-				FzbMeshBatch meshBatch(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-				meshBatch.materialID = mesh.materialID;
-				this->meshBatchs.push_back(meshBatch);
-			}
-			this->meshBatchs[uniqueShaderMap[material.shader]].meshes.push_back(&scene->sceneMeshSet[i]);	//这里defulatMaterial的shader可能与某些material的相同，就合并了。
-		}
-
-		for (int i = 0; i < this->meshBatchs.size(); i++) {
-			meshBatchs[i].createMeshBatchIndexBuffer(scene->sceneIndices);
-
-			//创建pipeline
-			FzbMaterial& material = scene->sceneMaterials[meshBatchs[i].materialID];
-			std::vector<VkDescriptorSetLayout> descriptorSetLayouts = componentDescriptorSetLayouts;
-			if(material.descriptorSetLayout) descriptorSetLayouts.push_back(material.descriptorSetLayout);	//材质描述符，不一定会有
-			descriptorSetLayouts.push_back(meshBatchs[i].meshes[0]->descriptorSetLayout);	//mesh描述符，基本上会有
-			material.shader.createPipeline(renderPass, subPassIndex, descriptorSetLayouts);
-		}
-	}
-	*/
-
-	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets);
+	void render(VkCommandBuffer commandBuffer, VkBuffer& vertexBuffer);
 };
 
 struct FzbRenderPassSetting {
 	bool useDepth = false;
 	uint32_t colorAttachmentNum = 1;
-	VkExtent2D extent;
+	VkExtent2D resolution;
 	uint32_t framebufferNum;
 	bool present;
 };
@@ -180,7 +139,7 @@ struct FzbRenderPass {
 
 	void createFramebuffers(std::vector<VkImageView> swapChainImageViews = std::vector<VkImageView>());
 
-	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex, FzbScene* scene, std::vector<std::vector<VkDescriptorSet>> componentDescriptorSets);
+	void render(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 };
 
 //----------------------------------------------------------------------------------------------

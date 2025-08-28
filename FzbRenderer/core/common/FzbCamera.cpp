@@ -41,8 +41,12 @@ void FzbCamera::setViewMatrix(glm::mat4 viewMatrix, bool inverse) {
         this->viewMatrix = viewMatrix;
         inverseMatrix = glm::inverse(viewMatrix);
     }
-    this->Front = inverseMatrix[2];
-    this->Up = inverseMatrix[1];
+    setFront(inverseMatrix[2]);
+    //this->Front = inverseMatrix[2];
+    //this->Up = inverseMatrix[1];
+    //
+    //this->Pitch = glm::degrees(glm::asin(Front.y));
+    //this->Yaw = glm::degrees(glm::acos(Front.x - glm::sqrt(1.0f - Front.y * Front.y)));
 }
 
 void FzbCamera::createViewMatrix() {
@@ -122,4 +126,25 @@ void FzbCamera::updateCameraVectors()
     // also re-calculate the Right and Up vector
     Right = glm::normalize(glm::cross(Front, WorldUp));  // normalize the vectors, because their length gets closer to 0 the more you look up or down which results in slower movement.
     Up = glm::normalize(glm::cross(Right, Front));
+}
+
+void FzbCamera::setFront(const glm::vec3& front)
+{
+    // 规范化输入向量
+    glm::vec3 normalizedFront = glm::normalize(front);
+
+    // 计算 Pitch (俯仰角)
+    Pitch = glm::degrees(asin(normalizedFront.y));
+
+    // 计算 Yaw (偏航角)
+    Yaw = glm::degrees(atan2(normalizedFront.z, normalizedFront.x));
+
+    // 确保角度在合理范围内
+    if (Pitch > 89.0f)
+        Pitch = 89.0f;
+    if (Pitch < -89.0f)
+        Pitch = -89.0f;
+
+    // 更新相机向量
+    updateCameraVectors();
 }

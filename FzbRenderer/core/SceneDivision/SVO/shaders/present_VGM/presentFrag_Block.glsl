@@ -1,16 +1,12 @@
-#version 450
-
 //const float depthDigit = 65536.0f;	//4294967295 = 2µÄ32´Î·½-1
 
 layout(set = 0, binding = 0) uniform cameraUniformBufferObject {
-	mat4 model;
 	mat4 view;
 	mat4 proj;
 	vec4 cameraPos;
 }cubo;
 
 layout(set = 1, binding = 0) uniform voxelBufferObject{
-	mat4 model;
 	mat4 VP[3];
 	vec4 voxelSize_Num;
 	vec4 voxelStartPos;

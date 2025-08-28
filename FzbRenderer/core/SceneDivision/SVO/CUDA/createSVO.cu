@@ -333,7 +333,7 @@ __global__ void getSVONum_step1(cudaTextureObject_t voxelGridMap, uint32_t svoDe
 	__shared__ uint32_t groupVoxelOffset;
 
 	uint3 voxelIndexU3 = make_uint3(blockDim.x * blockIdx.x + threadIdx.x, blockDim.y * blockIdx.y + threadIdx.y, blockDim.z * blockIdx.z + threadIdx.z);
-	uint32_t threadGroupIndex = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y;
+	uint32_t threadGroupIndex = threadIdx.x + threadIdx.y * blockDim.x + threadIdx.z * blockDim.x * blockDim.y;		//线程组内线程index
 	uint32_t warpIndex = threadGroupIndex / warpSize;	//一个warp 32个线程
 	uint32_t laneIndex = threadGroupIndex % warpSize;
 
@@ -365,7 +365,6 @@ __global__ void getSVONum_step1(cudaTextureObject_t voxelGridMap, uint32_t svoDe
 		int detailLevel = gridDim.x * blockDim.x;
 		int subNodeIndex = 0;
 		for (int i = 1; i < svoDepth - 3; i++) {
-
 			uint3 index = make_uint3(voxelIndexU3.x & (detailLevel - 1), voxelIndexU3.y & (detailLevel - 1), voxelIndexU3.z & (detailLevel - 1));
 			detailLevel /= 2;
 			index.x /= detailLevel;
@@ -438,11 +437,12 @@ __global__ void getSVONum_step2(uint32_t voxelNum, uint32_t svoDepth, uint32_t n
 }
 
 template <int type>
-__global__ void compressSVO_Step1(FzbSVONode* nodeArray, FzbSVONode* tempNodePool, FzbSVONode* nodePool, uint32_t* subArrayNum, FzbNodePoolBlock* threadBlockInfos, uint32_t nodeStartIndex,uint32_t svoDepth) {
+__global__ void compressSVO_Step1(FzbSVONode* nodeArray, FzbSVONode* tempNodePool, FzbSVONode* nodePool,
+	uint32_t* subArrayNum, FzbNodePoolBlock* threadBlockInfos, uint32_t nodeStartIndex, uint32_t svoDepth, uint32_t* blockStartIndex) {
 	__shared__ uint64_t blockHasValue;	//每个八个线程一个元素, 8x64 = 512，一个线程组最多512个线程
 	__shared__ uint32_t blockIndexOfGroup;
 	__shared__ uint32_t nodeNum;
-	__shared__ uint32_t blockNodeNum[64];
+	__shared__ uint32_t blockNodeNum[64];	//64个uint的数组，用于存储每个体素块有几个有值体素
 
 	uint32_t threadLocalIndex = threadIdx.x;
 	uint32_t threadGlobalIndex = blockDim.x * blockIdx.x + threadLocalIndex;
@@ -453,35 +453,43 @@ __global__ void compressSVO_Step1(FzbSVONode* nodeArray, FzbSVONode* tempNodePoo
 		blockIndexOfGroup = 0;
 		nodeNum = 0;
 	}
-	if (threadGlobalIndex < 64)
-		blockNodeNum[threadGlobalIndex] = 0;
+	if (threadLocalIndex < 64)
+		blockNodeNum[threadLocalIndex] = 0;
 	__syncthreads();
 
 	uint32_t nodeIndex = threadGlobalIndex + nodeStartIndex;
 	FzbSVONode node = nodeArray[nodeIndex];
-	FzbSVONode fatherNode = nodeArray[nodeIndex / 8];
+	FzbSVONode fatherNode = nodeArray[(nodeIndex - 1) / 8];
 	if (node.voxelNum > 0) {	//前面的64和512不需要
 		if (type == 2) {
 			atomicAdd(&nodeNum, 1);
 		}
 		atomicAdd(&blockNodeNum[blockIndexInGroup], 1);
 	}
-	if (fatherNode.voxelNum > 0) {
-		if (threadOffsetInBlock == 0)
-			atomicOr(&blockHasValue, uint64_t(1) << blockIndexInGroup);
+	if (threadOffsetInBlock == 0 && fatherNode.voxelNum > 0) {		//如果父节点有值，说明该块一定有值，那么可以赋值1
+		atomicOr(&blockHasValue, uint64_t(1) << blockIndexInGroup);
 	}
 	__syncthreads();
 
 	if (threadLocalIndex == 0) {
-		uint32_t blockNum = __popcll(blockHasValue);
+		uint32_t blockNum = __popcll(blockHasValue);	//有值块个数
 		blockIndexOfGroup = atomicAdd(subArrayNum, blockNum);	//线程组在全局块数组的起始索引
-		if (type == 2)	//前面的64和512不需要
+		if (type == 2) {	//前面的64和512不需要
 			threadBlockInfos[blockIdx.x] = FzbNodePoolBlock(blockIndexOfGroup, blockNum, nodeNum);
+			atomicMin(blockStartIndex, blockIndexOfGroup);		//找每个线程组最小的那个开始索引，就是该层的起始索引
+		}
 	}
 	__syncthreads();
 
-	uint32_t blockIndex = __popcll(blockHasValue & ((uint64_t(1) << blockIndexInGroup) - 1)) + blockIndexOfGroup;	//线程所在block在全局中的索引
 	if (node.voxelNum > 0) {
+		/*
+		每个线程获取自身所在体素块在该层所有体素块中的索引，这里解释一下代码，确实有点抽象
+		__popcll(blockHasValue & ((uint64_t(1) << blockIndexInGroup) - 1))
+		这里uint64_t(1) << blockIndexInGroup表示找到自己体素块所在的位数，然后-1，表示线程组内所有在自己前面的体素块的位
+		然后blockHasValue & ((uint64_t(1) << blockIndexInGroup) - 1)表示获得所有线程组内所有在自己前面的体素块的位数
+		通过__popcll可以知道自己前面有几个有值的体素块。
+		*/
+		uint32_t blockIndex = __popcll(blockHasValue & ((uint64_t(1) << blockIndexInGroup) - 1)) + blockIndexOfGroup;	//线程所在block在全局中的索引
 		uint32_t label = 0;
 		for (int i = 0; i < blockIndexInGroup; i++) {
 			label += blockNodeNum[i];
@@ -490,6 +498,7 @@ __global__ void compressSVO_Step1(FzbSVONode* nodeArray, FzbSVONode* tempNodePoo
 		//uint32_t blockIndexInWarp = threadLocalIndex & 3;
 		//uint32_t offset = 8 * blockIndexInWarp;
 		//node.label = __popc(((__ballot_sync(__activemask(), 1) & (0xFF << offset)) >> offset) & ((1u << threadOffsetInBlock) - 1)) + label + 1;
+		node.shuffleKey = threadGlobalIndex | (svoDepth << 28);
 		if (type == 2) {
 			tempNodePool[1 + blockIndex * 8 + threadOffsetInBlock] = node;
 		}
@@ -497,6 +506,7 @@ __global__ void compressSVO_Step1(FzbSVONode* nodeArray, FzbSVONode* tempNodePoo
 			nodePool[1 + blockIndex * 8 + threadOffsetInBlock] = node;
 		}
 	}
+	/*
 	if (blockNodeNum[blockIndexInGroup] > 0) {
 		if (type == 2) {
 			tempNodePool[1 + blockIndex * 8 + threadOffsetInBlock].shuffleKey = threadGlobalIndex | (svoDepth << 28);
@@ -505,24 +515,25 @@ __global__ void compressSVO_Step1(FzbSVONode* nodeArray, FzbSVONode* tempNodePoo
 			nodePool[1 + blockIndex * 8 + threadOffsetInBlock].shuffleKey = threadGlobalIndex | (svoDepth << 28);
 		}
 	}
+	*/
 
 	//将根节点和第一层节点存入
 	if (type == 0) {
 		FzbSVONode rootNode = nodeArray[0];
 		rootNode.label = 1;
+		rootNode.shuffleKey = uint32_t(1) << 28;
 		if (threadGlobalIndex == 0)
 			nodePool[0] = rootNode;
 		if (threadGlobalIndex < 8) {
 			FzbSVONode node = nodeArray[threadGlobalIndex + 1];
-			node.shuffleKey = threadGlobalIndex | (uint32_t(1) << 28);
+			node.shuffleKey = threadGlobalIndex | (uint32_t(2) << 28);
 			node.label = __popc(rootNode.hasSubNode & ((1u << threadGlobalIndex) - 1)) + 1;
 			nodePool[threadGlobalIndex + 1] = node;
 		}
-
 	}
 }
 
-__global__ void compressSVO_Step2(FzbNodePoolBlock* threadBlockInfos, FzbSVONode* tempNodePool, FzbSVONode* nodePool) {
+__global__ void compressSVO_Step2(FzbNodePoolBlock* threadBlockInfos, FzbSVONode* tempNodePool, FzbSVONode* nodePool, uint32_t* blockStartIndex) {
 	__shared__ FzbNodePoolBlock threadBlockInfo;
 	__shared__ uint32_t firstBlockIndex;
 
@@ -531,55 +542,29 @@ __global__ void compressSVO_Step2(FzbNodePoolBlock* threadBlockInfos, FzbSVONode
 
 	if (threadLocalIndex == 0) {
 		threadBlockInfo = threadBlockInfos[blockIdx.x];
-		firstBlockIndex = threadBlockInfos[0].startIndex;
+		firstBlockIndex = *blockStartIndex;
 	}
 	__syncthreads();
 
 	if (threadLocalIndex >= threadBlockInfo.blockNum * 8)
 		return;
 
-	uint32_t nodeIndex = threadBlockInfo.startIndex * 8 + threadLocalIndex + 1;
+	uint32_t nodeIndex = threadBlockInfo.startIndex * 8 + threadLocalIndex + 1;		//这个1是根节点
 	FzbSVONode node = tempNodePool[nodeIndex];
-	uint32_t newNodeIndex = firstBlockIndex * 8 + threadLocalIndex + 1;
-	uint32_t label = 0;
-	for (int i = 0; i < blockIdx.x; i++) {
-		FzbNodePoolBlock blockInfo = threadBlockInfos[i];
-		label += blockInfo.nodeNum;
-		newNodeIndex += blockInfo.blockNum * 8;
+	if (node.voxelNum > 0) {
+		uint32_t newNodeIndex = firstBlockIndex * 8 + threadLocalIndex + 1;
+		uint32_t label = 0;
+		for (int i = 0; i < blockIdx.x; i++) {
+			FzbNodePoolBlock blockInfo = threadBlockInfos[i];
+			label += blockInfo.nodeNum;
+			newNodeIndex += blockInfo.blockNum * 8;
+		}
+		node.label += label;
+		nodePool[newNodeIndex] = node;
 	}
-	node.label += label;
-	nodePool[newNodeIndex] = node;
 }
 
 //-------------------------------------------------------------------------------------------------------------------------
-/*
-void CUDART_CB cleanTempData(cudaStream_t stream, cudaError_t status, void* userData) {
-
-	SVOCuda* svoCuda = (SVOCuda*)userData;
-
-	CHECK(cudaDestroyExternalSemaphore(svoCuda->extVgmSemaphore));
-	CHECK(cudaDestroyExternalSemaphore(svoCuda->extSvoSemaphore));
-	CHECK(cudaDestroyTextureObject(svoCuda->vgm));
-	CHECK(cudaFreeMipmappedArray(svoCuda->vgmMipmap));
-	CHECK(cudaDestroyExternalMemory(svoCuda->vgmExtMem));
-	CHECK(cudaDestroyExternalMemory(svoCuda->nodePoolExtMem));
-	CHECK(cudaDestroyExternalMemory(svoCuda->voxelValueArrayExtMem));
-
-	CHECK(cudaFreeHost(svoCuda->voxelNum));
-	CHECK(cudaFreeHost(svoCuda->nodeArrayNum));
-	CHECK(cudaFreeHost(svoCuda->subArrayNum_host));
-
-	CHECK(cudaFreeAsync(svoCuda->voxelNum_p, stream));
-	CHECK(cudaFreeAsync(svoCuda->svoNodeArray, stream));
-	CHECK(cudaFreeAsync(svoCuda->subArrayNum, stream));
-
-	CHECK(cudaFreeAsync(svoCuda->nodePool, stream));
-	CHECK(cudaFreeAsync(svoCuda->svoVoxelValueArray, stream));
-
-	CHECK(cudaStreamDestroy(svoCuda->stream));
-
-}
-*/
 void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGridMap, HANDLE vgmSemaphoreHandle, HANDLE svoSemaphoreHandle) {
 
 	double start = cpuSecond();
@@ -592,8 +577,7 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 
 	dim3 gridSize(voxelGridMap.width / 8, voxelGridMap.height / 8, voxelGridMap.depth / 8);
 	dim3 blockSize(8, 8, 8);
-	//算出SVO的深度
-	uint32_t svoDepth = 1;
+	uint32_t svoDepth = 1;	//算出SVO的深度，从1开始，即根节点为第一层
 	uint32_t vgmSize = voxelGridMap.width;
 	while (vgmSize > 1) {
 		svoDepth++;
@@ -631,6 +615,9 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 	for (int i = 0; i < svoDepth - 4; i++) {
 		CHECK(cudaMalloc((void**)&threadBlockInfos[i], sizeof(FzbNodePoolBlock) * pow(8, i + 4) / 512));
 	}
+	uint32_t* blockStartIndex;
+	CHECK(cudaMalloc((void**)&blockStartIndex, sizeof(uint32_t)));
+	CHECK(cudaMemset(blockStartIndex, 0xFF, sizeof(uint32_t)));
 	waitExternalSemaphore(extVgmSemaphore, stream);
 	
 	getSVONum_step1 << < gridSize, blockSize, 0, stream >> > (vgm, svoDepth, nonLeafNodeNum, voxelNum_p, svoNodeArray, svoVoxelValueArray);
@@ -641,15 +628,16 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 	for (int i = 0; i < svoDepth - 2; i++) {
 		uint32_t nodeStartIndex = uint32_t((pow(8, i + 2) - 1) / 7);
 		if (i == 0) {
-			compressSVO_Step1<0> << <1, 64 >> > (svoNodeArray, tempNodePool, nodePool, subArrayNum, nullptr, nodeStartIndex, 2);
+			compressSVO_Step1<0> << <1, 64 >> > (svoNodeArray, tempNodePool, nodePool, subArrayNum, nullptr, nodeStartIndex, 3, nullptr);
 		}
 		else if (i == 1) {
-			compressSVO_Step1<1> << <1, 512 >> > (svoNodeArray, tempNodePool, nodePool, subArrayNum, nullptr, nodeStartIndex, 3);
+			compressSVO_Step1<1> << <1, 512 >> > (svoNodeArray, tempNodePool, nodePool, subArrayNum, nullptr, nodeStartIndex, 4, nullptr);
 		}
 		else {
 			uint32_t gridSize = pow(8, i + 2) / 512;
-			compressSVO_Step1<2> << <gridSize, 512 >> > (svoNodeArray, tempNodePool, nodePool, subArrayNum, threadBlockInfos[i - 2], nodeStartIndex, i+2);
-			compressSVO_Step2 << <gridSize, 1024 >> > (threadBlockInfos[i - 2], tempNodePool, nodePool);
+			compressSVO_Step1<2> << <gridSize, 512 >> > (svoNodeArray, tempNodePool, nodePool, subArrayNum, threadBlockInfos[i - 2], nodeStartIndex, i + 3, blockStartIndex);
+			compressSVO_Step2 << <gridSize, 512 >> > (threadBlockInfos[i - 2], tempNodePool, nodePool, blockStartIndex);
+			CHECK(cudaMemsetAsync(blockStartIndex, 0xFF, sizeof(uint32_t), stream));
 		}
 	}
 	CHECK(cudaMemcpy(&nodeBlockNum, subArrayNum, sizeof(uint32_t), cudaMemcpyDeviceToHost));
@@ -664,6 +652,11 @@ void SVOCuda::createSVOCuda(VkPhysicalDevice vkPhysicalDevice, FzbImage& voxelGr
 	CHECK(cudaFree(svoNodeArray));
 	CHECK(cudaFree(subArrayNum));
 	CHECK(cudaFree(tempNodePool));
+	for (int i = 0; i < svoDepth - 4; i++) {
+		CHECK(cudaFree(threadBlockInfos[i]));
+	}
+	free(threadBlockInfos);
+	CHECK(cudaFree(blockStartIndex));
 
 	std::cout << cpuSecond() - start << std::endl;
 

@@ -19,13 +19,11 @@
 	<Shaders>
 		<shaderVersion value = "450" />
 		<shader name = "vertexShader" path = "voxelVert.glsl" />
-		<shader name = "geometryShader" path = "voxelGemo.glsl" />
 		<shader name = "fragmentShader" path = "voxelFrag.glsl" />
 	</Shaders>
 	<Pipeline>
 		<rasterizerInfo>
 			<cullMode value = "VK_CULL_MODE_NONE" />
-			<rasterizerExtensions value = "conservativeRasterization" OverestimationSize = "0.5" />
 		</rasterizerInfo>
 		<depthStencilInfo>
 			<depthTestEnable value="false" />
@@ -34,7 +32,17 @@
 		<viewportStateInfo>
 			<resolution width = "512" height = "512" />
 			<viewport x = "0" y = "0" width = "512" height = "512"/>
+			<viewport x = "0" y = "0" width = "512" height = "512"/>
+			<viewport x = "0" y = "0" width = "512" height = "512"/>
 			<scissor offset = "0, 0" extent = "512, 512" />
+			<scissor offset = "0, 0" extent = "512, 512" />
+			<scissor offset = "0, 0" extent = "512, 512" />
+			<viewportExtensions value = "swizzle">
+				<!--这里一定要注意vulkan会将y倒置，所以需要考虑这一点-->
+				<swizzles x = "0" y = "1" z = "3" w = "3" />
+				<swizzles x = "6" y = "1" z = "3" w = "3" />
+				<swizzles x = "0" y = "2" z = "3" w = "3" />
+			</viewportExtensions>
 		</viewportStateInfo>
 	</Pipeline>
 </ShaderInfo>

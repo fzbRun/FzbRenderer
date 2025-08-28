@@ -17,6 +17,7 @@
 		<macro name = "useAreaLight" usability = "false" />
 	</Macros>
 	<Shaders>
+		<shaderVersion value = "450" />
 		<shader name = "vertexShader" path = "presentVert.glsl" />
 		<shader name = "fragmentShader" path = "presentFrag.glsl" />
 	</Shaders>

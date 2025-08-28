@@ -1,5 +1,3 @@
-#version 450
-
 layout(location = 0) in vec3 worldPos;
 
 layout(location = 0) out vec4 FragColor;
@@ -73,8 +71,10 @@ void main() {
 	//float depth = ndcPos.z;
 	//ivec2 texCoords = ivec2((ndcPos.xy * 0.5f + 0.5f) * cubo.swapChainExtent.xy);
 	//imageAtomicDepthTest(texCoords, depth);
+	//vec3 offset = worldPos - vubo.voxelStartPos.xyz;
+	//ivec3 voxelIndex = ivec3(offset.x / vubo.voxelSize_Num.x, offset.y / vubo.voxelSize_Num.y, offset.z / vubo.voxelSize_Num.z);
 
-	ivec3 voxelIndex = ivec3((worldPos - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.x);
+	ivec3 voxelIndex = ivec3((worldPos - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.xyz);
 	imageAtomicRGBA8Avg(voxelIndex, vec4(normalize(abs(worldPos)), 1.0f));
 
 }

@@ -20,6 +20,9 @@ glm::vec2 getfloat2FromString(std::string str);
 glm::vec4 getRGBAFromString(std::string str);
 
 //-----------------------------------------------------shader编译---------------------------------------------------------
+struct FzbShaderCompiler {
+	static void GLSLToSpirV(const char* source, size_t size, std::vector<uint32_t>& spirv, VkShaderStageFlagBits shaderType, const std::string& shaderPath, const std::string& preamble);
+};
 //递归处理包含文件
 std::string preprocessGLSL(
 	const std::string& source,
@@ -75,17 +78,26 @@ public:
 	bool operator==(const FzbShaderVariant& other) const;
 };
 
+//主要是一些扩展用于判断是否需要开启
+struct FzbShaderExtensionsSetting{
+	bool swizzle = false;
+	bool conservativeRasterization = false;
+};
 struct FzbShader {
 
 	VkDevice logicalDevice;
 
 	std::string path;
 	FzbShaderProperty properties;
+	std::string shaderVersion = "450";
 	std::map<std::string, bool> macros;
 	std::map<VkShaderStageFlagBits, std::string> shaders;
 
 	std::vector<FzbShaderVariant> shaderVariants;
 	FzbPipelineCreateInfo pipelineCreateInfo;
+
+	bool useStaticCompile = false;
+	std::map<VkShaderStageFlagBits, std::vector<uint32_t>> shaderSpvs;	//不使用运行时编译，直接使用通过glslc编译的结果
 
 	FzbShader();
 
@@ -95,9 +107,11 @@ struct FzbShader {
 	shader会从xml中读取数据，主要有4个：1. 所需参数（缓冲和纹理） 2. 宏  3. shader运行阶段  4. 图形管线信息
 	无论宏是否开启，相关参数都会加入shader的properties，只不过没开启宏的数据会在编译时被注释掉
 	*/
-	FzbShader(VkDevice logicalDevice, std::string path);
+	FzbShader(VkDevice logicalDevice, std::string path, FzbShaderExtensionsSetting extensionsSetting = FzbShaderExtensionsSetting(), bool useStaticCompile = false);
 
 	void clean();
+
+	VkExtent2D getResolution();
 
 	void createShaderVariant(FzbMaterial* material, FzbVertexFormat vertexFormat = FzbVertexFormat());
 	void createMeshBatch(VkPhysicalDevice physicalDevice, VkCommandPool commandPool, VkQueue graphicsQueue, std::vector<FzbMesh>& sceneMeshSet);
