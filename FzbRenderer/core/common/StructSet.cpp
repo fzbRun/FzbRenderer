@@ -1,12 +1,15 @@
 #include "StructSet.h"
 #include <set>
 #include <filesystem>
+#include <sstream>
+#include "FzbRenderer.h"
 
 bool FzbQueueFamilyIndices::isComplete() {
 	return graphicsAndComputeFamily.has_value() && presentFamily.has_value();
 }
 
 FzbVertexFormat::FzbVertexFormat() {
+	this->available = true;
 	this->useNormal = false;
 	this->useTexCoord = false;
 	this->useTangent = false;
@@ -18,13 +21,13 @@ FzbVertexFormat::FzbVertexFormat(bool useNormal, bool useTexCoord, bool useTange
 }
 uint32_t FzbVertexFormat::getVertexSize() const {
 	uint32_t attributeNum = 3 + useNormal * 3 + useTexCoord * 2 + useTangent * 3;
-	return attributeNum * sizeof(float);
+	return attributeNum;
 }
 VkVertexInputBindingDescription FzbVertexFormat::getBindingDescription() {
 
 	VkVertexInputBindingDescription bindingDescription{};
 	bindingDescription.binding = 0;
-	bindingDescription.stride = getVertexSize();
+	bindingDescription.stride = getVertexSize() * sizeof(float);
 	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 	return bindingDescription;
 
@@ -83,20 +86,28 @@ bool FzbVertexFormat::operator==(const FzbVertexFormat& other) const {
 	}
 	return true;
 }
+FzbVertexFormat fzbVertexFormatMergeUpward(FzbVertexFormat vertexFormat1, FzbVertexFormat vertexFormat2) {
+	FzbVertexFormat vertexFormat;
+	vertexFormat.useNormal = vertexFormat1.useNormal || vertexFormat2.useNormal;
+	vertexFormat.useTexCoord = vertexFormat1.useTexCoord || vertexFormat2.useTexCoord;
+	vertexFormat.useTangent = vertexFormat1.useTangent || vertexFormat2.useTangent;
+	return vertexFormat;
+}
 
 FzbLightsUniformBufferObject::FzbLightsUniformBufferObject() {}
 FzbLightsUniformBufferObject::FzbLightsUniformBufferObject(uint32_t lightNum) {
 	this->lightNum = lightNum;
 }
 
-FzbSemaphore::FzbSemaphore() {};
 void GetSemaphoreWin32HandleKHR(VkDevice device, VkSemaphoreGetWin32HandleInfoKHR* handleInfo, HANDLE* handle) {
 	auto func = (PFN_vkGetSemaphoreWin32HandleKHR)vkGetDeviceProcAddr(device, "vkGetSemaphoreWin32HandleKHR");
 	if (func != nullptr) {
 		func(device, handleInfo, handle);
 	}
 }
-FzbSemaphore::FzbSemaphore(VkDevice logicalDevice, bool UseExternal) {
+FzbSemaphore::FzbSemaphore() {};
+FzbSemaphore::FzbSemaphore(bool UseExternal) {
+	VkDevice logicalDevice = FzbRenderer::globalData.logicalDevice;
 	VkSemaphoreCreateInfo semaphoreInfo{};
 	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -123,9 +134,9 @@ FzbSemaphore::FzbSemaphore(VkDevice logicalDevice, bool UseExternal) {
 		this->handle = handle;
 	}
 }
-void FzbSemaphore::clean(VkDevice logicalDevice) {
+void FzbSemaphore::clean() {
 	if (semaphore != VK_NULL_HANDLE) {
-		vkDestroySemaphore(logicalDevice, semaphore, nullptr);
+		vkDestroySemaphore(FzbRenderer::globalData.logicalDevice, semaphore, nullptr);
 		semaphore = VK_NULL_HANDLE;
 	}
 
@@ -173,7 +184,63 @@ bool FzbShaderProperty::operator==(const FzbShaderProperty& other) const {
 	return textureProperties == other.textureProperties && numberProperties == other.numberProperties;
 }
 
-std::string getRootPath() {
+std::string fzbGetRootPath() {
 	std::filesystem::path thisFile = __FILE__;
 	return thisFile.parent_path().parent_path().parent_path().string();	//得到Renderer文件夹
+}
+glm::vec3 fzbGetRGBFromString(std::string str) {
+	std::vector<float> float3_array;
+	std::stringstream ss(str);
+	std::string token;
+	while (std::getline(ss, token, ',')) {
+		float3_array.push_back(std::stof(token));
+	}
+	return glm::vec3(float3_array[0], float3_array[1], float3_array[2]);
+}
+glm::mat4 fzbGetMat4FromString(std::string str) {
+	std::vector<float> mat4_array;
+	std::stringstream ss(str);
+	std::string token;
+	while (std::getline(ss, token, ' ')) {
+		mat4_array.push_back(std::stof(token));
+	}
+	return glm::mat4(mat4_array[0], mat4_array[4], mat4_array[8], mat4_array[12],
+		mat4_array[1], mat4_array[5], mat4_array[9], mat4_array[13],
+		mat4_array[2], mat4_array[6], mat4_array[10], mat4_array[14],
+		mat4_array[3], mat4_array[7], mat4_array[11], mat4_array[15]);
+}
+glm::vec2 getfloat2FromString(std::string str) {
+	std::vector<float> float2_array;
+	std::stringstream ss(str);
+	std::string token;
+	while (std::getline(ss, token, ' ')) {
+		float2_array.push_back(std::stof(token));
+	}
+	return glm::vec2(float2_array[0], float2_array[1]);
+}
+glm::vec4 getRGBAFromString(std::string str) {
+	std::vector<float> float4_array;
+	std::stringstream ss(str);
+	std::string token;
+	while (std::getline(ss, token, ',')) {
+		float4_array.push_back(std::stof(token));
+	}
+	return glm::vec4(float4_array[0], float4_array[1], float4_array[2], float4_array[3]);
+}
+
+VkFence fzbCreateFence() {
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	//第一帧可以直接获得信号，而不会阻塞
+	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+
+	VkFence fence;
+	if (vkCreateFence(FzbRenderer::globalData.logicalDevice, &fenceInfo, nullptr, &fence) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create semaphores!");
+	}
+
+	return fence;
+}
+void fzbCleanFence(VkFence fence) {
+	vkDestroyFence(FzbRenderer::globalData.logicalDevice, fence, nullptr);
 }

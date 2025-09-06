@@ -1,99 +1,38 @@
 #pragma once
 
-#include "../common/FzbComponent.h"
+#include "../common/FzbComponent/FzbFeatureComponent.h"
+#include "../common/FzbRenderer.h"
+#include "../common/FzbRenderPass/FzbRenderPass.h"
 
 #ifndef FZB_FORWARD_RENDER
 #define FZB_FORWARD_RENDER
 
 struct FzbForwardRenderSetting {
-	bool useForwardRender = true;
+	
 };
 
-struct FzbForwardRender : public FzbComponent {
+struct FzbForwardRender : public FzbFeatureComponent_LoopRender {
 
 public:
-	FzbForwardRenderSetting setting;
-	FzbScene* scene;
-
-	FzbRenderPass renderPass;
-	FzbImage depthMap;
-	
-	VkDescriptorSetLayout descriptorSetLayout = nullptr;	//将scene的相机和光照描述符作为组件描述符
-	VkDescriptorSet descriptorSet;
-
-	VkCommandBuffer commandBuffer;
-	FzbSemaphore renderFinishedSemaphores;
-
-	void addExtensions(FzbForwardRenderSetting frSetting, std::vector<const char*>& instanceExtensions, std::vector<const char*>& deviceExtensions, VkPhysicalDeviceFeatures& deviceFeatures) {
-
-	}
-
 	FzbForwardRender() {};
+	FzbForwardRender(pugi::xml_node& ForwardRenderNode) {
+		if (std::string(ForwardRenderNode.child("available").attribute("value").value()) == "true") this->componentInfo.available = true;
+		else return;
 
-	void clean() {
-		renderPass.clean();
-		depthMap.clean();
-		renderFinishedSemaphores.clean(logicalDevice);
-		//descriptorSetLayout是相机光源信息，由scene维护并清除
+		this->componentInfo.name = FZB_RENDERER_FORWARD;
+		this->componentInfo.type = FZB_RENDER_COMPONENT;
+		this->componentInfo.vertexFormat = FzbVertexFormat(true);
+		this->componentInfo.useMainSceneBufferHandle = { true, false, false };	//需要全部格式的顶点buffer和索引buffer，用来创建svo
+
+		addExtensions();
+	};
+
+	void init() override {
+		FzbFeatureComponent_LoopRender::init();
+		presentPrepare();
 	}
 
-	FzbVertexFormat getComponentVertexFormat() {
-		return FzbVertexFormat(true);
-	}
-
-	void init(FzbMainComponent* renderer, FzbForwardRenderSetting setting, FzbScene* scene, std::vector<FzbRenderPass*>& renderPasses) {
-		initComponent(renderer);
-		this->setting = setting;
-		this->scene = scene;
-		this->descriptorSetLayout = scene->cameraAndLightsDescriptorSetLayout;
-		this->descriptorSet = scene->cameraAndLightsDescriptorSet;
-		fzbCreateCommandBuffers(1);
-		renderFinishedSemaphores = FzbSemaphore(logicalDevice, false);
-		createImages();
-		createRenderPass(renderPasses);
-	}
-
-	void createImages() {
-		depthMap = {};
-		depthMap.width = swapChainExtent.width;
-		depthMap.height = swapChainExtent.height;
-		depthMap.type = VK_IMAGE_TYPE_2D;
-		depthMap.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		depthMap.format = fzbFindDepthFormat(physicalDevice);
-		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-		depthMap.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-	}
-	void createRenderPass(std::vector<FzbRenderPass*>& renderPasses) {
-		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(swapChainImageFormat);
-		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-		VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment(physicalDevice);
-		VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve, depthMapAttachment };
-
-		VkSubpassDescription presentSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef);
-		std::vector<VkSubpassDescription> subpasses = { presentSubpass };
-
-		std::vector<VkSubpassDependency> dependencies = { fzbCreateSubpassDependency() };
-
-		FzbRenderPassSetting setting = { true, 1, swapChainExtent, swapChainImageViews.size(), true };
-		renderPass = FzbRenderPass(physicalDevice, logicalDevice, commandPool, graphicsQueue, setting);
-		renderPass.images.push_back(&depthMap);
-		renderPass.createRenderPass(&attachments, subpasses, dependencies);
-		renderPass.createFramebuffers(swapChainImageViews);
-
-		FzbSubPass presentSubPass = FzbSubPass(logicalDevice, renderPass.renderPass, 0, 
-			{ descriptorSetLayout }, { descriptorSet },
-			scene->vertexBuffer.buffer, scene->indexBuffer.buffer, scene->sceneShaders_vector, swapChainExtent);
-		presentSubPass.createPipeline(scene->meshDescriptorSetLayout);
-		renderPass.subPasses.push_back(presentSubPass);
-
-		renderPasses.push_back(&renderPass);
-	}
-
-	VkSemaphore render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence = nullptr) {
-		scene->updateCameraBuffer();
-
+	VkSemaphore render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) {
 		VkCommandBuffer commandBuffer = commandBuffers[0];
 		vkResetCommandBuffer(commandBuffer, 0);
 
@@ -106,25 +45,76 @@ public:
 			throw std::runtime_error("failed to begin recording command buffer!");
 		}
 
-		renderPass.render(commandBuffer, imageIndex);
+		renderRenderPass.render(commandBuffer, imageIndex);
 
-		VkSemaphore waitSemaphores[] = { startSemaphore };
-		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+		std::vector<VkSemaphore> waitSemaphores = { startSemaphore };
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
 		VkSubmitInfo submitInfo{};
 		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = waitSemaphores;
+		submitInfo.waitSemaphoreCount = 1;	// waitSemaphores.size();
+		submitInfo.pWaitSemaphores = waitSemaphores.data();
 		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.commandBufferCount = 1;
 		submitInfo.pCommandBuffers = &commandBuffer;
 		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderFinishedSemaphores.semaphore;
+		submitInfo.pSignalSemaphores = &renderFinishedSemaphore.semaphore;
 
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+		if (vkQueueSubmit(FzbRenderer::globalData.graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
-		return renderFinishedSemaphores.semaphore;
+		return renderFinishedSemaphore.semaphore;
+	}
+
+	void clean() override {
+		FzbFeatureComponent_LoopRender::clean();
+		depthMap.clean();
+	}
+
+
+private:
+	FzbForwardRenderSetting setting;
+	FzbImage depthMap;
+
+	void addExtensions() override {}
+
+	void presentPrepare() override {
+		fzbCreateCommandBuffers(1);
+		
+		VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
+		VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+		VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment();
+		VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+		std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve, depthMapAttachment };
+
+		VkSubpassDescription presentSubpass = fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef);
+		std::vector<VkSubpassDescription> subpasses = { presentSubpass };
+
+		std::vector<VkSubpassDependency> dependencies = { fzbCreateSubpassDependency() };
+
+		FzbRenderPassSetting renderPassSetting = { true, 1, FzbRenderer::globalData.swapChainExtent, FzbRenderer::globalData.swapChainImageViews.size(), true };
+		renderRenderPass.setting = renderPassSetting;
+		renderRenderPass.createRenderPass(&attachments, subpasses, dependencies);
+		renderRenderPass.createFramebuffers(true);
+
+		FzbSubPass presentSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
+			{ mainScene->cameraAndLightsDescriptorSetLayout }, { mainScene->cameraAndLightsDescriptorSet },
+			mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, mainScene->sceneShaders_vector);
+		renderRenderPass.subPasses.push_back(presentSubPass);
+	}
+	
+	void createImages() override  {
+		depthMap = {};
+		depthMap.width = FzbRenderer::globalData.swapChainExtent.width;
+		depthMap.height = FzbRenderer::globalData.swapChainExtent.height;
+		depthMap.type = VK_IMAGE_TYPE_2D;
+		depthMap.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		depthMap.format = fzbFindDepthFormat();
+		depthMap.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		depthMap.aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+		depthMap.initImage();
+
+		frameBufferImages.push_back(&depthMap);
 	}
 };
 

@@ -353,6 +353,7 @@ struct FzbImage {
 */
 
 struct FzbVertexFormat {
+	bool available = true;
 	bool useNormal;
 	bool useTexCoord;
 	bool useTangent;
@@ -397,6 +398,7 @@ namespace std {
 		}
 	};
 }
+FzbVertexFormat fzbVertexFormatMergeUpward(FzbVertexFormat vertexFormat1, FzbVertexFormat vertexFormat2);
 
 struct FzbGlobalUniformBufferObject {
 	glm::vec4 swapChainExtent;
@@ -444,8 +446,8 @@ struct FzbSemaphore {
 	HANDLE handle = nullptr;
 
 	FzbSemaphore();
-	FzbSemaphore(VkDevice logicalDevice, bool UseExternal = false);
-	void clean(VkDevice logicalDevice);
+	FzbSemaphore(bool UseExternal);
+	void clean();
 };
 
 struct FzbTexture {
@@ -511,6 +513,33 @@ struct FzbShaderProperty {
 	bool operator==(const FzbShaderProperty& other) const;
 };
 
-std::string getRootPath();
+struct FzbAABBBox {
+
+	float leftX = FLT_MAX;
+	float rightX = -FLT_MAX;
+	float leftY = FLT_MAX;
+	float rightY = -FLT_MAX;
+	float leftZ = FLT_MAX;
+	float rightZ = -FLT_MAX;
+
+	float distanceX, distanceY, distanceZ, distance;
+	float centerX, centerY, centerZ;
+
+	float getAxis(uint32_t k);
+	void setAxis(uint32_t k, float value);
+	void createDistanceAndCenter(bool useCube, float expand);
+
+	bool isEmpty();
+
+};
+
+std::string fzbGetRootPath();
+glm::vec3 fzbGetRGBFromString(std::string str);
+glm::mat4 fzbGetMat4FromString(std::string str);
+glm::vec2 getfloat2FromString(std::string str);
+glm::vec4 getRGBAFromString(std::string str);
+
+VkFence fzbCreateFence();
+void fzbCleanFence(VkFence fence);
 
 #endif

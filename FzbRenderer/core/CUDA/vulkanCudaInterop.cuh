@@ -2,7 +2,7 @@
 
 #include<iostream>
 #include <chrono>
-#include "../common/FzbImage.h"
+#include "../common/FzbImage/FzbImage.h"
 #include "./commonCudaFunction.cuh"
 
 //#ifndef __CUDACC__

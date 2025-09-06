@@ -10,20 +10,27 @@ double cpuSecond() {
     return std::chrono::duration<double>(now.time_since_epoch()).count();
 }
 
-//------------------------------------------warp内部操作-----------------------------------------------
-/*
-这里是关于warp内部操作（原语）的学习
-首先，明确几点重要的点
-1. __activemask()是指执行到此刻的线程的掩码。但是由于很多时候warp是半个半个执行的（硬件区域一般是16个硬件一组，要两个时钟周期执行完一个warp），可能导致
-    即使warp内线程在一个分支中，但是不是同时执行到__activemask()的，就可能出现前半个warp只能得到0-15为1，16-31为0，而后半个warp得到全是1的情况。所以不能
-    直接用于原语的参数。一般来说需要在分支前使用__ballot_sync()来得到掩码。
-2. 大部分原语需要掩码显示执行线程，但是volta架构后可以不需要管，直接用0xffffffff即可，原语内部会处理，对于不激活的线程，原语结果会是未定义（但资料说就是0）
-    这样，在分支中，如果想对激活线程进行累加，可以直接用0xffffffff。但是对于大小值判断则不行，因为不激活线程会返回0
-3. 同样在volta架构之后，__syncwarp()可以处理条件分支，只不过在原语之后线程会再次发散。
-4. 由于编译环境和硬件的不同，隐式同步是不安全的，比如在if-else后分支同步，但可能由于环境不同，同步没有发生，即使在前后使用__syncwarp()，如
-     __syncwarp(); v = __shfl(0); __syncwarp() != __shfl(0)
-    因此我们需要使用显式同步，即 使用带sync的原语，如__shfl_sync。
-*/
+void checkKernelFunction() {
+    cudaError_t launchErr = cudaGetLastError();
+    if (launchErr != cudaSuccess) {
+        printf("核函数启动失败: %s\n", cudaGetErrorString(launchErr));
+        return; // 或适当的错误处理
+    }
+    else {
+        printf("核函数已成功启动\n");
+    }
+
+    // 然后等待核函数完成并检查执行错误
+    cudaError_t syncErr = cudaDeviceSynchronize();
+    if (syncErr != cudaSuccess) {
+        printf("核函数执行错误: %s\n", cudaGetErrorString(syncErr));
+    }
+    else {
+        printf("核函数已成功执行完成\n");
+    }
+}
+
+//------------------------------------------warp内部操作----------------------------------------------
 
 // 假设 value 是每个线程的输入，返回该 warp 内的最大值
 __device__ int warpMax(int value) {
@@ -275,6 +282,38 @@ __device__ float RadicalInverse_VdC(uint bits)
 __device__ float2 Hammersley(uint i, uint N)
 {
     return make_float2(float(i) / float(N), RadicalInverse_VdC(i));
+}
+
+__global__ void addDate_float_device(float* data, float date, uint32_t dataNum) {
+    uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
+    if (threadIndex >= dataNum) return;
+    data[threadIndex] += date;
+}
+void addDateCUDA_float(float* data, float date, uint32_t dataNum) {
+    float* data_device;
+    CHECK(cudaMalloc((void**)&data_device, sizeof(float) * dataNum));
+    CHECK(cudaMemcpy(data_device, data, sizeof(float) * dataNum, cudaMemcpyHostToDevice));
+    uint32_t gridSize = (dataNum + 511) / 512;
+    uint32_t blockSize = dataNum > 512 ? 512 : dataNum;
+    addDate_float_device << < gridSize, blockSize >> > (data_device, date, dataNum);
+    CHECK(cudaMemcpy(data, data_device, sizeof(float) * dataNum, cudaMemcpyDeviceToHost));
+    CHECK(cudaFree(data_device));
+}
+
+__global__ void addDate_uint_device(uint32_t* data, uint32_t date, uint32_t dataNum) {
+    uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
+    if (threadIndex >= dataNum) return;
+    data[threadIndex] += date;
+}
+void addDateCUDA_uint(uint32_t* data, uint32_t date, uint32_t dataNum) {
+    uint32_t* data_device;
+    CHECK(cudaMalloc((void**)&data_device, sizeof(uint32_t) * dataNum));
+    CHECK(cudaMemcpy(data_device, data, sizeof(uint32_t) * dataNum, cudaMemcpyHostToDevice));
+    uint32_t gridSize = (dataNum + 511) / 512;
+    uint32_t blockSize = dataNum > 512 ? 512 : dataNum;
+    addDate_uint_device << < gridSize, blockSize >> > (data_device, date, dataNum);
+    CHECK(cudaMemcpy(data, data_device, sizeof(uint32_t) * dataNum, cudaMemcpyDeviceToHost));
+    CHECK(cudaFree(data_device));
 }
 
 #endif

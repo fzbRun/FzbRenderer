@@ -21,15 +21,14 @@ layout(location = 2) in vec2 vertexTexCoords;
 #define textureNum 0
 #endif
 
-#if defined(useTextureProperty) || defined(useNumberProperty)
-#define meshDescriptorSetIndex 2
-#else
-#define meshDescriptorSetIndex 1
-#endif
+//#if defined(useTextureProperty) || defined(useNumberProperty)
+//#define meshDescriptorSetIndex 2
+//#else
+//#define meshDescriptorSetIndex 1
+//#endif
 
 //主组件描述符，相机信息
 layout(set = 0, binding = 0) uniform cameraUniformBufferObject{
-	mat4 model;
 	mat4 view;
 	mat4 proj;
 	vec4 cameraPos;
@@ -45,6 +44,7 @@ struct LightDate {
 	vec4 size;
 #endif
 };
+
 //主组件描述符，光照信息
 layout(set = 0, binding = 1) uniform lightsUniformBufferObject{
 	LightDate lightData[16];
@@ -64,10 +64,6 @@ layout(set = 1, binding = textureNum) uniform MaterialBuffer{
 #endif
 };
 #endif
-
-layout(set = meshDescriptorSetIndex, binding = 0) uniform MeshBuffer{
-	mat4 transformMatrix;
-};
 
 #include "../../../../shaders/common/getAttribute.glsl"
 #include "../../../../shaders/common/getIllumination.glsl"

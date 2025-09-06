@@ -28,6 +28,21 @@ clock()»á¼ÆËãCPUÊ±¼ä£¬¶ø·Ç¹ÒÖÓÊ±¼ä¡£¼´ÈôÓĞ3¸öÏß³Ì²¢ĞĞÔËĞĞ£¬Ö´ĞĞ3Ãë£¬ÄÇÃ´clock»á·
 */
 double cpuSecond();
 
+void checkKernelFunction();
+
+/*
+ÕâÀïÊÇ¹ØÓÚwarpÄÚ²¿²Ù×÷£¨Ô­Óï£©µÄÑ§Ï°
+Ê×ÏÈ£¬Ã÷È·¼¸µãÖØÒªµÄµã
+1. __activemask()ÊÇÖ¸Ö´ĞĞµ½´Ë¿ÌµÄÏß³ÌµÄÑÚÂë¡£µ«ÊÇÓÉÓÚºÜ¶àÊ±ºòwarpÊÇ°ë¸ö°ë¸öÖ´ĞĞµÄ£¨Ó²¼şÇøÓòÒ»°ãÊÇ16¸öÓ²¼şÒ»×é£¬ÒªÁ½¸öÊ±ÖÓÖÜÆÚÖ´ĞĞÍêÒ»¸öwarp£©£¬¿ÉÄÜµ¼ÖÂ
+    ¼´Ê¹warpÄÚÏß³ÌÔÚÒ»¸ö·ÖÖ§ÖĞ£¬µ«ÊÇ²»ÊÇÍ¬Ê±Ö´ĞĞµ½__activemask()µÄ£¬¾Í¿ÉÄÜ³öÏÖÇ°°ë¸öwarpÖ»ÄÜµÃµ½0-15Îª1£¬16-31Îª0£¬¶øºó°ë¸öwarpµÃµ½È«ÊÇ1µÄÇé¿ö¡£ËùÒÔ²»ÄÜ
+    Ö±½ÓÓÃÓÚÔ­ÓïµÄ²ÎÊı¡£Ò»°ãÀ´ËµĞèÒªÔÚ·ÖÖ§Ç°Ê¹ÓÃ__ballot_sync()À´µÃµ½ÑÚÂë¡£
+2. ´ó²¿·ÖÔ­ÓïĞèÒªÑÚÂëÏÔÊ¾Ö´ĞĞÏß³Ì£¬µ«ÊÇvolta¼Ü¹¹ºó¿ÉÒÔ²»ĞèÒª¹Ü£¬Ö±½ÓÓÃ0xffffffff¼´¿É£¬Ô­ÓïÄÚ²¿»á´¦Àí£¬¶ÔÓÚ²»¼¤»îµÄÏß³Ì£¬Ô­Óï½á¹û»áÊÇÎ´¶¨Òå£¨µ«×ÊÁÏËµ¾ÍÊÇ0£©
+    ÕâÑù£¬ÔÚ·ÖÖ§ÖĞ£¬Èç¹ûÏë¶Ô¼¤»îÏß³Ì½øĞĞÀÛ¼Ó£¬¿ÉÒÔÖ±½ÓÓÃ0xffffffff¡£µ«ÊÇ¶ÔÓÚ´óĞ¡ÖµÅĞ¶ÏÔò²»ĞĞ£¬ÒòÎª²»¼¤»îÏß³Ì»á·µ»Ø0
+3. Í¬ÑùÔÚvolta¼Ü¹¹Ö®ºó£¬__syncwarp()¿ÉÒÔ´¦ÀíÌõ¼ş·ÖÖ§£¬Ö»²»¹ıÔÚÔ­ÓïÖ®ºóÏß³Ì»áÔÙ´Î·¢É¢¡£
+4. ÓÉÓÚ±àÒë»·¾³ºÍÓ²¼şµÄ²»Í¬£¬ÒşÊ½Í¬²½ÊÇ²»°²È«µÄ£¬±ÈÈçÔÚif-elseºó·ÖÖ§Í¬²½£¬µ«¿ÉÄÜÓÉÓÚ»·¾³²»Í¬£¬Í¬²½Ã»ÓĞ·¢Éú£¬¼´Ê¹ÔÚÇ°ºóÊ¹ÓÃ__syncwarp()£¬Èç
+     __syncwarp(); v = __shfl(0); __syncwarp() != __shfl(0)
+    Òò´ËÎÒÃÇĞèÒªÊ¹ÓÃÏÔÊ½Í¬²½£¬¼´ Ê¹ÓÃ´øsyncµÄÔ­Óï£¬Èç__shfl_sync¡£
+*/
 __device__ int warpReduce(int localSum);
 __device__ float warpReduce(float localSum);
 __device__ int warpMax(int value);
@@ -50,5 +65,12 @@ __device__ uint2 pcg2d(uint2 v);
 __device__ float rand(uint32_t& seed);
 __device__ float RadicalInverse_VdC(uint bits);
 __device__ float2 Hammersley(uint i, uint N);
+
+__global__ void addDate_float_device(float* data, float date, uint32_t dataNum);
+void addDateCUDA_float(float* data, float date, uint32_t dataNum);
+
+__global__ void addDate_uint_device(uint32_t* data, uint32_t date, uint32_t dataNum);
+void addDateCUDA_uint(uint32_t* data, uint32_t date, uint32_t dataNum);
+
 
 #endif

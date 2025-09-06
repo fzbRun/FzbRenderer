@@ -26,11 +26,6 @@ layout(set = 2, binding = 0, std430) readonly buffer FzbSVONodes{
 	FzbSVONode fzbSVONodes[];
 };
 
-layout(set = 3, binding = 0) uniform MeshBuffer{
-	mat4 transformMatrix;
-};
-
-
 vec4 getWorldPos(vec3 p, uint shuffleKey) {
 	uint svoDepth = ((shuffleKey >> 28) & 0xF) - 1;	//得到当前节点所在满八叉树的第几层，从1开始
 	float svoVoxelNum = vubo.voxelSize_Num.w;
@@ -56,10 +51,10 @@ void main() {
 
 	FzbSVONode node = fzbSVONodes[voxelIndex[0]];
 	if (node.voxelNum > 0) {
-		gl_Position = cubo.proj * cubo.view * transformMatrix * getWorldPos(p0, node.shuffleKey);
+		gl_Position = cubo.proj * cubo.view * getWorldPos(p0, node.shuffleKey);
 		EmitVertex();
 
-		gl_Position = cubo.proj * cubo.view * transformMatrix * getWorldPos(p1, node.shuffleKey);
+		gl_Position = cubo.proj * cubo.view * getWorldPos(p1, node.shuffleKey);
 		EmitVertex();
 
 		EndPrimitive();

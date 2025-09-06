@@ -11,12 +11,8 @@ layout(set = 0, binding = 0) uniform voxelUniformBufferObject{
 	vec4 voxelStartPos;
 } vubo;
 
-layout(set = 1, binding = 0) uniform MeshBuffer{
-	mat4 transformMatrix;
-};
-
 void main(){
 	gl_ViewportMask[0] = 0x07;
-	gl_Position = vubo.VP[0] * transformMatrix * vec4(pos_in, 1.0f);
-	worldPos = (transformMatrix * vec4(pos_in, 1.0f)).xyz;
+	gl_Position = vubo.VP[0] * vec4(pos_in, 1.0f);
+	worldPos = pos_in;
 }

@@ -94,6 +94,63 @@
     <Filter Include="资源文件\core\ForwardRender\shaders\diffuse">
       <UniqueIdentifier>{344b3d84-2547-4c6a-a4e8-40fe94396c8e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\core\SceneDivision\BVH\CUDA">
+      <UniqueIdentifier>{ea1a8e5f-88b2-4d48-925f-94ba55021b65}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\SceneDivision\BVH\shaders\present">
+      <UniqueIdentifier>{fd9f2aae-5120-4222-80ab-5b0568f954d4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\renderer">
+      <UniqueIdentifier>{5d46bb51-bfb3-498b-8676-d642d75d3fc1}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbComponent">
+      <UniqueIdentifier>{e88ed9b2-1084-4b0a-826f-0fd932b0e2f4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbScene">
+      <UniqueIdentifier>{64bd4e1c-d396-4d4f-9d94-c77a1021df98}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbImage">
+      <UniqueIdentifier>{61dc01bc-8abf-4293-b542-4d8880900ee5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbBuffer">
+      <UniqueIdentifier>{7b4debc3-fbd4-497d-b2c4-adec0108641f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbCamera">
+      <UniqueIdentifier>{6f061edf-422a-42ec-8e3a-51e649196337}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbDescriptor">
+      <UniqueIdentifier>{29be3ba8-5d0d-4e16-a2c3-6cae0c3d0df0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbMaterial">
+      <UniqueIdentifier>{f050b64d-268c-4ad6-beb5-98fd96647b47}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbMesh">
+      <UniqueIdentifier>{d3d0650b-991b-4ae6-a29d-5dbdf80ce6c4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbPipeline">
+      <UniqueIdentifier>{753abe31-c6b4-4ff5-9ccb-f2a2d67318a5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbRenderPass">
+      <UniqueIdentifier>{d4a29903-e302-4d05-b46b-524f3fff940e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbShader">
+      <UniqueIdentifier>{134dce4c-d360-4674-a33f-d3edc0a8ea1e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\scenes">
+      <UniqueIdentifier>{7f3f49f2-f2cf-4672-bda4-7119408d284d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\scenes\veach-ajar">
+      <UniqueIdentifier>{6cbb1b0f-f67f-42ee-a06b-c89d7a2b367b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\scenes\bearBox">
+      <UniqueIdentifier>{33524c1e-c69a-4441-97e6-0fa2fe002a1d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbScene\CUDA">
+      <UniqueIdentifier>{830ff52d-4e22-4e6a-9b64-395b3c4a02d0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbMesh\CUDA">
+      <UniqueIdentifier>{1c442ea2-92be-41ba-8a66-151dcc68e94a}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\RayTracing\PathTracing\pathTracing.h">
@@ -105,59 +162,83 @@
     <ClInclude Include="core\SceneDivision\SVO\CUDA\createSVO.cuh">
       <Filter>资源文件\core\SceneDivision\SVO\CUDA</Filter>
     </ClInclude>
-    <ClInclude Include="core\SceneDivision\BVH\BVH.h">
-      <Filter>资源文件\core\SceneDivision\BVH</Filter>
-    </ClInclude>
     <ClInclude Include="core\RayTracing\PathTracing\AccelerationStructure\accelerationStructure.h">
       <Filter>资源文件\core\RayTracing\PathTracing\AccelerationStructure</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbBuffer.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbCamera.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbComponent.h">
-      <Filter>资源文件\core\common</Filter>
     </ClInclude>
     <ClInclude Include="core\common\StructSet.h">
       <Filter>资源文件\core\common</Filter>
     </ClInclude>
-    <ClInclude Include="core\common\FzbScene.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbMesh.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbPipeline.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbRenderPass.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbImage.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbDescriptor.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbShader.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
     <ClInclude Include="core\O-CNN\FzbOCNN.h">
       <Filter>资源文件\core\O-CNN</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\FzbMaterial.h">
-      <Filter>资源文件\core\common</Filter>
-    </ClInclude>
-    <ClInclude Include="core\ForwardRender\FzbForwardRender.h">
-      <Filter>资源文件\core\ForwardRender</Filter>
     </ClInclude>
     <ClInclude Include="core\CUDA\commonCudaFunction.cuh">
       <Filter>资源文件\core\CUDA</Filter>
     </ClInclude>
     <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh">
       <Filter>资源文件\core\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\SceneDivision\BVH\CUDA\createBVH.cuh">
+      <Filter>资源文件\core\SceneDivision\BVH\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbRenderer.h">
+      <Filter>资源文件\core\common</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbComponent\FzbComponent.h">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbComponent\FzbMainComponent.h">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbComponent\FzbFeatureComponent.h">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbScene\FzbScene.h">
+      <Filter>资源文件\core\common\FzbScene</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbImage\FzbImage.h">
+      <Filter>资源文件\core\common\FzbImage</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbBuffer\FzbBuffer.h">
+      <Filter>资源文件\core\common\FzbBuffer</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbCamera\FzbCamera.h">
+      <Filter>资源文件\core\common\FzbCamera</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbDescriptor\FzbDescriptor.h">
+      <Filter>资源文件\core\common\FzbDescriptor</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbMaterial\FzbMaterial.h">
+      <Filter>资源文件\core\common\FzbMaterial</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbMesh\FzbMesh.h">
+      <Filter>资源文件\core\common\FzbMesh</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbPipeline\FzbPipeline.h">
+      <Filter>资源文件\core\common\FzbPipeline</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbRenderPass\FzbRenderPass.h">
+      <Filter>资源文件\core\common\FzbRenderPass</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbShader\FzbShader.h">
+      <Filter>资源文件\core\common\FzbShader</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbComponent\FzbFeatureComponentManager.h">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
+    </ClInclude>
+    <ClInclude Include="core\ForwardRender\FzbForwardRender.h">
+      <Filter>资源文件\core\ForwardRender</Filter>
+    </ClInclude>
+    <ClInclude Include="core\SceneDivision\BVH\BVH.h">
+      <Filter>资源文件\core\SceneDivision\BVH</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbScene\compressVertices.h">
+      <Filter>资源文件\core\common\FzbScene</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbScene\CUDA\FzbSceneCUDA.cuh">
+      <Filter>资源文件\core\common\FzbScene\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbMesh\CUDA\FzbMeshCUDA.cuh">
+      <Filter>资源文件\core\common\FzbMesh\CUDA</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -170,46 +251,79 @@
     <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu">
       <Filter>资源文件\core\CUDA</Filter>
     </CudaCompile>
+    <CudaCompile Include="core\SceneDivision\BVH\CUDA\createBVH_common.cu">
+      <Filter>资源文件\core\SceneDivision\BVH\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\SceneDivision\BVH\CUDA\createBVH_noRecursion.cu">
+      <Filter>资源文件\core\SceneDivision\BVH\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\SceneDivision\BVH\CUDA\createBVH_recursion.cu">
+      <Filter>资源文件\core\SceneDivision\BVH\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\common\FzbScene\CUDA\FzbSceneCUDA.cu">
+      <Filter>资源文件\core\common\FzbScene\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\common\FzbMesh\CUDA\FzbMeshCUDA.cu">
+      <Filter>资源文件\core\common\FzbMesh\CUDA</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="FzbRenderer.cpp">
+    <ClCompile Include="main.cpp">
       <Filter>资源文件</Filter>
-    </ClCompile>
-    <ClCompile Include="core\common\FzbImage.cpp">
-      <Filter>资源文件\core\common</Filter>
-    </ClCompile>
-    <ClCompile Include="core\common\FzbBuffer.cpp">
-      <Filter>资源文件\core\common</Filter>
-    </ClCompile>
-    <ClCompile Include="core\common\FzbPipeline.cpp">
-      <Filter>资源文件\core\common</Filter>
-    </ClCompile>
-    <ClCompile Include="core\common\FzbShader.cpp">
-      <Filter>资源文件\core\common</Filter>
-    </ClCompile>
-    <ClCompile Include="core\common\FzbScene.cpp">
-      <Filter>资源文件\core\common</Filter>
-    </ClCompile>
-    <ClCompile Include="core\common\FzbMaterial.cpp">
-      <Filter>资源文件\core\common</Filter>
-    </ClCompile>
-    <ClCompile Include="core\common\FzbMesh.cpp">
-      <Filter>资源文件\core\common</Filter>
     </ClCompile>
     <ClCompile Include="core\common\StructSet.cpp">
       <Filter>资源文件\core\common</Filter>
     </ClCompile>
-    <ClCompile Include="core\common\FzbRenderPass.cpp">
+    <ClCompile Include="core\SceneDivision\BVH\BVH.cpp">
+      <Filter>资源文件\core\SceneDivision\BVH</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbRenderer.cpp">
       <Filter>资源文件\core\common</Filter>
     </ClCompile>
-    <ClCompile Include="core\common\FzbDescriptor.cpp">
-      <Filter>资源文件\core\common</Filter>
+    <ClCompile Include="core\common\FzbComponent\FzbComponent.cpp">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
     </ClCompile>
-    <ClCompile Include="core\common\FzbComponent.cpp">
-      <Filter>资源文件\core\common</Filter>
+    <ClCompile Include="core\common\FzbComponent\FzbMainComponent.cpp">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
     </ClCompile>
-    <ClCompile Include="core\common\FzbCamera.cpp">
-      <Filter>资源文件\core\common</Filter>
+    <ClCompile Include="core\common\FzbComponent\FzbFeatureComponent.cpp">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbScene\FzbScene.cpp">
+      <Filter>资源文件\core\common\FzbScene</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbImage\FzbImage.cpp">
+      <Filter>资源文件\core\common\FzbImage</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbBuffer\FzbBuffer.cpp">
+      <Filter>资源文件\core\common\FzbBuffer</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbCamera\FzbCamera.cpp">
+      <Filter>资源文件\core\common\FzbCamera</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbDescriptor\FzbDescriptor.cpp">
+      <Filter>资源文件\core\common\FzbDescriptor</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbMaterial\FzbMaterial.cpp">
+      <Filter>资源文件\core\common\FzbMaterial</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbMesh\FzbMesh.cpp">
+      <Filter>资源文件\core\common\FzbMesh</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbPipeline\FzbPipeline.cpp">
+      <Filter>资源文件\core\common\FzbPipeline</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbRenderPass\FzbRenderPass.cpp">
+      <Filter>资源文件\core\common\FzbRenderPass</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbShader\FzbShader.cpp">
+      <Filter>资源文件\core\common\FzbShader</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbComponent\FzbFeatureComponentManager.cpp">
+      <Filter>资源文件\core\common\FzbComponent</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbScene\compressVertices.cpp">
+      <Filter>资源文件\core\common\FzbScene</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -273,6 +387,15 @@
     <None Include="core\SceneDivision\SVO\shaders\present_SVO\wireFrameGemo.glsl">
       <Filter>资源文件\core\SceneDivision\SVO\shaders\present_SVO</Filter>
     </None>
+    <None Include="core\SceneDivision\BVH\shaders\present\vertex.glsl">
+      <Filter>资源文件\core\SceneDivision\BVH\shaders\present</Filter>
+    </None>
+    <None Include="core\SceneDivision\BVH\shaders\present\fragment.glsl">
+      <Filter>资源文件\core\SceneDivision\BVH\shaders\present</Filter>
+    </None>
+    <None Include="core\SceneDivision\BVH\shaders\present\geometry.glsl">
+      <Filter>资源文件\core\SceneDivision\BVH\shaders\present</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Text Include="shaders\LitShader\shaderInfo.xml">
@@ -300,6 +423,18 @@
     </Xml>
     <Xml Include="core\SceneDivision\SVO\shaders\present_SVO\shaderInfo.xml">
       <Filter>资源文件\core\SceneDivision\SVO\shaders\present_SVO</Filter>
+    </Xml>
+    <Xml Include="core\SceneDivision\BVH\shaders\present\shaderInfo.xml">
+      <Filter>资源文件\core\SceneDivision\BVH\shaders\present</Filter>
+    </Xml>
+    <Xml Include="renderer\rendererInfo.xml">
+      <Filter>资源文件\renderer</Filter>
+    </Xml>
+    <Xml Include="scenes\veach-ajar\scene_onlyDiff.xml">
+      <Filter>资源文件\scenes\veach-ajar</Filter>
+    </Xml>
+    <Xml Include="scenes\bearBox\scene_onlyDiff.xml">
+      <Filter>资源文件\scenes\bearBox</Filter>
     </Xml>
   </ItemGroup>
 </Project>

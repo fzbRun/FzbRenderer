@@ -7,11 +7,7 @@ layout(set = 0, binding = 0) uniform cameraUniformBufferObject{
 	vec4 cameraPos;
 } cubo;
 
-layout(set = 2, binding = 0) uniform MeshBuffer{
-	mat4 transformMatrix;
-};
-
 void main() {
-	gl_Position = cubo.proj * cubo.view * transformMatrix * vec4(pos_in, 1.0f);
-	worldPos = transformMatrix * vec4(pos_in, 1.0f);
+	gl_Position = cubo.proj * cubo.view * vec4(pos_in, 1.0f);
+	worldPos =  vec4(pos_in, 1.0f);
 }

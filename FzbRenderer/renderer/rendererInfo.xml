@@ -1,0 +1,24 @@
+<renderer>
+	<name value = "FzbRenderer" />
+	<resolution width = "1280" height = "720" />
+	<sceneXML path = "/scenes/veach-ajar" />
+	<rendererType value = "Forward">
+		<available value = "false" />
+	</rendererType>
+	<featureComponents>
+		<featureComponent name = "BVH_Debug">
+			<available value = "true" />
+		</featureComponent>
+		<featureComponent name = "SVO_Debug">
+			<available value = "false" />
+			<featureComponentSetting>
+				<voxelNum value = "64" />
+				<useOnlyVoxelGridMap value = "false" />
+				<useSwizzle value = "false" />
+				<useConservativeRasterization value = "false" />
+				<useBlock value = "false" />
+				<useCube value = "false" />
+			</featureComponentSetting>
+		</featureComponent>
+	</featureComponents> 
+</renderer>

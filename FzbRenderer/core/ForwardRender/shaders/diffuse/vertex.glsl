@@ -17,12 +17,6 @@ layout(location = 3) in vec3 tangent_in;
 #define textureNum 0
 #endif
 
-#if defined(useTextureProperty) || defined(useNumberProperty)
-#define meshDescriptorSetIndex 2
-#else
-#define meshDescriptorSetIndex 1
-#endif
-
 //主组件描述符，相机信息
 layout(set = 0, binding = 0) uniform cameraUniformBufferObject{
 	mat4 view;
@@ -39,9 +33,16 @@ layout(set = 1, binding = textureNum) uniform MaterialBuffer {
 };
 #endif
 
+#ifdef useDynamicMesh
+#if defined(useTextureProperty) || defined(useNumberProperty)
+#define meshDescriptorSetIndex 2
+#else
+#define meshDescriptorSetIndex 1
+#endif
 layout(set = meshDescriptorSetIndex, binding = 0) uniform MeshBuffer{
 	mat4 transformMatrix;
 };
+#endif
 
 layout(location = 0) out vec3 vertexWorldPos;	//从顶点传出去的属性，就按vertex+属性来命名
 #ifdef useVertexNormal
@@ -52,12 +53,18 @@ layout(location = 2) out vec2 vextexTexCoords;
 #endif
 
 void main() {
-	//mat4 model = transformMatrixs[gl_DrawID];
-	mat4 model = transformMatrix;
-	vertexWorldPos = (model * vec4(pos_in, 1.0f)).xyz;
+#ifdef useDynamicMesh
+	vertexWorldPos = (transformMatrix * vec4(pos_in, 1.0f)).xyz;
 	gl_Position = cubo.proj * cubo.view * vec4(vertexWorldPos, 1.0f);
 #ifdef useVertexNormal
 	vertexNormal = (transpose(inverse(model)) * vec4(normal_in, 1.0f)).xyz;
+#endif
+#else
+	vertexWorldPos = pos_in;
+	gl_Position = cubo.proj * cubo.view * vec4(vertexWorldPos, 1.0f);
+#ifdef useVertexNormal
+	vertexNormal = normal_in;
+#endif
 #endif
 #ifdef useVertexTexCoords
 	vextexTexCoords = texCoords_in;
