@@ -33,7 +33,7 @@ void checkKernelFunction() {
 //------------------------------------------warp内部操作----------------------------------------------
 
 // 假设 value 是每个线程的输入，返回该 warp 内的最大值
-__device__ int warpMax(int value) {
+__device__ int warpMax(int value, uint32_t mask) {
     //// 全活跃线程掩码（32 线程 warp 中通常都是活跃的）
     //unsigned mask = __activemask();
     //// 每次向下偏移 offset 并与自己的值做比较
@@ -43,16 +43,16 @@ __device__ int warpMax(int value) {
     //}
     //// 到这里，lane 0 上的 value 就是整个 warp 的最大值
     //return value;
-    return __reduce_max_sync(0xffffffff, value);
+    return __reduce_max_sync(mask, value);
 }
-__device__ int warpMin(int value) {
+__device__ int warpMin(int value, uint32_t mask) {
     //unsigned mask = __activemask();
     //for (int offset = 16; offset > 0; offset >>= 1) {
     //    int other = __shfl_down_sync(mask, value, offset);
     //    value = (value < other ? value : other);
     //}
     //return value;
-    return __reduce_min_sync(0xffffffff, value);
+    return __reduce_min_sync(mask, value);
 }
 
 __device__ float warpMax(float value) {
@@ -69,7 +69,7 @@ __device__ float warpMin(float value) {
     }
     return value;
 }
-__device__ int warpReduce(int localSum)
+__device__ int warpReduce(int localSum, uint32_t mask)
 {
     //localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 16);
     //localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 8);
@@ -77,14 +77,20 @@ __device__ int warpReduce(int localSum)
     //localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 2);
     //localSum += __shfl_xor_sync(0xFFFFFFFFu, localSum, 1);
     //return localSum;
-    return __reduce_add_sync(0xffffffff, localSum);
+    return __reduce_add_sync(mask, localSum);
 }
-__device__ float warpReduce(float localSum)
+__device__ float warpReduce(float localSum, uint32_t mask)
 {
     for (int offset = warpSize / 2; offset > 0; offset >>= 1) {
-        localSum += __shfl_down_sync(0xffffffff, localSum, offset);
+        localSum += __shfl_down_sync(mask, localSum, offset);
     }
     return localSum;
+}
+
+__device__ bool valueEqual(int val, uint32_t mask) {
+    int ref = __shfl_sync(mask, val, __ffs(mask) - 1);
+    unsigned vote = __ballot_sync(mask, val == ref); // 哪些 lane 等于 ref
+    return vote == mask; // 如果所有参与 lane 都等于 ref
 }
 //------------------------------------------------求和--------------------------------------------
 __global__ void sumFloatKernel(float* input, float* output, uint32_t dataNum) {

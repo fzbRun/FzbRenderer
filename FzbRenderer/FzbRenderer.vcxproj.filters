@@ -325,6 +325,12 @@
     <ClCompile Include="core\common\FzbScene\compressVertices.cpp">
       <Filter>资源文件\core\common\FzbScene</Filter>
     </ClCompile>
+    <ClCompile Include="core\SceneDivision\SVO\SVO.cpp">
+      <Filter>资源文件\core\SceneDivision\SVO</Filter>
+    </ClCompile>
+    <ClCompile Include="core\ForwardRender\FzbForwardRender.cpp">
+      <Filter>资源文件\core\ForwardRender</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="core\SceneDivision\SVO\shaders\present\presentFrag.glsl">

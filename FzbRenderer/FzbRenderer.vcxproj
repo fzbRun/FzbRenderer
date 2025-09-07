@@ -198,7 +198,9 @@
     <ClCompile Include="core\common\FzbScene\FzbScene.cpp" />
     <ClCompile Include="core\common\FzbShader\FzbShader.cpp" />
     <ClCompile Include="core\common\StructSet.cpp" />
+    <ClCompile Include="core\ForwardRender\FzbForwardRender.cpp" />
     <ClCompile Include="core\SceneDivision\BVH\BVH.cpp" />
+    <ClCompile Include="core\SceneDivision\SVO\SVO.cpp" />
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>

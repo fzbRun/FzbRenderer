@@ -42,14 +42,17 @@ void checkKernelFunction();
 4. 由于编译环境和硬件的不同，隐式同步是不安全的，比如在if-else后分支同步，但可能由于环境不同，同步没有发生，即使在前后使用__syncwarp()，如
      __syncwarp(); v = __shfl(0); __syncwarp() != __shfl(0)
     因此我们需要使用显式同步，即 使用带sync的原语，如__shfl_sync。
+5. warp内部操作可以指定mask，但调用warp操作函数的线程必须在mask中，且warp操作的对象也必须在mask中，如线程0去拿线程16的数据，必须保证0和16都在mask中
 */
-__device__ int warpReduce(int localSum);
-__device__ float warpReduce(float localSum);
-__device__ int warpMax(int value);
-__device__ int warpMin(int value);
+__device__ int warpReduce(int localSum, uint32_t mask = 0xffffffff);
+__device__ float warpReduce(float localSum, uint32_t mask = 0xffffffff);
+__device__ int warpMax(int value, uint32_t mask = 0xffffffff);
+__device__ int warpMin(int value, uint32_t mask = 0xffffffff);
 
 __device__ float warpMax(float value);
 __device__ float warpMin(float value);
+
+__device__ bool valueEqual(int val, uint32_t mask = 0xffffffff);
 
 float* sumFloat(float* input, float* output);
 

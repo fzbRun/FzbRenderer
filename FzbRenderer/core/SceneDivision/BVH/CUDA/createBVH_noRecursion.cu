@@ -89,6 +89,66 @@ __global__ void initTriangle_nr(float* vertices, FzbTriangleTempInfo_nr* triangl
 
 template<bool isFirst>
 __global__ void createNode(FzbBvhNode* bvhNodeArray, FzbBvhNodeTempInfo* bvhNodeTempInfoArray, FzbTriangleTempInfo_nr* triangleTempInfoArray, uint32_t* triangleIndices, uint32_t* triangleNum_ptr, uint32_t* newTriangleIndices, uint32_t* newTriangleNum_ptr) {
+    __shared__ uint32_t groupDivideTriangleNum;  //还要继续划分的三角形数量
+    __shared__ uint32_t groupStartIndex;
+    
+    uint32_t threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
+    if (threadIdx.x == 0) groupDivideTriangleNum = 0;
+    __syncthreads();
+
+    uint32_t warpIndex = threadIndex / 32;
+    uint32_t warpLane = threadIndex & 31;
+    uint32_t triangleNum = *triangleNum_ptr;
+    if (threadIndex >= triangleNum) return;
+
+    uint32_t triangleIndex = isFirst ? threadIndex : triangleIndices[threadIndex];
+    FzbTriangleTempInfo_nr triangleTempInfo = triangleTempInfoArray[triangleIndex];
+    uint32_t nodeIndex = triangleTempInfo.nodeIndex;
+    uint32_t nodeTriangleNum = bvhNodeTempInfoArray[nodeIndex].triangleNum;
+
+    uint32_t activeMask = __ballot_sync(0xffffffff, nodeTriangleNum != 1);
+    uint32_t laneOffset = __popc(activeMask & ((1u << warpLane) - 1));
+    uint32_t firstActiveLane = __ffs(activeMask) - 1;
+
+    if (nodeTriangleNum == 1) {
+        bvhNodeArray[nodeIndex].AABB = triangleTempInfo.AABB;
+        bvhNodeArray[nodeIndex].rightNodeIndex = triangleTempInfo.triangleIndex;
+    }
+
+    /*
+    * 这里我尽量将一个group、warp中的三角形放在一起，即在newTriangleNum_ptr中连续，这有什么好处呢
+    * 好处就是一个group、warp中的三角形较为聚集，那么自然更有可能分到一个node中，那么后续的分支就可能更少了。
+    */
+    uint32_t warpStartIndex;
+    if (warpLane == firstActiveLane) {
+        uint32_t devideTriangleNum = __popc(activeMask);
+        warpStartIndex = atomicAdd(&groupDivideTriangleNum, devideTriangleNum);
+    }
+    __syncthreads();
+
+    if (threadIdx.x == 0) groupStartIndex = atomicAdd(newTriangleNum_ptr, groupDivideTriangleNum);
+    __syncthreads();
+
+    if (nodeTriangleNum != 1) {
+        warpStartIndex = __shfl_sync(activeMask, warpStartIndex, firstActiveLane);    //srcLane 必须在 mask，且只有activeMask中的线程能拿到结果
+        newTriangleIndices[groupStartIndex + warpStartIndex + laneOffset] = triangleIndex;
+        float3 meanPos = (triangleTempInfo.pos0 + triangleTempInfo.pos1 + triangleTempInfo.pos2) / 3;
+
+        atomicAdd(&bvhNodeTempInfoArray[nodeIndex].sumPos.x, meanPos.x);
+        atomicAdd(&bvhNodeTempInfoArray[nodeIndex].sumPos.y, meanPos.y);
+        atomicAdd(&bvhNodeTempInfoArray[nodeIndex].sumPos.z, meanPos.z);
+
+        atomicMinFloat(&bvhNodeArray[nodeIndex].AABB.leftX, triangleTempInfo.AABB.leftX);   //为当前节点创造AABB
+        atomicMaxFloat(&bvhNodeArray[nodeIndex].AABB.rightX, triangleTempInfo.AABB.rightX);
+        atomicMinFloat(&bvhNodeArray[nodeIndex].AABB.leftY, triangleTempInfo.AABB.leftY);
+        atomicMaxFloat(&bvhNodeArray[nodeIndex].AABB.rightY, triangleTempInfo.AABB.rightY);
+        atomicMinFloat(&bvhNodeArray[nodeIndex].AABB.leftZ, triangleTempInfo.AABB.leftZ);
+        atomicMaxFloat(&bvhNodeArray[nodeIndex].AABB.rightZ, triangleTempInfo.AABB.rightZ);
+    }
+}
+/*
+template<bool isFirst>
+__global__ void createNode(FzbBvhNode* bvhNodeArray, FzbBvhNodeTempInfo* bvhNodeTempInfoArray, FzbTriangleTempInfo_nr* triangleTempInfoArray, uint32_t* triangleIndices, uint32_t* triangleNum_ptr, uint32_t* newTriangleIndices, uint32_t* newTriangleNum_ptr) {
     uint32_t threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
     uint32_t triangleNum = *triangleNum_ptr;
     if (threadIndex >= triangleNum) {
@@ -121,6 +181,7 @@ __global__ void createNode(FzbBvhNode* bvhNodeArray, FzbBvhNodeTempInfo* bvhNode
         atomicMaxFloat(&bvhNodeArray[nodeIndex].AABB.rightZ, triangleTempInfo.AABB.rightZ);
     }
 }
+*/
 
 __global__ void preDivideNode(FzbBvhNodeTempInfo* bvhNodeTempInfoArray, FzbTriangleTempInfo_nr* triangleTempInfoArray, uint32_t* triangleIndices, uint32_t* triangleNum_ptr) {
     uint32_t threadIndex = blockIdx.x * blockDim.x + threadIdx.x;
@@ -366,7 +427,6 @@ void BVHCuda::createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbSc
 
     CHECK(cudaDestroyExternalMemory(vertexExtMem));
     CHECK(cudaFree(triangleTempInfoArray));
-    //CHECK(cudaFree(vertices));
     CHECK(cudaFree(nodeTempInfoArray));
     CHECK(cudaFree(triangleIndices0));
     CHECK(cudaFree(triangleIndices1));
