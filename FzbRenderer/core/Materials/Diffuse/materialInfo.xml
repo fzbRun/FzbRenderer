@@ -1,0 +1,13 @@
+<Material>
+	<vertexFormat>
+		<pos available = "true"/>
+		<normal available = "true"/>
+		<texCoords available = "true"/>
+		<tangent available = "false"/>
+	</vertexFormat>
+	<attributes>
+		<attribute name = "albedo"  type = "rgba" value = "1, 1, 1, 1"/>
+		<attribute name = "albedoMap" type = "texture" />
+		<attribute name = "normalMap"  type = "texture" />
+	</attributes>
+</Material>

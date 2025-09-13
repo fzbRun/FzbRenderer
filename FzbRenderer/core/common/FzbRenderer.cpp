@@ -1,8 +1,9 @@
 #include "./FzbRenderer.h"
 #include "../ForwardRender/FzbForwardRender.h"
-#include "../SceneDivision/SVO/SVO.h"
-#include "../SceneDivision/BVH/BVH.h"
+#include "../SceneDivision/SVO/FzbSVO.h"
+#include "../SceneDivision/BVH/FzbBVH.h"
 #include <glslang/Public/ShaderLang.h>
+#include <chrono>
 
 std::map<std::string, FzbFeatureComponentName> featureComponentMap{
 	{ "Forward", FZB_RENDERER_FORWARD },
@@ -43,7 +44,7 @@ void FzbRenderer::initRendererFromXMLInfo(std::string rendererXML) {
 	this->globalData.setResolution(resolution);
 
 	std::string scenePath = rendererInfo.child("sceneXML").attribute("path").value();
-	globalData.setMainScenePath(scenePath);
+	this->globalData.mainScene = FzbMainScene(scenePath);	//看构造函数注释
 	
 	if (pugi::xml_node rendererTypeNode = rendererInfo.child("rendererType")) {
 		std::string rendererType = rendererTypeNode.attribute("value").value();
@@ -57,8 +58,8 @@ void FzbRenderer::initRendererFromXMLInfo(std::string rendererXML) {
 		}
 	}
 	doc.reset();
-
-	this->componentManager.init();
+	
+	//this->componentManager.init();
 	this->globalData.init(this->rendererName.c_str());
 	this->componentManager.componentInit();
 

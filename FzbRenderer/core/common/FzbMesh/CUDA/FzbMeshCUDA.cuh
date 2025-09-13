@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vector>
-#include "../../StructSet.h"
+#include "../../FzbCommon.h"
 #include "../../FzbMesh/FzbMesh.h"
 
 #ifndef FZB_MESH_CUDA_H

@@ -108,9 +108,9 @@ public:
 
 	BVHCuda() {};
 
-	void createTriangleInfoArray(FzbScene* scene, cudaStream_t stream);
-	void createBvhCuda_recursion(VkPhysicalDevice vkPhysicalDevice, FzbScene& scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth);	//太慢了，废弃了，但是写了很多，不舍得删，放着吧
-	void createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbScene* scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth);	//不使用迭代
+	void createTriangleInfoArray(FzbMainScene* scene, cudaStream_t stream);
+	void createBvhCuda_recursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene& scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth);	//太慢了，废弃了，但是写了很多，不舍得删，放着吧
+	void createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene* scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth);	//不使用迭代
 	void getBvhCuda(VkPhysicalDevice vkPhysicalDevice, HANDLE bvhNodeArrayHandle, HANDLE bvhTriangleInfoArrayMem);
 	void clean();
 };

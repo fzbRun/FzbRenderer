@@ -22,7 +22,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 
 FzbMainComponent::FzbMainComponent() {}
 void FzbMainComponent::setMainScenePath(std::string scenePath) {
-	this->mainScene.setScenePath(scenePath);
+	this->mainScene.scenePath = scenePath;
 }
 
 void FzbMainComponent::init(const char* name) {
@@ -586,7 +586,6 @@ void FzbMainComponent::createSwapChain() {
 
 }
 void FzbMainComponent::createSwapChainImageViews() {
-
 	//imageViews和交换链中的image数量相同
 	this->swapChainImageViews.resize(this->swapChainImages.size());
 	for (size_t i = 0; i < this->swapChainImages.size(); i++) {
@@ -609,9 +608,7 @@ void FzbMainComponent::createSwapChainImageViews() {
 		if (vkCreateImageView(logicalDevice, &viewInfo, nullptr, &this->swapChainImageViews[i]) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create image views!");
 		}
-
 	}
-
 }
 VkSurfaceFormatKHR FzbMainComponent::chooseSwapSurfaceFormat() {
 

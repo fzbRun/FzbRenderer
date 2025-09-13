@@ -3,12 +3,6 @@
 
 FzbFeatureComponentManager::FzbFeatureComponentManager() {
 	this->postProcessingComponent = nullptr;
-	this->vertexFormat_preprocess = FzbVertexFormat();
-	this->useMainSceneBuffer_preprocess = { false, false, false };
-	this->useMainSceneBufferHandle_preprocess = { false, false, false };
-	this->vertexFormat_looprender = FzbVertexFormat(true);
-	this->useMainSceneBuffer_looprender = { true, false, false };
-	this->useMainSceneBufferHandle_looprender = { false, false, false };
 };
 void FzbFeatureComponentManager::addFeatureComponent(std::shared_ptr<FzbFeatureComponent> featureComponent) {
 	if (featureComponent == nullptr) return;
@@ -25,13 +19,36 @@ void FzbFeatureComponentManager::addFeatureComponent(std::shared_ptr<FzbFeatureC
 	}
 }
 
+/*
 void FzbFeatureComponentManager::init() {
+	if (this->renderComponent) {
+		FzbFeatureComponentInfo componentInfo = this->renderComponent->componentInfo;
+		if (componentInfo.vertexFormat.available) {
+			this->vertexFormat_preprocess.mergeUpward(componentInfo.vertexFormat);
+			if (componentInfo.usePosBuffer) useMainSceneBuffer_preprocess[1] = true;
+			if (componentInfo.usePosNormalBuffer) useMainSceneBuffer_preprocess[2] = true;
+		}
+		for (int i = 0; i < componentInfo.useMainSceneBufferHandle.size(); i++) {
+			this->useMainSceneBufferHandle_looprender[i] = this->useMainSceneBufferHandle_looprender[i] || componentInfo.useMainSceneBufferHandle[i];
+		}
+	}
+	if (this->postProcessingComponent) {
+		FzbFeatureComponentInfo componentInfo = this->postProcessingComponent->componentInfo;
+		if (componentInfo.vertexFormat.available) {
+			this->vertexFormat_preprocess.mergeUpward(componentInfo.vertexFormat);
+			if (componentInfo.usePosBuffer) useMainSceneBuffer_preprocess[1] = true;
+			if (componentInfo.usePosNormalBuffer) useMainSceneBuffer_preprocess[2] = true;
+		}
+		for (int i = 0; i < componentInfo.useMainSceneBufferHandle.size(); i++) {
+			this->useMainSceneBufferHandle_looprender[i] = this->useMainSceneBufferHandle_looprender[i] || componentInfo.useMainSceneBufferHandle[i];
+		}
+	}
 	for (int i = 0; i < preprocessFeatureComponent.size(); i++) {
 		FzbFeatureComponentInfo componentInfo = preprocessFeatureComponent[i]->componentInfo;
 		if (!componentInfo.vertexFormat.available) continue;
 		this->vertexFormat_preprocess.mergeUpward(componentInfo.vertexFormat);
-		if (componentInfo.vertexFormat == FzbVertexFormat()) useMainSceneBuffer_preprocess[1] = true;
-		if (componentInfo.vertexFormat == FzbVertexFormat(true)) useMainSceneBuffer_preprocess[2] = true;
+		if (componentInfo.usePosBuffer) useMainSceneBuffer_preprocess[1] = true;
+		if (componentInfo.usePosNormalBuffer) useMainSceneBuffer_preprocess[2] = true;
 
 		for (int i = 0; i < componentInfo.useMainSceneBufferHandle.size(); i++) {
 			this->useMainSceneBufferHandle_preprocess[i] = this->useMainSceneBufferHandle_preprocess[i] || componentInfo.useMainSceneBufferHandle[i];
@@ -41,8 +58,8 @@ void FzbFeatureComponentManager::init() {
 		FzbFeatureComponentInfo componentInfo = loopRenderFeatureComponent[i]->componentInfo;
 		if (componentInfo.vertexFormat.available) {
 			this->vertexFormat_looprender.mergeUpward(componentInfo.vertexFormat);
-			if (componentInfo.vertexFormat == FzbVertexFormat()) useMainSceneBuffer_looprender[1] = true;
-			if (componentInfo.vertexFormat == FzbVertexFormat(true)) useMainSceneBuffer_looprender[2] = true;
+			if (componentInfo.usePosBuffer) useMainSceneBuffer_preprocess[1] = true;
+			if (componentInfo.usePosNormalBuffer) useMainSceneBuffer_preprocess[2] = true;
 		}
 
 		for (int i = 0; i < componentInfo.useMainSceneBufferHandle.size(); i++) {
@@ -50,29 +67,23 @@ void FzbFeatureComponentManager::init() {
 		}
 	}
 }
+*/
+void FzbFeatureComponentManager::prepocessClean() {
+	vkDeviceWaitIdle(FzbRenderer::globalData.logicalDevice);	//阻塞CPU，等待logicalDevice所有任务执行完成
 
-void FzbFeatureComponentManager::cleanBuffer() {
+	if (renderComponent) this->renderComponent->prepocessClean();
+	if (postProcessingComponent) this->postProcessingComponent->prepocessClean();
+	for (int i = 0; i < preprocessFeatureComponent.size(); i++) preprocessFeatureComponent[i]->prepocessClean();
+	for (int i = 0; i < loopRenderFeatureComponent.size(); i++) loopRenderFeatureComponent[i]->prepocessClean();
+
 	FzbScene& mainScene = FzbRenderer::globalData.mainScene;
-	if (useMainSceneBufferHandle_looprender[0] == false) {
+	if (!FzbRenderer::globalData.mainScene.useVertexBufferHandle) {		//如果loopRender不使用handle，那么可能复用顶点数据的prepocess会使用，则需要清除
 		if (mainScene.vertexBuffer.handle != INVALID_HANDLE_VALUE) mainScene.vertexBuffer.closeHandle();
 		if (mainScene.indexBuffer.handle != INVALID_HANDLE_VALUE) mainScene.indexBuffer.closeHandle();
 	}
-	if (useMainSceneBufferHandle_looprender[1] == false) {
-		if (mainScene.vertexPosBuffer.handle != INVALID_HANDLE_VALUE) mainScene.vertexPosBuffer.closeHandle();
-		if (mainScene.indexPosBuffer.handle != INVALID_HANDLE_VALUE) mainScene.indexPosBuffer.closeHandle();
-	}
-	if (useMainSceneBufferHandle_looprender[2] == false) {
-		if (mainScene.vertexPosNormalBuffer.handle != INVALID_HANDLE_VALUE) mainScene.vertexPosNormalBuffer.closeHandle();
-		if (mainScene.indexPosNormalBuffer.handle != INVALID_HANDLE_VALUE) mainScene.indexPosNormalBuffer.closeHandle();
-	}
-
-	if (useMainSceneBuffer_looprender[1] == false) {
-		mainScene.vertexPosBuffer.clean();
-		mainScene.indexPosBuffer.clean();
-	}
-	if (useMainSceneBuffer_looprender[2] == false) {
-		mainScene.vertexPosNormalBuffer.clean();
-		mainScene.indexPosNormalBuffer.clean();
+	if (FzbRenderer::globalData.mainScene.useVertexBuffer_prepocess) {
+		FzbRenderer::globalData.mainScene.vertexBuffer_prepocess.clean();
+		FzbRenderer::globalData.mainScene.indexBuffer_prepocess.clean();
 	}
 }
 void FzbFeatureComponentManager::componentInit() {
@@ -80,7 +91,8 @@ void FzbFeatureComponentManager::componentInit() {
 	if (postProcessingComponent) this->postProcessingComponent->init();
 	for (int i = 0; i < preprocessFeatureComponent.size(); i++) preprocessFeatureComponent[i]->init();
 	for (int i = 0; i < loopRenderFeatureComponent.size(); i++) loopRenderFeatureComponent[i]->init();
-	cleanBuffer();
+
+	prepocessClean();
 }
 
 VkSemaphore FzbFeatureComponentManager::componentActivate(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence) {

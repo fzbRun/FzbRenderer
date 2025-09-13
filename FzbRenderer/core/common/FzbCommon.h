@@ -25,6 +25,10 @@
 #ifndef STRUCT_SET
 #define STRUCT_SET
 
+inline void hash_combine(std::size_t& seed, std::size_t v) noexcept {
+	seed ^= v + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+}
+
 //所有命令都要被提交到队列中执行，而每个队列属于不同的队列族，不同的队列族支持不同的指令，比如有些队列族只负责数值计算，有些队列族只负责内存操作等
 //而队列族是物理设备提供的，即一个物理设备提供某些队列族，如显卡能提供计算、渲染的功能，而不能提供造宇宙飞船的功能
 struct FzbQueueFamilyIndices {
@@ -370,6 +374,7 @@ struct FzbVertexFormat {
 
 	void mergeUpward(FzbVertexFormat vertexFormat);
 	bool operator==(const FzbVertexFormat& other) const;
+	bool operator!=(const FzbVertexFormat& other) const;
 
 };
 namespace std {
@@ -388,6 +393,7 @@ namespace std {
 			};
 
 			// 对 FzbVertexFormat 的成员进行哈希
+			combine_hash(seed, hash<bool>{}(vf.available));
 			combine_hash(seed, hash<bool>{}(vf.useNormal));
 			combine_hash(seed, hash<bool>{}(vf.useTexCoord));
 			combine_hash(seed, hash<bool>{}(vf.useTangent));
@@ -450,9 +456,11 @@ struct FzbSemaphore {
 	void clean();
 };
 
+struct FzbImage;
 struct FzbTexture {
 	std::string path = "";
 	VkFilter filter = VK_FILTER_LINEAR;
+	FzbImage* image = nullptr;
 
 	FzbTexture();
 	FzbTexture(std::string path, VkFilter filter);
@@ -509,9 +517,27 @@ struct FzbShaderProperty {
 	std::map<std::string, FzbTexture> textureProperties;
 	std::map<std::string, FzbNumberProperty> numberProperties;
 
-	bool keyCompare(FzbShaderProperty& other);
+	bool keyCompare(const FzbShaderProperty& other) const;
 	bool operator==(const FzbShaderProperty& other) const;
 };
+namespace std {
+	template<>
+	struct hash<FzbShaderProperty> {
+		std::size_t operator()(FzbShaderProperty const& sp) const noexcept {
+			std::size_t seed = 0;
+			// map 是有序的，遍历顺序稳定，适合用来构造 hash
+			for (auto const& kv : sp.textureProperties) {
+				hash_combine(seed, std::hash<std::string>{}(kv.first));
+				hash_combine(seed, std::hash<FzbTexture>{}(kv.second));
+			}
+			for (auto const& kv : sp.numberProperties) {
+				hash_combine(seed, std::hash<std::string>{}(kv.first));
+				hash_combine(seed, std::hash<FzbNumberProperty>{}(kv.second));
+			}
+			return seed;
+		}
+	};
+}
 
 struct FzbAABBBox {
 
@@ -536,8 +562,8 @@ struct FzbAABBBox {
 std::string fzbGetRootPath();
 glm::vec3 fzbGetRGBFromString(std::string str);
 glm::mat4 fzbGetMat4FromString(std::string str);
-glm::vec2 getfloat2FromString(std::string str);
-glm::vec4 getRGBAFromString(std::string str);
+glm::vec2 fzbGetfloat2FromString(std::string str);
+glm::vec4 fzbGetRGBAFromString(std::string str);
 
 VkFence fzbCreateFence();
 void fzbCleanFence(VkFence fence);

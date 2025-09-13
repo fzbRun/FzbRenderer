@@ -1,5 +1,14 @@
-#include "./SVO.h"
+#include "./FzbSVO.h"
 #include "../../common/FzbRenderer.h"
+#include <unordered_map>
+#include "../../common/FzbMesh/FzbCreateSimpleMesh.h"
+
+std::map<std::string, std::string> shaderPaths = {
+	{"unuseSwizzle", "/core/SceneDivision/SVO/shaders/unuseSwizzle"},
+	{"present", "/core/SceneDivision/SVO/shaders/present"},
+	{"present_SVO", "/core/SceneDivision/SVO/shaders/present_SVO"},
+	{"present_Block", "/core/SceneDivision/SVO/shaders/present_VGM"},
+};
 
 FzbSVO_Debug::FzbSVO_Debug() {};
 FzbSVO_Debug::FzbSVO_Debug(pugi::xml_node& SVONode) {
@@ -8,8 +17,7 @@ FzbSVO_Debug::FzbSVO_Debug(pugi::xml_node& SVONode) {
 
 	this->componentInfo.name = FZB_FEATURE_COMPONENT_SVO_DEBUG;
 	this->componentInfo.type = FZB_LOOPRENDER_FEATURE_COMPONENT;
-	this->componentInfo.vertexFormat = FzbVertexFormat(true);
-	this->componentInfo.useMainSceneBufferHandle = { false, false, false };
+	//this->componentInfo.useMainSceneBufferHandle = { false, false, false };
 
 	if (pugi::xml_node SVOSettingNode = SVONode.child("featureComponentSetting")) {
 		this->setting.voxelNum = std::stoi(SVOSettingNode.child("voxelNum").attribute("value").value());
@@ -19,6 +27,7 @@ FzbSVO_Debug::FzbSVO_Debug(pugi::xml_node& SVONode) {
 		this->setting.useBlock = std::string(SVOSettingNode.child("useBlock").attribute("value").value()) == "true";
 		this->setting.useCube = std::string(SVOSettingNode.child("useCube").attribute("value").value()) == "true";
 	}
+	addMainSceneVertexInfo();
 	addExtensions();
 }
 
@@ -36,33 +45,13 @@ void FzbSVO_Debug::init() {
 VkSemaphore FzbSVO_Debug::render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence) {
 	VkCommandBuffer commandBuffer = commandBuffers[1];
 	vkResetCommandBuffer(commandBuffer, 0);
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = 0;
-	beginInfo.pInheritanceInfo = nullptr;
-
-	if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-		throw std::runtime_error("failed to begin recording command buffer!");
-	}
+	fzbBeginCommandBuffer(commandBuffer);
 
 	renderRenderPass.render(commandBuffer, imageIndex);
 
-	std::vector<VkSemaphore> waitSemaphores = { startSemaphore, vgmSemaphore.semaphore };
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 1;	// waitSemaphores.size();
-	submitInfo.pWaitSemaphores = waitSemaphores.data();
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffer;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderFinishedSemaphore.semaphore;
-
-	if (vkQueueSubmit(FzbRenderer::globalData.graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
-		throw std::runtime_error("failed to submit draw command buffer!");
-	}
+	std::vector<VkSemaphore> waitSemaphores = { startSemaphore };
+	std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+	fzbSubmitCommandBuffer(commandBuffer, { startSemaphore }, waitStages, { renderFinishedSemaphore.semaphore }, fence);
 
 	return renderFinishedSemaphore.semaphore;
 }
@@ -71,7 +60,6 @@ void FzbSVO_Debug::clean() {
 	FzbFeatureComponent_LoopRender::clean();
 	VkDevice logicalDevice = FzbRenderer::globalData.logicalDevice;
 
-	componentScene.clean();
 	if (!setting.useSVO_OnlyVoxelGridMap) {
 		svoCuda->clean();
 	}
@@ -80,10 +68,12 @@ void FzbSVO_Debug::clean() {
 
 	voxelGridMapRenderPass.clean();
 
-	vgmShader.clean();
-	vgmMaterial.clean();
-	presentShader.clean();
-	presentMaterial.clean();
+	//vgmShader.clean();
+	//vgmMaterial.clean();
+	//presentShader.clean();
+	//presentMaterial.clean();
+	//presentSVOMaterial.clean();
+	presentSourceManager.clean();
 
 	svoUniformBuffer.clean();
 	nodePool.clean();
@@ -96,6 +86,11 @@ void FzbSVO_Debug::clean() {
 	svoCudaSemaphore.clean();
 }
 
+void FzbSVO_Debug::addMainSceneVertexInfo() {
+	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat(true));
+	FzbRenderer::globalData.mainScene.useVertexBuffer_prepocess = true;
+	FzbRenderer::globalData.mainScene.vertexFormat_allMesh_prepocess.mergeUpward(FzbVertexFormat(true));
+}
 void FzbSVO_Debug::addExtensions() {
 	if (!setting.useSVO_OnlyVoxelGridMap) {
 		FzbRenderer::globalData.instanceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
@@ -143,7 +138,6 @@ void FzbSVO_Debug::createImages() {
 }
 
 void FzbSVO_Debug::createVoxelGridMap() {
-
 	createVoxelGridMapBuffer();
 	initVoxelGridMap();
 	createDescriptorPool();
@@ -153,39 +147,20 @@ void FzbSVO_Debug::createVoxelGridMap() {
 
 	VkCommandBuffer commandBuffer = commandBuffers[0];
 	vkResetCommandBuffer(commandBuffer, 0);
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = 0;
-	beginInfo.pInheritanceInfo = nullptr;
-
-	if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-		throw std::runtime_error("failed to begin recording command buffer!");
-	}
-
+	fzbBeginCommandBuffer(commandBuffer);
+	
 	VkClearColorValue voxel_clearColor = {};
 	voxel_clearColor.uint32[0] = 0;
 	voxel_clearColor.uint32[1] = 0;
 	voxel_clearColor.uint32[2] = 0;
 	voxel_clearColor.uint32[3] = 0;
 	voxelGridMap.fzbClearTexture(commandBuffer, voxel_clearColor, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
+	
 	voxelGridMapRenderPass.render(commandBuffer, 0);
-
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 0;
-	submitInfo.pWaitSemaphores = nullptr;
-	submitInfo.pWaitDstStageMask = nullptr;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffer;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &vgmSemaphore.semaphore;
-
-	//÷¥––ÕÍ∫ÛΩ‚ø™fence
-	if (vkQueueSubmit(FzbRenderer::globalData.graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE) != VK_SUCCESS) {
-		throw std::runtime_error("failed to submit draw command buffer!");
-	}
+	
+	std::vector<VkSemaphore> waitSemaphores = {};
+	std::vector<VkPipelineStageFlags> waitStages = {};
+	fzbSubmitCommandBuffer(commandBuffer, {}, waitStages, { vgmSemaphore.semaphore });
 }
 void FzbSVO_Debug::createVoxelGridMapBuffer() {
 	fzbCreateCommandBuffers(2);
@@ -303,37 +278,42 @@ void FzbSVO_Debug::createVoxelGridMapSyncObjects() {	//’‚¿Ô”¶∏√∑µªÿ“ª∏ˆ–≈∫≈¡ø£¨»
 	}
 }
 void FzbSVO_Debug::createVGMRenderPass() {
-	vgmMaterial = FzbMaterial();
+	std::string shaderPath;
 	FzbShaderExtensionsSetting extensionsSetting;
 	if (setting.useConservativeRasterization) extensionsSetting.conservativeRasterization = true;
-	if (!setting.useSwizzle) vgmShader = FzbShader(fzbGetRootPath() + "/core/SceneDivision/SVO/shaders/unuseSwizzle", extensionsSetting);
-	else {
+	std::string materialType = setting.useSwizzle ? "useSwizzle" : "unuseSwizzle";
+	if (setting.useSwizzle) {
+		materialType = "useSwizzle";
 		extensionsSetting.swizzle = true;
-		vgmShader = FzbShader(fzbGetRootPath() + "/core/SceneDivision/SVO/shaders/useSwizzle", extensionsSetting);
+		shaderPath = "/core/SceneDivision/SVO/shaders/useSwizzle";
 	}
-	vgmShader.createShaderVariant(&vgmMaterial, componentInfo.vertexFormat);
-	for (int i = 0; i < mainScene->sceneMeshSet.size(); i++) {
-		vgmShader.shaderVariants[0].meshBatch.meshes.push_back(&mainScene->sceneMeshSet[i]);
+	else {
+		materialType = "unuseSwizzle";
+		shaderPath = "/core/SceneDivision/SVO/shaders/unuseSwizzle";
 	}
-	vgmShader.shaderVariants[0].meshBatch.useSameMaterial = true;
-	vgmShader.shaderVariants[0].meshBatch.materials.push_back(&vgmMaterial);
+	FzbShaderInfo shaderInfo = { shaderPath, extensionsSetting };
+	this->vgmSourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet, FzbMaterial("vgm", materialType), false);
+	this->vgmSourceManager.addSource({ {materialType, shaderInfo } });
 
 	VkSubpassDescription voxelGridMapSubpass{};
 	voxelGridMapSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 
 	VkSubpassDependency dependency = fzbCreateSubpassDependency();
 
-	FzbRenderPassSetting setting = { false, 1, vgmShader.getResolution(), 1, false };
+	FzbRenderPassSetting setting = { false, 1, this->vgmSourceManager.shaderSet[shaderPath].getResolution(), 1, false};
 	voxelGridMapRenderPass = FzbRenderPass(setting);
 	voxelGridMapRenderPass.createRenderPass(nullptr, { voxelGridMapSubpass }, { dependency });
 	voxelGridMapRenderPass.createFramebuffers(false);
 
 	FzbSubPass vgmSubPass = FzbSubPass(voxelGridMapRenderPass.renderPass, 0,
 		{ voxelGridMapDescriptorSetLayout }, { voxelGridMapDescriptorSet },
-		mainScene->vertexPosNormalBuffer.buffer, mainScene->indexPosNormalBuffer.buffer, { &vgmShader });
+		mainScene->vertexBuffer_prepocess.buffer, mainScene->indexBuffer_prepocess.buffer, this->vgmSourceManager.shaders_vector);
 	voxelGridMapRenderPass.subPasses.push_back(vgmSubPass);
 }
 
+void FzbSVO_Debug::prepocessClean() {
+	this->vgmSourceManager.clean();
+};
 void FzbSVO_Debug::createSVOCuda() {
 	VkPhysicalDevice physicalDevice = FzbRenderer::globalData.physicalDevice;
 	svoCuda->createSVOCuda(physicalDevice, voxelGridMap, vgmSemaphore.handle, svoCudaSemaphore.handle);
@@ -343,6 +323,7 @@ void FzbSVO_Debug::createSVOCuda() {
 }
 
 void FzbSVO_Debug::presentPrepare() {
+	FzbRenderer::globalData.mainScene.createCameraAndLightDescriptor();
 	if (setting.useSVO_OnlyVoxelGridMap) {
 		if (!setting.useBlock) createVGMRenderPass_nonBlock();
 		else createVGMRenderPass_Block();
@@ -351,14 +332,9 @@ void FzbSVO_Debug::presentPrepare() {
 }
 
 void FzbSVO_Debug::createVGMRenderPass_nonBlock() {
-	presentMaterial = FzbMaterial();
-	presentShader = FzbShader(fzbGetRootPath() + "/core/SceneDivision/SVO/shaders/present");
-	presentShader.createShaderVariant(&presentMaterial, componentInfo.vertexFormat);
-	for (int i = 0; i < mainScene->sceneMeshSet.size(); i++) {
-		presentShader.shaderVariants[0].meshBatch.meshes.push_back(&mainScene->sceneMeshSet[i]);
-	}
-	presentShader.shaderVariants[0].meshBatch.useSameMaterial = true;
-	presentShader.shaderVariants[0].meshBatch.materials.push_back(&presentMaterial);
+	this->presentSourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet, FzbMaterial("present", "present"));
+	FzbShaderInfo shaderInfo = { "/core/SceneDivision/SVO/shaders/present" };
+	this->presentSourceManager.addSource({ {"present", shaderInfo} });
 
 	VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
 	VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -378,23 +354,28 @@ void FzbSVO_Debug::createVGMRenderPass_nonBlock() {
 
 	FzbSubPass presentSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
 		{ mainScene->cameraAndLightsDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, { mainScene->cameraAndLightsDescriptorSet, voxelGridMapDescriptorSet },
-		mainScene->vertexPosNormalBuffer.buffer, mainScene->indexPosNormalBuffer.buffer, { &presentShader });
+		mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, this->presentSourceManager.shaders_vector);
 	renderRenderPass.addSubPass(presentSubPass);
 }
 void FzbSVO_Debug::createVGMRenderPass_Block() {
-	presentMaterial = FzbMaterial();
 	FzbMesh cubeMesh = FzbMesh();
 	cubeMesh.instanceNum = pow(setting.voxelNum, 3);
-	fzbCreateCube(cubeMesh);
-	glm::vec3 voxelSize = svoUniform.voxelSize_Num;
-	glm::vec3 voxelStartPos = svoUniform.voxelStartPos;
-	for (int i = 0; i < 24; i += 3) {
-		cubeMesh.vertices[i] = cubeMesh.vertices[i] * voxelSize.x + voxelStartPos.x;
-		cubeMesh.vertices[i + 1] = cubeMesh.vertices[i + 1] * voxelSize.y + voxelStartPos.y;
-		cubeMesh.vertices[i + 2] = cubeMesh.vertices[i + 2] * voxelSize.z + voxelStartPos.z;
-	}
-	this->componentScene.addMeshToScene(cubeMesh, presentMaterial, fzbGetRootPath() + "/core/SceneDivision/SVO/shaders/present_VGM");
-	componentScene.initScene(false, false);
+	glm::mat4 transformMatrix = glm::translate(glm::mat4(1.0f), glm::vec3(svoUniform.voxelStartPos));
+	transformMatrix = glm::scale(transformMatrix, glm::vec3(svoUniform.voxelSize_Num));
+	fzbCreateCube(cubeMesh, FzbVertexFormat(), transformMatrix);
+	//glm::vec3 voxelSize = svoUniform.voxelSize_Num;
+	//glm::vec3 voxelStartPos = svoUniform.voxelStartPos;
+	//for (int i = 0; i < 24; i += 3) {
+	//	cubeMesh.vertices[i] = cubeMesh.vertices[i] * voxelSize.x + voxelStartPos.x;
+	//	cubeMesh.vertices[i + 1] = cubeMesh.vertices[i + 1] * voxelSize.y + voxelStartPos.y;
+	//	cubeMesh.vertices[i + 2] = cubeMesh.vertices[i + 2] * voxelSize.z + voxelStartPos.z;
+	//}
+	this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
+	this->presentSourceManager.componentScene.createVertexBuffer(false, false);
+
+	this->presentSourceManager.addMeshMaterial(this->presentSourceManager.componentScene.sceneMeshSet, FzbMaterial("present_Block", "present_Block"));
+	FzbShaderInfo shaderInfo = { "/core/SceneDivision/SVO/shaders/present_VGM" };
+	this->presentSourceManager.addSource({ {"present_Block", shaderInfo} });
 
 	VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
 	VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -414,7 +395,7 @@ void FzbSVO_Debug::createVGMRenderPass_Block() {
 
 	FzbSubPass presentSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
 		{ mainScene->cameraAndLightsDescriptorSetLayout, voxelGridMapDescriptorSetLayout }, { mainScene->cameraAndLightsDescriptorSet, voxelGridMapDescriptorSet },
-		componentScene.vertexBuffer.buffer, componentScene.indexBuffer.buffer, componentScene.sceneShaders_vector);
+		this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer, this->presentSourceManager.shaders_vector);
 	renderRenderPass.addSubPass(presentSubPass);
 }
 
@@ -452,21 +433,18 @@ void FzbSVO_Debug::createSVODescriptor() {
 	vkUpdateDescriptorSets(FzbRenderer::globalData.logicalDevice, svoDescriptorWrites.size(), svoDescriptorWrites.data(), 0, nullptr);
 }
 void FzbSVO_Debug::createSVORenderPass() {
-	presentMaterial = FzbMaterial();
+	this->presentSourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet, FzbMaterial("present", "present"));
+	FzbShaderInfo presentShaderInfo = { "/core/SceneDivision/SVO/shaders/present" };
+
 	FzbMesh cubeMesh = FzbMesh();
 	cubeMesh.instanceNum = svoCuda->nodeBlockNum * 8 + 1;
 	fzbCreateCubeWireframe(cubeMesh);
-	this->componentScene.addMeshToScene(cubeMesh, presentMaterial, fzbGetRootPath() + "/core/SceneDivision/SVO/shaders/present_SVO");
-	componentScene.initScene(false, false);
+	this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
+	this->presentSourceManager.componentScene.createVertexBuffer(true, false);
+	this->presentSourceManager.addMeshMaterial(this->presentSourceManager.componentScene.sceneMeshSet, FzbMaterial("present_SVO", "present_SVO"));
+	FzbShaderInfo svoShaderInfo = { "/core/SceneDivision/SVO/shaders/present_SVO" };
 
-	presentMaterial = FzbMaterial();
-	presentShader = FzbShader(fzbGetRootPath() + "/core/SceneDivision/SVO/shaders/present");
-	presentShader.createShaderVariant(&presentMaterial, componentInfo.vertexFormat);
-	for (int i = 0; i < mainScene->sceneMeshSet.size(); i++) {
-		presentShader.shaderVariants[0].meshBatch.meshes.push_back(&mainScene->sceneMeshSet[i]);
-	}
-	presentShader.shaderVariants[0].meshBatch.useSameMaterial = true;
-	presentShader.shaderVariants[0].meshBatch.materials.push_back(&presentMaterial);
+	this->presentSourceManager.addSource({ {"present", presentShaderInfo}, { "present_SVO", svoShaderInfo } });
 
 	VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
 	VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -490,12 +468,12 @@ void FzbSVO_Debug::createSVORenderPass() {
 	FzbSubPass sceneSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
 		{ mainScene->cameraAndLightsDescriptorSetLayout, voxelGridMapDescriptorSetLayout },
 		{ mainScene->cameraAndLightsDescriptorSet, voxelGridMapDescriptorSet },
-		mainScene->vertexPosNormalBuffer.buffer, mainScene->indexPosNormalBuffer.buffer, { &presentShader });
+		mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, { &this->presentSourceManager.shaderSet[presentShaderInfo.shaderPath]});
 	renderRenderPass.addSubPass(sceneSubPass);
 
 	FzbSubPass CubeWireframeSubPass = FzbSubPass(renderRenderPass.renderPass, 1,
 		{ mainScene->cameraAndLightsDescriptorSetLayout, voxelGridMapDescriptorSetLayout, svoDescriptorSetLayout },
 		{ mainScene->cameraAndLightsDescriptorSet, voxelGridMapDescriptorSet, svoDescriptorSet },
-		componentScene.vertexBuffer.buffer, componentScene.indexBuffer.buffer, componentScene.sceneShaders_vector);
+		this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer, { &this->presentSourceManager.shaderSet[svoShaderInfo.shaderPath] });
 	renderRenderPass.addSubPass(CubeWireframeSubPass);
 }

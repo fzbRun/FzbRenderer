@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 #include <map>
 #include <stdexcept>
 

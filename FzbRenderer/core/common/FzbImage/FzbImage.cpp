@@ -74,6 +74,10 @@ void FzbImage::createImage() {
 	//VK_IMAGE_LAYOUT_PREINITIALIZED: Not usable by the GPU, but the first transition will preserve the texels.
 	//这里的意思就是是否相对image原有的数据布局进行修改，比如我们想在原有布局上修改一部分，则使用前者，并配合VK_IMAGE_LAYOUT_UNDEFINED；反之后者
 	//我们现在这里是将外部纹理的数据放到该image中，所以不关心image原来布局
+	/*
+	注意，vulkan的image的layout不会影响到cuda读取的数据，因为显存中的实际数据不会因为layout的变化而发生变化
+	实际上，layout的变化只是告诉vulkan驱动使用不同的访存指令，如VK_IMAGE_USAGE_TRANSFER_SRC_BIT，说明image是只读的，可能访存有优化什么的
+	*/
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	imageInfo.usage = this->usage;
 	//好像和什么稀疏存储相关
@@ -186,6 +190,12 @@ void FzbImage::transitionImageLayout(VkImageLayout oldLayout, VkImageLayout newL
 		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		sourceStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 		destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	}
+	else if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
+		barrier.srcAccessMask = 0;
+		barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+		destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	}
 	else {
 		throw std::invalid_argument("unsupported layout transition!");
@@ -458,4 +468,28 @@ VkFormat fzbFindDepthFormat() {
 bool hasStencilComponent(VkFormat format) {
 	return format == VK_FORMAT_D32_SFLOAT_S8_UINT || format == VK_FORMAT_D24_UNORM_S8_UINT;
 }
+void fzbCopyImageToImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImage dstImage, VkExtent3D copyExtent) {
+	VkImageCopy copyRegion{};
+	copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copyRegion.srcSubresource.mipLevel = 0;
+	copyRegion.srcSubresource.baseArrayLayer = 0;
+	copyRegion.srcSubresource.layerCount = 1;
+	copyRegion.srcOffset = { 0,0,0 };
 
+	copyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copyRegion.dstSubresource.mipLevel = 0;
+	copyRegion.dstSubresource.baseArrayLayer = 0;
+	copyRegion.dstSubresource.layerCount = 1;
+	copyRegion.dstOffset = { 0,0,0 };
+
+	copyRegion.extent.width = copyExtent.width;
+	copyRegion.extent.height = copyExtent.height;
+	copyRegion.extent.depth = copyExtent.depth;
+
+	vkCmdCopyImage(
+		commandBuffer,
+		srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+		dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1, &copyRegion
+	);
+}

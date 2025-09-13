@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../common/StructSet.h"
-#include "../../common/FzbComponent.h"
+#include "../../common/FzbComponent/FzbComponent.h"
 #include "AccelerationStructure/accelerationStructure.h"
 
 #ifndef PATHTRACING_H

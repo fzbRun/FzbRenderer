@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 
 #ifndef COMPRESS_VERTICES_H
 #define COMPRESS_VERTICES_H

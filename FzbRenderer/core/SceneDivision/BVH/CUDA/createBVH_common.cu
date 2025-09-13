@@ -45,7 +45,7 @@ __global__ void initBvhNode(FzbBvhNode* bvhNodeArray, uint32_t nodeNum) {
     bvhNodeArray[threadIndex] = node;
 }
 //-------------------------------------------------------º¯Êý---------------------------------------------------------------
-void BVHCuda::createTriangleInfoArray(FzbScene* scene, cudaStream_t stream) {
+void BVHCuda::createTriangleInfoArray(FzbMainScene* scene, cudaStream_t stream) {
     cudaExternalMemory_t indexExtMem = importVulkanMemoryObjectFromNTHandle(scene->indexBuffer.handle, scene->indexBuffer.size, false);
     uint32_t* sceneIndices = (uint32_t*)mapBufferOntoExternalMemory(indexExtMem, 0, scene->indexBuffer.size);
 

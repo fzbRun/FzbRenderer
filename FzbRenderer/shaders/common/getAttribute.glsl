@@ -39,11 +39,14 @@ vec3 getNormal() {
 }
 
 vec4 getAlbedo() {
+	vec4 vertexAlbedo = vec4(1.0f);
 #ifdef useAlbedo
-	return albedo;
-#elif defined(useAlbedoMap)
-	return texture(albedoMap, vertexTexCoords);
+	vertexAlbedo = albedo;
 #endif
-	return vec4(1.0f);
+
+#ifdef useAlbedoMap
+	vertexAlbedo *= texture(albedoMap, vertexTexCoords);
+#endif
+	return vertexAlbedo;
 }
 

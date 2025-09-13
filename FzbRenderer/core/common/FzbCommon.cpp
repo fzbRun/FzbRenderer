@@ -1,4 +1,4 @@
-#include "StructSet.h"
+#include "FzbCommon.h"
 #include <set>
 #include <filesystem>
 #include <sstream>
@@ -24,7 +24,6 @@ uint32_t FzbVertexFormat::getVertexSize() const {
 	return attributeNum;
 }
 VkVertexInputBindingDescription FzbVertexFormat::getBindingDescription() {
-
 	VkVertexInputBindingDescription bindingDescription{};
 	bindingDescription.binding = 0;
 	bindingDescription.stride = getVertexSize() * sizeof(float);
@@ -81,10 +80,16 @@ void FzbVertexFormat::mergeUpward(FzbVertexFormat vertexFormat) {
 	this->useTangent |= vertexFormat.useTangent;
 }
 bool FzbVertexFormat::operator==(const FzbVertexFormat& other) const {
-	if (!(useNormal == other.useNormal && useTexCoord == other.useTexCoord && useTangent == other.useTangent)) {
+	if (!(available == other.available && useNormal == other.useNormal && useTexCoord == other.useTexCoord && useTangent == other.useTangent)) {
 		return false;
 	}
 	return true;
+}
+bool FzbVertexFormat::operator!=(const FzbVertexFormat& other) const {
+	if (available != other.available || useNormal != other.useNormal || useTexCoord != other.useTexCoord || useTangent != other.useTangent) {
+		return true;
+	}
+	return false;
 }
 FzbVertexFormat fzbVertexFormatMergeUpward(FzbVertexFormat vertexFormat1, FzbVertexFormat vertexFormat2) {
 	FzbVertexFormat vertexFormat;
@@ -162,7 +167,7 @@ FzbNumberProperty::FzbNumberProperty(glm::vec4 value) {
 bool FzbNumberProperty::operator==(const FzbNumberProperty& other) const {	//只需要这两个就行
 	return value == other.value;
 }
-bool FzbShaderProperty::keyCompare(FzbShaderProperty& other) {
+bool FzbShaderProperty::keyCompare(const FzbShaderProperty& other) const {
 	auto getKeys = [](const auto& map) {
 		std::set<std::string> keys;
 		for (const auto& pair : map) keys.insert(pair.first);
@@ -209,7 +214,7 @@ glm::mat4 fzbGetMat4FromString(std::string str) {
 		mat4_array[2], mat4_array[6], mat4_array[10], mat4_array[14],
 		mat4_array[3], mat4_array[7], mat4_array[11], mat4_array[15]);
 }
-glm::vec2 getfloat2FromString(std::string str) {
+glm::vec2 fzbGetfloat2FromString(std::string str) {
 	std::vector<float> float2_array;
 	std::stringstream ss(str);
 	std::string token;
@@ -218,7 +223,7 @@ glm::vec2 getfloat2FromString(std::string str) {
 	}
 	return glm::vec2(float2_array[0], float2_array[1]);
 }
-glm::vec4 getRGBAFromString(std::string str) {
+glm::vec4 fzbGetRGBAFromString(std::string str) {
 	std::vector<float> float4_array;
 	std::stringstream ss(str);
 	std::string token;

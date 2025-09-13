@@ -368,3 +368,8 @@ Lib/
 ./vcxproj
 ./filters
 *.dll
+*.sln
+*.bkp
+*.vcxproj
+*.filters
+*.dll

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 
 #ifndef FZB_PIPELINE_H
 #define FZB_PIPELINE_H

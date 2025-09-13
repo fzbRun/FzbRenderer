@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "../../StructSet.h"
+#include "../../FzbCommon.h"
 
 #ifndef FZB_SCENE_CUDA_H
 #define FZB_SCENE_CUDA_H

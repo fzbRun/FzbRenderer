@@ -1,4 +1,4 @@
-#include "./BVH.h"
+#include "./FzbBVH.h"
 #include "../../common/FzbRenderer.h"
 
 FzbBVH_Debug::FzbBVH_Debug() {};
@@ -8,9 +8,9 @@ FzbBVH_Debug::FzbBVH_Debug(pugi::xml_node& BVHNode) {
 
 	this->componentInfo.name = FZB_FEATURE_COMPONENT_BVH_DEBUG;
 	this->componentInfo.type = FZB_LOOPRENDER_FEATURE_COMPONENT;
-	this->componentInfo.vertexFormat = FzbVertexFormat();
-	this->componentInfo.useMainSceneBufferHandle = { true, false, false };	//需要只有pos格式的顶点buffer和索引buffer，用来创建bvh
+	//this->componentInfo.useMainSceneBufferHandle = { true, false, false };	//需要只有pos格式的顶点buffer和索引buffer，用来创建bvh
 
+	addMainSceneVertexInfo();
 	addExtensions();
 }
 
@@ -69,12 +69,16 @@ void FzbBVH_Debug::clean() {
 
 	bvhCudaSemaphore.clean();
 
-	presentMaterial.clean();
-	presentShader.clean();
+	presentSourceManager.clean();
 
 	vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, nullptr);
 }
 
+//虽然创建bvh是预处理，但是实际上用到的适合loopRender相同的顶点数据，所以可以直接使用
+void FzbBVH_Debug::addMainSceneVertexInfo() {
+	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat(true));
+	FzbRenderer::globalData.mainScene.useVertexBufferHandle = true;
+}
 void FzbBVH_Debug::addExtensions() {
 	FzbRenderer::globalData.instanceExtensions.push_back(VK_KHR_EXTERNAL_MEMORY_CAPABILITIES_EXTENSION_NAME);
 	FzbRenderer::globalData.instanceExtensions.push_back(VK_KHR_EXTERNAL_SEMAPHORE_CAPABILITIES_EXTENSION_NAME);
@@ -166,14 +170,11 @@ void FzbBVH_Debug::createImages() {
 	frameBufferImages.push_back(&depthMap);
 }
 void FzbBVH_Debug::createRenderPass() {
-	presentMaterial = FzbMaterial();
-	presentShader = FzbShader(fzbGetRootPath() + "/core/SceneDivision/BVH/shaders/present");
-	presentShader.createShaderVariant(&presentMaterial, this->componentInfo.vertexFormat);
-	for (int i = 0; i < mainScene->sceneMeshSet.size(); i++) {
-		presentShader.shaderVariants[0].meshBatch.meshes.push_back(&mainScene->sceneMeshSet[i]);
-	}
-	presentShader.shaderVariants[0].meshBatch.useSameMaterial = true;
-	presentShader.shaderVariants[0].meshBatch.materials.push_back(&presentMaterial);
+	FzbRenderer::globalData.mainScene.createCameraAndLightDescriptor();
+
+	this->presentSourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet, FzbMaterial("present", "present"));
+	FzbShaderInfo presentShaderInfo = { "/core/SceneDivision/BVH/shaders/present" };
+	this->presentSourceManager.addSource({ {"present", presentShaderInfo} });
 
 	VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
 	VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -191,6 +192,6 @@ void FzbBVH_Debug::createRenderPass() {
 
 	FzbSubPass presentSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
 		{ mainScene->cameraAndLightsDescriptorSetLayout, descriptorSetLayout }, { mainScene->cameraAndLightsDescriptorSet, descriptorSet },
-		mainScene->vertexPosBuffer.buffer, mainScene->indexPosBuffer.buffer, { &presentShader });
+		mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, this->presentSourceManager.shaders_vector);
 	renderRenderPass.subPasses.push_back(presentSubPass);
 }

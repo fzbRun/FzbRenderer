@@ -1,8 +1,9 @@
 #pragma once
 
 #include "./CUDA/createSVO.cuh"
-#include "../../common/StructSet.h"
+#include "../../common/FzbCommon.h"
 #include "../../common/FzbComponent/FzbFeatureComponent.h"
+#include "../../common/FzbRasterizationRender/FzbRasterizationSourceManager.h"
 
 #ifndef SVO_H	//Sparse voxel octree
 #define SVO_H
@@ -403,12 +404,12 @@ public:
 
 private:
 	FzbSVOSetting setting;
+	FzbRasterizationSourceManager vgmSourceManager;
+	FzbRasterizationSourceManager presentSourceManager;
 
 	FzbImage voxelGridMap;
 	VkDescriptorSetLayout voxelGridMapDescriptorSetLayout = nullptr;
 	VkDescriptorSet voxelGridMapDescriptorSet;
-
-	FzbScene componentScene;
 
 	SVOUniform svoUniform;
 	FzbBuffer svoUniformBuffer;
@@ -427,11 +428,13 @@ private:
 	FzbSemaphore vgmSemaphore;
 	FzbSemaphore svoCudaSemaphore;
 
-	FzbShader vgmShader;
-	FzbMaterial vgmMaterial;
-	FzbShader presentShader;
-	FzbMaterial presentMaterial;
+	//FzbShader vgmShader;
+	//FzbMaterial vgmMaterial;
+	//FzbShader presentShader;
+	//FzbMaterial presentMaterial;
+	//FzbMaterial presentSVOMaterial;
 
+	void addMainSceneVertexInfo() override;
 	void addExtensions() override;
 
 	void createImages() override;
@@ -443,6 +446,8 @@ private:
 	void createVoxelGridMapDescriptor();
 	void createVoxelGridMapSyncObjects();
 	void createVGMRenderPass();
+
+	void prepocessClean() override;
 
 	void createSVOCuda();
 

@@ -1,6 +1,4 @@
 <scene version="3.0.0">
-	<default name="resy" value="720"/>
-	<default name="resx" value="1280"/>
 	<sensor type="perspective">
 		<float name="fov" value="60"/>
 		<transform name="to_world">

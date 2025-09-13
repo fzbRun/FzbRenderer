@@ -615,7 +615,7 @@ FzbShader::FzbShader(std::string path, FzbShaderExtensionsSetting extensionsSett
 			std::string type = property.attribute("type").value();
 			if (type == "texture") this->properties.textureProperties.insert({ propertyName, FzbTexture() });
 			else if (type == "rgba") {
-				glm::vec4 numberValue = getRGBAFromString(property.attribute("value").value());
+				glm::vec4 numberValue = fzbGetRGBAFromString(property.attribute("value").value());
 				this->properties.numberProperties.insert({ propertyName, FzbNumberProperty(numberValue) });
 			}
 			else {
@@ -853,9 +853,9 @@ FzbShader::FzbShader(std::string path, FzbShaderExtensionsSetting extensionsSett
 				}
 				for (pugi::xml_node scissorInfoNode : viewportStateInfoNode.children("scissor")) {
 					VkRect2D scissor;
-					glm::vec2 offset = getfloat2FromString(scissorInfoNode.attribute("offset").value());
+					glm::vec2 offset = fzbGetfloat2FromString(scissorInfoNode.attribute("offset").value());
 					scissor.offset = { (int)offset.x, (int)offset.y };
-					glm::vec2 extent = getfloat2FromString(scissorInfoNode.attribute("extent").value());
+					glm::vec2 extent = fzbGetfloat2FromString(scissorInfoNode.attribute("extent").value());
 					scissor.extent = { (uint32_t)extent.x, (uint32_t)extent.y };
 					pipelineCreateInfo.scissors.push_back(scissor);
 				}
@@ -937,7 +937,7 @@ void FzbShader::setViewStateInfo(std::vector<VkViewport>& viewports, std::vector
 	this->pipelineCreateInfo.viewportExtensions = viewportExtensios;
 }
 
-void FzbShader::createShaderVariant(FzbMaterial* material, FzbVertexFormat vertexFormat) {
+void FzbShader::createShaderVariant(FzbMaterial* material) {
 	for (auto& materialPair : material->properties.textureProperties) {
 		if (!this->properties.textureProperties.count(materialPair.first)) {
 			std::string error = "材质" + material->id + "传入shader没有的资源: " + materialPair.first;
@@ -952,23 +952,21 @@ void FzbShader::createShaderVariant(FzbMaterial* material, FzbVertexFormat verte
 	}
 
 	for (int i = 0; i < shaderVariants.size(); i++) {
-		if (shaderVariants[i].properties.keyCompare(material->properties)) {
+		if (shaderVariants[i] == *material) {	//如何数据类型、vertexFormat相同，则material属于该shader变体
 			shaderVariants[i].materials.push_back(material);
-			material->vertexFormat = shaderVariants[i].vertexFormat;
-			//material->shader = &shaderVariants[i];
 			return;
 		}
 	}
 
-	this->shaderVariants.push_back(FzbShaderVariant(this, material, vertexFormat));
+	this->shaderVariants.push_back(FzbShaderVariant(this, material));
 	//material->shader = &this->shaderVariants[this->shaderVariants.size() - 1];
 }
-void FzbShader::createMeshBatch(std::vector<FzbMesh>& sceneMeshSet) {
+void FzbShader::createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMaterialPairs) {
 	for (int i = 0; i < shaderVariants.size(); i++) {
-		shaderVariants[i].createMeshBatch(sceneMeshSet);
+		shaderVariants[i].createMeshBatch(meshMaterialPairs);
 	}
 }
-void FzbShader::createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage>& sceneImages) {
+void FzbShader::createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages) {
 	for (int i = 0; i < shaderVariants.size(); i++) {
 		shaderVariants[i].createDescriptor(sceneDescriptorPool, sceneImages);
 	}
@@ -1010,13 +1008,16 @@ bool FzbShader::operator==(const FzbShader& other) const {
 void FzbShaderVariant::changeVertexFormatAndMacros(FzbVertexFormat vertexFormat) {
 	this->vertexFormat.mergeUpward(vertexFormat);	//比如说一定要有texCoords，但是由于material和shader变体没有纹理，所以可以不开启宏
 
+	//如果material带有texture，那么mesh的vertexFormat自然带有texCoords，那么material自然带有texCoords
+	//那么由于我使用一个大的vertexBuffer，那么无论新的material是否有texture，都需要带有texCoords
+	//只不过shader中不使用纹理而已，所以只需要修改宏，而不去修改具体的vertexFormat
 	if (this->properties.textureProperties.size() > 0) {
-		this->vertexFormat.useTexCoord = true;
+		//this->vertexFormat.useTexCoord = true;
 		this->macros["useTextureProperty"] = true;
 		this->macros["useVertexTexCoords"] = true;
 	}
 	else {
-		this->vertexFormat.useTexCoord = false;
+		//this->vertexFormat.useTexCoord = false;		
 		this->macros["useTextureProperty"] = false;
 		this->macros["useVertexTexCoords"] = false;
 	}
@@ -1026,7 +1027,7 @@ void FzbShaderVariant::changeVertexFormatAndMacros(FzbVertexFormat vertexFormat)
 	if (macros["useVertexTangent"]) this->vertexFormat.useTangent = true;
 }
 FzbShaderVariant::FzbShaderVariant() {};
-FzbShaderVariant::FzbShaderVariant(FzbShader* publicShader, FzbMaterial* material, FzbVertexFormat vertexFormat) {
+FzbShaderVariant::FzbShaderVariant(FzbShader* publicShader, FzbMaterial* material) {
 	this->publicShader = publicShader;
 	this->macros = publicShader->macros;
 	this->materials.push_back(material);
@@ -1056,10 +1057,9 @@ FzbShaderVariant::FzbShaderVariant(FzbShader* publicShader, FzbMaterial* materia
 		}
 		else if (this->macros[macro]) this->properties.numberProperties.insert(shaderPair);
 	}
-	changeVertexFormatAndMacros(vertexFormat);
-	material->vertexFormat = this->vertexFormat;
+	changeVertexFormatAndMacros(material->vertexFormat);
 }
-void FzbShaderVariant::createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage>& sceneImages) {
+void FzbShaderVariant::createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages) {
 	//创造描述符
 	uint32_t textureNum = this->properties.textureProperties.size();
 	uint32_t numberNum = this->properties.numberProperties.size() > 0 ? 1 : 0;	//所有数值属性用一个uniformBuffer即可
@@ -1098,22 +1098,22 @@ void FzbShaderVariant::clean() {
 	vkDestroyDescriptorSetLayout(logicalDevice, descriptorSetLayout, nullptr);
 	meshBatch.clean();
 }
-void FzbShaderVariant::createMeshBatch(std::vector<FzbMesh>& sceneMeshSet) {
+void FzbShaderVariant::createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMaterialPairs) {
 	/*
 	如果所有的mesh的material是相同的或者给定的materials只有一个material，则meshBatch的materials只需要存储一个material即可，并且其useSameMaterial=true
 	*/
 	this->meshBatch = FzbMeshBatch();
 	std::unordered_set<FzbMaterial*> materialSet(this->materials.begin(), this->materials.end());
-	std::map<FzbMaterial*, FzbMaterial*> meshMaterials;
+	std::unordered_set<FzbMaterial> meshMaterials;
 	std::vector<FzbMaterial*> meshBatchMaterials;
-	for (size_t i = 0; i < sceneMeshSet.size(); i++) {
-		FzbMesh& mesh = sceneMeshSet[i];
-		FzbMaterial* material = mesh.material;
+	for (auto& meshMaterialPair : meshMaterialPairs) {
+		FzbMesh* mesh = meshMaterialPair.first;
+		FzbMaterial* material = meshMaterialPair.second;
 		if (materialSet.find(material) != materialSet.end()) {
-			this->meshBatch.meshes.push_back(&mesh);
+			this->meshBatch.meshes.push_back(mesh);
 			meshBatchMaterials.push_back(material);
-			if (!meshMaterials.count(material)) {	//将所有不重复的material放入其中，如果最后只有一个，那么说明所有mesh共用一个material
-				meshMaterials.insert({ material, material });
+			if (!meshMaterials.count(*material)) {	//将所有不重复的material放入其中，如果最后只有一个，那么说明所有mesh共用一个material
+				meshMaterials.insert(*material);
 			}
 		}
 	}
@@ -1233,4 +1233,7 @@ void FzbShaderVariant::render(VkCommandBuffer commandBuffer, std::vector<VkDescr
 }
 bool FzbShaderVariant::operator==(const FzbShaderVariant& other) const {
 	return publicShader == other.publicShader && macros == other.macros;	//宏不同就是不同的shader变体，属于不同的SRP Batch，其实还应该加上管线设置的，之后再说吧
+}
+bool FzbShaderVariant::operator==(const FzbMaterial& other) const {
+	return properties.keyCompare(other.properties) && vertexFormat == other.vertexFormat;
 }

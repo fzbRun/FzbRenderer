@@ -34,7 +34,7 @@ public:
 	float lastY;
 	bool framebufferResized = false;
 
-	FzbScene mainScene = FzbScene();
+	FzbMainScene mainScene = FzbMainScene();
 	inline static FzbCamera* camera = nullptr;
 
 	void mouse_callback(double xposIn, double yposIn);

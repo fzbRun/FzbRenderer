@@ -7,9 +7,8 @@ FzbForwardRender::FzbForwardRender(pugi::xml_node& ForwardRenderNode) {
 
 	this->componentInfo.name = FZB_RENDERER_FORWARD;
 	this->componentInfo.type = FZB_RENDER_COMPONENT;
-	this->componentInfo.vertexFormat = FzbVertexFormat(true);
-	this->componentInfo.useMainSceneBufferHandle = { true, false, false };	//需要全部格式的顶点buffer和索引buffer，用来创建svo
 
+	addMainSceneVertexInfo();
 	addExtensions();
 };
 
@@ -21,46 +20,30 @@ void FzbForwardRender::init() {
 VkSemaphore FzbForwardRender::render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence) {
 	VkCommandBuffer commandBuffer = commandBuffers[0];
 	vkResetCommandBuffer(commandBuffer, 0);
-
-	VkCommandBufferBeginInfo beginInfo{};
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.flags = 0;
-	beginInfo.pInheritanceInfo = nullptr;
-
-	if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-		throw std::runtime_error("failed to begin recording command buffer!");
-	}
+	fzbBeginCommandBuffer(commandBuffer);
 
 	renderRenderPass.render(commandBuffer, imageIndex);
 
 	std::vector<VkSemaphore> waitSemaphores = { startSemaphore };
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 1;	// waitSemaphores.size();
-	submitInfo.pWaitSemaphores = waitSemaphores.data();
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffer;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderFinishedSemaphore.semaphore;
-
-	if (vkQueueSubmit(FzbRenderer::globalData.graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
-		throw std::runtime_error("failed to submit draw command buffer!");
-	}
+	std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+	fzbSubmitCommandBuffer(commandBuffer, { startSemaphore }, waitStages, { renderFinishedSemaphore.semaphore }, fence);
 
 	return renderFinishedSemaphore.semaphore;
 }
 
-void FzbForwardRender::clean() {
-	FzbFeatureComponent_LoopRender::clean();
-	depthMap.clean();
+void FzbForwardRender::addMainSceneVertexInfo() {
+	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat(true));
+	//FzbRenderer::globalData.mainScene.useVertexBufferHandle_looprender = { false, false, false };
 }
-
 void FzbForwardRender::addExtensions() {};
 
 void FzbForwardRender::presentPrepare() {
 	fzbCreateCommandBuffers(1);
+	FzbRenderer::globalData.mainScene.createCameraAndLightDescriptor();
+
+	this->sourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet);
+	FzbShaderInfo shaderInfo = { "/core/Materials/Diffuse/shaders/forwardRender" };
+	this->sourceManager.addSource({ {"diffuse", shaderInfo } });
 
 	VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
 	VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
@@ -79,8 +62,8 @@ void FzbForwardRender::presentPrepare() {
 	renderRenderPass.createFramebuffers(true);
 
 	FzbSubPass presentSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
-		{ mainScene->cameraAndLightsDescriptorSetLayout }, { mainScene->cameraAndLightsDescriptorSet },
-		mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, mainScene->sceneShaders_vector);
+		{ FzbRenderer::globalData.mainScene.cameraAndLightsDescriptorSetLayout }, { FzbRenderer::globalData.mainScene.cameraAndLightsDescriptorSet },
+		mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, sourceManager.shaders_vector);
 	renderRenderPass.subPasses.push_back(presentSubPass);
 }
 
@@ -96,4 +79,10 @@ void FzbForwardRender::createImages() {
 	depthMap.initImage();
 
 	frameBufferImages.push_back(&depthMap);
+}
+
+void FzbForwardRender::clean() {
+	sourceManager.clean();
+	FzbFeatureComponent_LoopRender::clean();
+	depthMap.clean();
 }

@@ -308,7 +308,7 @@ __global__ void checkNodeTriangleNum(FzbBvhNodeTempInfo* bvhNodeTempInfoArray, F
     }
 }
 //------------------------------------------------------------函数-------------------------------------------------
-void BVHCuda::createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbScene* scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth) {
+void BVHCuda::createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene* scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth) {
     //先判断是否是同一个物理设备
     if (getCudaDeviceForVulkanPhysicalDevice(vkPhysicalDevice) == cudaInvalidDeviceId) {
         throw std::runtime_error("CUDA与Vulkan用的不是同一个GPU！！！");

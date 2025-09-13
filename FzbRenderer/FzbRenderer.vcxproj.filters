@@ -58,14 +58,8 @@
     <Filter Include="资源文件\core\SceneDivision\BVH\shaders">
       <UniqueIdentifier>{18a6396d-a9a8-48e0-acee-6ec94fac8fa9}</UniqueIdentifier>
     </Filter>
-    <Filter Include="资源文件\core\RayTracing\PathTracing\AccelerationStructure">
-      <UniqueIdentifier>{c7b8ff14-c673-44fd-8870-9f088d48d32d}</UniqueIdentifier>
-    </Filter>
     <Filter Include="资源文件\core\common">
       <UniqueIdentifier>{89563cab-b963-4ff8-90bf-7550d25f7354}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\RayTracing\PathTracing\shaders">
-      <UniqueIdentifier>{f58eb839-8c92-4ba7-927a-80d7094f5339}</UniqueIdentifier>
     </Filter>
     <Filter Include="资源文件\shaders">
       <UniqueIdentifier>{4188a3f0-e7ec-43cc-a464-511e5a364501}</UniqueIdentifier>
@@ -73,26 +67,8 @@
     <Filter Include="资源文件\core\O-CNN">
       <UniqueIdentifier>{4ef86fb0-0e31-4637-ba64-01f43d6c2544}</UniqueIdentifier>
     </Filter>
-    <Filter Include="资源文件\shaders\LitShader">
-      <UniqueIdentifier>{f43e819b-b17d-4cf4-a6d7-a4ffa895847f}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\shaders\forward">
-      <UniqueIdentifier>{b090b185-393d-4106-9103-88d91199dfd8}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\shaders\forward\diffuse">
-      <UniqueIdentifier>{cc3b8828-2eeb-42b6-9a50-6a9c40346b9e}</UniqueIdentifier>
-    </Filter>
     <Filter Include="资源文件\shaders\common">
       <UniqueIdentifier>{99bccb51-6cfa-4eb5-bc9c-d9f9325e93e6}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\ForwardRender">
-      <UniqueIdentifier>{34e4104b-f6d9-4142-8224-4f331e8d9daf}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\ForwardRender\shaders">
-      <UniqueIdentifier>{876864bf-d15b-4808-8de3-fdb98f7ec63f}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="资源文件\core\ForwardRender\shaders\diffuse">
-      <UniqueIdentifier>{344b3d84-2547-4c6a-a4e8-40fe94396c8e}</UniqueIdentifier>
     </Filter>
     <Filter Include="资源文件\core\SceneDivision\BVH\CUDA">
       <UniqueIdentifier>{ea1a8e5f-88b2-4d48-925f-94ba55021b65}</UniqueIdentifier>
@@ -151,21 +127,42 @@
     <Filter Include="资源文件\core\common\FzbMesh\CUDA">
       <UniqueIdentifier>{1c442ea2-92be-41ba-8a66-151dcc68e94a}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\core\RayTracing\PathTracing\hard">
+      <UniqueIdentifier>{58d0f0e1-949d-46c5-82ba-db2c8d4c6170}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\RayTracing\PathTracing\soft">
+      <UniqueIdentifier>{f58eb839-8c92-4ba7-927a-80d7094f5339}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\RayTracing\PathTracing\soft\CUDA">
+      <UniqueIdentifier>{ea456dda-108e-40dc-8749-d7c856c4ef6b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\Materials">
+      <UniqueIdentifier>{fefd0b5b-542c-4029-9de8-7d72f8eca69b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\Materials\Diffuse">
+      <UniqueIdentifier>{5c47399d-5094-413d-a669-80ebfc683b42}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\Materials\Diffuse\shaders">
+      <UniqueIdentifier>{816f0dec-9e82-4fa1-a6b8-671ba7acc05f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\Materials\Diffuse\shaders\forwardRender">
+      <UniqueIdentifier>{ff48f28e-8b24-4da9-a414-eacf7559e368}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\ForwardRender">
+      <UniqueIdentifier>{51f446d7-f259-4d6b-9dd1-08ba3018454d}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\common\FzbRasterizationRender">
+      <UniqueIdentifier>{4c105cbd-7985-45c1-98ef-130f27b4fadb}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="core\RayTracing\PathTracing\pathTracing.h">
-      <Filter>资源文件\core\RayTracing\PathTracing</Filter>
-    </ClInclude>
-    <ClInclude Include="core\SceneDivision\SVO\SVO.h">
+    <ClInclude Include="core\SceneDivision\SVO\FzbSVO.h">
       <Filter>资源文件\core\SceneDivision\SVO</Filter>
     </ClInclude>
     <ClInclude Include="core\SceneDivision\SVO\CUDA\createSVO.cuh">
       <Filter>资源文件\core\SceneDivision\SVO\CUDA</Filter>
     </ClInclude>
-    <ClInclude Include="core\RayTracing\PathTracing\AccelerationStructure\accelerationStructure.h">
-      <Filter>资源文件\core\RayTracing\PathTracing\AccelerationStructure</Filter>
-    </ClInclude>
-    <ClInclude Include="core\common\StructSet.h">
+    <ClInclude Include="core\common\FzbCommon.h">
       <Filter>资源文件\core\common</Filter>
     </ClInclude>
     <ClInclude Include="core\O-CNN\FzbOCNN.h">
@@ -225,10 +222,7 @@
     <ClInclude Include="core\common\FzbComponent\FzbFeatureComponentManager.h">
       <Filter>资源文件\core\common\FzbComponent</Filter>
     </ClInclude>
-    <ClInclude Include="core\ForwardRender\FzbForwardRender.h">
-      <Filter>资源文件\core\ForwardRender</Filter>
-    </ClInclude>
-    <ClInclude Include="core\SceneDivision\BVH\BVH.h">
+    <ClInclude Include="core\SceneDivision\BVH\FzbBVH.h">
       <Filter>资源文件\core\SceneDivision\BVH</Filter>
     </ClInclude>
     <ClInclude Include="core\common\FzbScene\compressVertices.h">
@@ -239,6 +233,27 @@
     </ClInclude>
     <ClInclude Include="core\common\FzbMesh\CUDA\FzbMeshCUDA.cuh">
       <Filter>资源文件\core\common\FzbMesh\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\PathTracing\soft\FzbPathTracing_soft.h">
+      <Filter>资源文件\core\RayTracing\PathTracing\soft</Filter>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\PathTracing\soft\CUDA\PathTracing_CUDA.cuh">
+      <Filter>资源文件\core\RayTracing\PathTracing\soft\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\PathTracing\soft\FzbPathTracingMaterial.h">
+      <Filter>资源文件\core\RayTracing\PathTracing\soft</Filter>
+    </ClInclude>
+    <ClInclude Include="core\Materials\Diffuse\FzbDiffuseMaterial.h">
+      <Filter>资源文件\core\Materials\Diffuse</Filter>
+    </ClInclude>
+    <ClInclude Include="core\ForwardRender\FzbForwardRender.h">
+      <Filter>资源文件\core\ForwardRender</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbRasterizationRender\FzbRasterizationSourceManager.h">
+      <Filter>资源文件\core\common\FzbRasterizationRender</Filter>
+    </ClInclude>
+    <ClInclude Include="core\common\FzbMesh\FzbCreateSimpleMesh.h">
+      <Filter>资源文件\core\common\FzbMesh</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -266,15 +281,18 @@
     <CudaCompile Include="core\common\FzbMesh\CUDA\FzbMeshCUDA.cu">
       <Filter>资源文件\core\common\FzbMesh\CUDA</Filter>
     </CudaCompile>
+    <CudaCompile Include="core\RayTracing\PathTracing\soft\CUDA\PathTracing_CUDA.cu">
+      <Filter>资源文件\core\RayTracing\PathTracing\soft\CUDA</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
       <Filter>资源文件</Filter>
     </ClCompile>
-    <ClCompile Include="core\common\StructSet.cpp">
+    <ClCompile Include="core\common\FzbCommon.cpp">
       <Filter>资源文件\core\common</Filter>
     </ClCompile>
-    <ClCompile Include="core\SceneDivision\BVH\BVH.cpp">
+    <ClCompile Include="core\SceneDivision\BVH\FzbBVH.cpp">
       <Filter>资源文件\core\SceneDivision\BVH</Filter>
     </ClCompile>
     <ClCompile Include="core\common\FzbRenderer.cpp">
@@ -325,11 +343,14 @@
     <ClCompile Include="core\common\FzbScene\compressVertices.cpp">
       <Filter>资源文件\core\common\FzbScene</Filter>
     </ClCompile>
-    <ClCompile Include="core\SceneDivision\SVO\SVO.cpp">
+    <ClCompile Include="core\SceneDivision\SVO\FzbSVO.cpp">
       <Filter>资源文件\core\SceneDivision\SVO</Filter>
     </ClCompile>
     <ClCompile Include="core\ForwardRender\FzbForwardRender.cpp">
       <Filter>资源文件\core\ForwardRender</Filter>
+    </ClCompile>
+    <ClCompile Include="core\common\FzbRasterizationRender\FzbRasterizationSourceManager.cpp">
+      <Filter>资源文件\core\common\FzbRasterizationRender</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -366,26 +387,8 @@
     <None Include="core\SceneDivision\SVO\shaders\useSwizzle\voxelVert.glsl">
       <Filter>资源文件\core\SceneDivision\SVO\shaders\useSwizzle</Filter>
     </None>
-    <None Include="shaders\LitShader\LitFragShader.glsl">
-      <Filter>资源文件\shaders\LitShader</Filter>
-    </None>
-    <None Include="shaders\LitShader\LitVertShader.glsl">
-      <Filter>资源文件\shaders\LitShader</Filter>
-    </None>
-    <None Include="shaders\forward\diffuse\vertex.glsl">
-      <Filter>资源文件\shaders\forward\diffuse</Filter>
-    </None>
-    <None Include="shaders\forward\diffuse\fragment.glsl">
-      <Filter>资源文件\shaders\forward\diffuse</Filter>
-    </None>
     <None Include="shaders\common\getAttribute.glsl">
       <Filter>资源文件\shaders\common</Filter>
-    </None>
-    <None Include="core\ForwardRender\shaders\diffuse\fragment.glsl">
-      <Filter>资源文件\core\ForwardRender\shaders\diffuse</Filter>
-    </None>
-    <None Include="core\ForwardRender\shaders\diffuse\vertex.glsl">
-      <Filter>资源文件\core\ForwardRender\shaders\diffuse</Filter>
     </None>
     <None Include="shaders\common\getIllumination.glsl">
       <Filter>资源文件\shaders\common</Filter>
@@ -402,19 +405,14 @@
     <None Include="core\SceneDivision\BVH\shaders\present\geometry.glsl">
       <Filter>资源文件\core\SceneDivision\BVH\shaders\present</Filter>
     </None>
+    <None Include="core\Materials\Diffuse\shaders\forwardRender\fragment.glsl">
+      <Filter>资源文件\core\Materials\Diffuse\shaders\forwardRender</Filter>
+    </None>
+    <None Include="core\Materials\Diffuse\shaders\forwardRender\vertex.glsl">
+      <Filter>资源文件\core\Materials\Diffuse\shaders\forwardRender</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="shaders\LitShader\shaderInfo.xml">
-      <Filter>资源文件\shaders\LitShader</Filter>
-    </Text>
-  </ItemGroup>
-  <ItemGroup>
-    <Xml Include="shaders\forward\diffuse\shaderInfo.xml">
-      <Filter>资源文件\shaders\forward\diffuse</Filter>
-    </Xml>
-    <Xml Include="core\ForwardRender\shaders\diffuse\shaderInfo.xml">
-      <Filter>资源文件\core\ForwardRender\shaders\diffuse</Filter>
-    </Xml>
     <Xml Include="core\SceneDivision\SVO\shaders\unuseSwizzle\shaderInfo.xml">
       <Filter>资源文件\core\SceneDivision\SVO\shaders\unuseSwizzle</Filter>
     </Xml>
@@ -441,6 +439,12 @@
     </Xml>
     <Xml Include="scenes\bearBox\scene_onlyDiff.xml">
       <Filter>资源文件\scenes\bearBox</Filter>
+    </Xml>
+    <Xml Include="core\Materials\Diffuse\materialInfo.xml">
+      <Filter>资源文件\core\Materials\Diffuse</Filter>
+    </Xml>
+    <Xml Include="core\Materials\Diffuse\shaders\forwardRender\shaderInfo.xml">
+      <Filter>资源文件\core\Materials\Diffuse\shaders\forwardRender</Filter>
     </Xml>
   </ItemGroup>
 </Project>

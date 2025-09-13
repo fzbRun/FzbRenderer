@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 #include "../FzbBuffer/FzbBuffer.h"
 
 #ifndef FZB_COMPONENT

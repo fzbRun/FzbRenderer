@@ -17,7 +17,6 @@ layout(set = 1, binding = 0) uniform voxelBufferObject{
 layout(set = 1, binding = 1, r32ui) uniform coherent uimage3D voxelMap;
 
 void main() {
-
 	ivec3 voxelIndex = ivec3((worldPos.xyz - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.xyz);
 	uint voxelValueU = imageLoad(voxelMap, voxelIndex).r;
 	vec4 voxelValue = unpackUnorm4x8(voxelValueU);

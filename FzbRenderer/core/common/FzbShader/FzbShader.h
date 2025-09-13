@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 #include "../FzbPipeline/FzbPipeline.h"
 #include "../FzbMesh/FzbMesh.h"
 #include "../FzbMaterial/FzbMaterial.h"
@@ -10,9 +10,6 @@
 #ifndef FZB_SHADER_H
 #define FZB_SHADER_H
 
-const std::map<std::string, std::string> shaderPaths = {
-	{"diffuse", "/core/ForwardRender/shaders/diffuse"}
-};
 //----------------------------------------------------------------------------------------------------------------------------
 struct FzbShader;
 struct FzbShaderVariant {
@@ -36,15 +33,15 @@ public:
 	void changeVertexFormatAndMacros(FzbVertexFormat vertexFormat = FzbVertexFormat());
 
 	FzbShaderVariant();
-	FzbShaderVariant(FzbShader* publicShader, FzbMaterial* material, FzbVertexFormat vertexFormat = FzbVertexFormat());
+	FzbShaderVariant(FzbShader* publicShader, FzbMaterial* material);
 
-	void createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage>& sceneImages);
+	void createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages);
 
 	//void changeVertexFormat(FzbVertexFormat newFzbVertexFormat);
 
 	void clean();
 
-	void createMeshBatch(std::vector<FzbMesh>& sceneMeshSet);
+	void createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMaterialPairs);
 
 	std::vector<VkPipelineShaderStageCreateInfo> createShaderStates();
 	void createPipeline(VkRenderPass renderPass, uint32_t subPassIndex, std::vector<VkDescriptorSetLayout> descriptorSetLayouts);
@@ -52,12 +49,18 @@ public:
 	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets);
 
 	bool operator==(const FzbShaderVariant& other) const;
+	bool operator==(const FzbMaterial& other) const;
 };
 
 //主要是一些扩展用于判断是否需要开启
 struct FzbShaderExtensionsSetting{
 	bool swizzle = false;
 	bool conservativeRasterization = false;
+};
+struct FzbShaderInfo {
+	std::string shaderPath = "";
+	FzbShaderExtensionsSetting extensions;
+	bool staticCompile = false;
 };
 struct FzbShader {
 	std::string path;
@@ -85,9 +88,9 @@ struct FzbShader {
 	VkExtent2D getResolution();
 	void setViewStateInfo(std::vector<VkViewport>& viewports, std::vector<VkRect2D>& scissors, void* viewportExtensios);
 
-	void createShaderVariant(FzbMaterial* material, FzbVertexFormat vertexFormat = FzbVertexFormat());
-	void createMeshBatch(std::vector<FzbMesh>& sceneMeshSet);
-	void createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage>& sceneImages);
+	void createShaderVariant(FzbMaterial* material);
+	void createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMaterialPairs);
+	void createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages);
 	void createPipeline(VkRenderPass renderPass, uint32_t subPassIndex, std::vector<VkDescriptorSetLayout> descriptorSetLayouts);
 	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets);
 	bool operator==(const FzbShader& other) const;

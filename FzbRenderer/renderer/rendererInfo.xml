@@ -3,11 +3,11 @@
 	<resolution width = "1280" height = "720" />
 	<sceneXML path = "/scenes/veach-ajar" />
 	<rendererType value = "Forward">
-		<available value = "true" />
+		<available value = "false" />
 	</rendererType>
 	<featureComponents>
 		<featureComponent name = "BVH_Debug">
-			<available value = "false" />
+			<available value = "true" />
 		</featureComponent>
 		<featureComponent name = "SVO_Debug">
 			<available value = "false" />

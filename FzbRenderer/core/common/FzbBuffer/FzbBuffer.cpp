@@ -45,7 +45,7 @@ VkCommandBuffer beginSingleTimeCommands() {
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
 	vkBeginCommandBuffer(commandBuffer, &beginInfo);
-
+	
 	return commandBuffer;
 }
 void endSingleTimeCommands(VkCommandBuffer commandBuffer) {
@@ -60,6 +60,37 @@ void endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 	vkQueueWaitIdle(FzbRenderer::globalData.graphicsQueue);
 	vkFreeCommandBuffers(FzbRenderer::globalData.logicalDevice, FzbRenderer::globalData.commandPool, 1, &commandBuffer);
 }
+void fzbBeginCommandBuffer(VkCommandBuffer commandBuffer) {
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = 0;
+	beginInfo.pInheritanceInfo = nullptr;
+
+	if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
+		throw std::runtime_error("failed to begin recording command buffer!");
+	}
+}
+void fzbSubmitCommandBuffer(VkCommandBuffer commandBuffer,
+	std::vector<VkSemaphore> waitSemaphores,
+	std::vector<VkPipelineStageFlags> waitStages,
+	std::vector<VkSemaphore> signalSemphores,
+	VkFence fence) {
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.waitSemaphoreCount = waitSemaphores.size();
+	submitInfo.pWaitSemaphores = waitSemaphores.data();
+	submitInfo.pWaitDstStageMask = waitStages.data();
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+	submitInfo.signalSemaphoreCount = signalSemphores.size();
+	submitInfo.pSignalSemaphores = signalSemphores.data();
+
+	if (vkQueueSubmit(FzbRenderer::globalData.graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
+		throw std::runtime_error("failed to submit draw command buffer!");
+	}
+}
+
 void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
 	VkDevice logicalDevice = FzbRenderer::globalData.logicalDevice;
 	VkCommandPool commandPool = FzbRenderer::globalData.commandPool;

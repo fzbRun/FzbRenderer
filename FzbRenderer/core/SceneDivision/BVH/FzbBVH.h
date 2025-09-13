@@ -1,8 +1,9 @@
 #pragma once
 
-#include "../../common/StructSet.h"
+#include "../../common/FzbCommon.h"
 #include "../../common/FzbComponent/FzbFeatureComponent.h"
 #include "./CUDA/createBVH.cuh"
+#include "../../common/FzbRasterizationRender/FzbRasterizationSourceManager.h"
 
 
 #ifndef BVH_H
@@ -280,9 +281,11 @@ private:
 
 	std::unique_ptr<BVHCuda> bvhCuda;
 
-	FzbShader presentShader;
-	FzbMaterial presentMaterial;
+	FzbRasterizationSourceManager presentSourceManager;
+	//FzbShader presentShader;
+	//FzbMaterial presentMaterial;
 
+	void addMainSceneVertexInfo() override;
 	void addExtensions() override;
 
 	void presentPrepare() override;

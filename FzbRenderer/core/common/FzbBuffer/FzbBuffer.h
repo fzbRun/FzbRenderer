@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 
 #ifndef FZB_BUFFER_H
 #define FZB_BUFFER_H
@@ -11,6 +11,13 @@ VkDeviceAddress getBufferDeviceAddressKHR(VkBufferDeviceAddressInfoKHR* handleIn
 uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 VkCommandBuffer beginSingleTimeCommands();
 void endSingleTimeCommands(VkCommandBuffer commandBuffer);
+void fzbBeginCommandBuffer(VkCommandBuffer commandBuffer);
+void fzbSubmitCommandBuffer(VkCommandBuffer commandBuffer,
+	std::vector<VkSemaphore> waitSemaphores = std::vector<VkSemaphore>(), 
+	std::vector<VkPipelineStageFlags> waitStages = std::vector<VkPipelineStageFlags>(),
+	std::vector<VkSemaphore> signalSemphores = std::vector<VkSemaphore>(),
+	VkFence fence = nullptr);
+
 void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 //----------------------------------------------------½á¹¹Ìå-----------------------------------------
 struct FzbBuffer {

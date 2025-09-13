@@ -3,6 +3,7 @@
 #include "../common/FzbComponent/FzbFeatureComponent.h"
 #include "../common/FzbRenderer.h"
 #include "../common/FzbRenderPass/FzbRenderPass.h"
+#include "../common/FzbRasterizationRender/FzbRasterizationSourceManager.h"
 
 #ifndef FZB_FORWARD_RENDER
 #define FZB_FORWARD_RENDER
@@ -26,8 +27,10 @@ public:
 
 private:
 	FzbForwardRenderSetting setting;
+	FzbRasterizationSourceManager sourceManager;
 	FzbImage depthMap;
 
+	void addMainSceneVertexInfo() override;
 	void addExtensions() override;
 
 	void presentPrepare() override;

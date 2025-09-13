@@ -281,6 +281,7 @@ std::vector<FzbMesh> fzbGetMeshFromOBJ(std::string path, FzbVertexFormat vertexF
 	return meshes;
 }
 
+/*
 void fzbCreateCube(FzbMesh& mesh) {
 	mesh.vertices = { 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
 		0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f };
@@ -322,6 +323,7 @@ void fzbCreateRectangle(std::vector<float>& cubeVertices, std::vector<uint32_t>&
 		};
 	}
 }
+*/
 //-------------------------------------------------meshBatch-----------------------------------------------
 FzbMeshBatch::FzbMeshBatch() {};
 void FzbMeshBatch::clean() {

@@ -9,6 +9,7 @@
 
 enum FzbFeatureComponentName {
 	FZB_RENDERER_FORWARD,
+	FZB_RENDERER_PATH_TRACING_SOFT,
 	FZB_FEATURE_COMPONENT_BVH,
 	FZB_FEATURE_COMPONENT_BVH_DEBUG,
 	FZB_FEATURE_COMPONENT_SVO,
@@ -26,20 +27,28 @@ struct FzbFeatureComponentInfo {
 	bool available = false;
 	FzbFeatureComponentName name;
 	FzbFeatureComponentType type;
-	FzbVertexFormat vertexFormat = FzbVertexFormat();	//组件所需要的顶点属性
-	std::vector<bool> useMainSceneBufferHandle = { false, false, false };
+	//std::vector<bool> useMainSceneBufferHandle = { false, false, false };
 };
 
 struct FzbFeatureComponent : public FzbComponent {
 public:
 	FzbFeatureComponentInfo componentInfo;
-	FzbScene* mainScene;
+	FzbMainScene* mainScene;
 	//----------------------------------------------------------函数---------------------------------------------------------------
 	FzbFeatureComponent();
 	FzbFeatureComponent(pugi::xml_document& doc);
+	/*
+	组件会先找到或创建自己所需要的mesh，如mainScene中的mesh，所需要的线框等
+	对所需要使用到的mesh的vertexFormat进行赋值，用于后续创建或读取数据时获得想要的顶点属性
+	创建shader
+	指明是否需要vertexBuffer的handle
+	*/
+	virtual void addMainSceneVertexInfo() = 0;
 	virtual void addExtensions() = 0;
 	void initGlobalData();
 	virtual void init() = 0;
+
+	virtual void prepocessClean();
 	void clean() override ;
 };
 

@@ -105,16 +105,46 @@ __global__ void verticesTransform_device(float* vertices, glm::mat4 transformMat
 	}
 }
 void verticesTransform_CUDA(std::vector<float>& vertices, glm::mat4 transformMatrix, FzbVertexFormat vertexFormat) {
+	if (transformMatrix == glm::mat4(1.0f)) return;
+
 	uint32_t vertexFormatU = vertexFormat.useNormal | (vertexFormat.useTexCoord << 1) | (vertexFormat.useTangent << 2);
 	uint32_t vertexFloatNum = vertices.size();
 	uint32_t vertexSize = vertexFormat.getVertexSize();
 	uint32_t vertexNum = vertexFloatNum / vertexSize;
 
+	glm::mat3 normalTransformMatrix = glm::inverse(glm::transpose(glm::mat3(transformMatrix)));
+
+	if (vertexSize < 512) {
+		for (int i = 0; i < vertexNum; ++i) {
+			uint32_t vertexIndex = i * vertexSize;
+			glm::vec4 pos = glm::vec4(vertices[vertexIndex], vertices[vertexIndex + 1], vertices[vertexIndex + 2], 1.0f);
+			pos = transformMatrix * pos;
+			vertices[vertexIndex++] = pos.x;
+			vertices[vertexIndex++] = pos.y;
+			vertices[vertexIndex++] = pos.z;
+
+			if (vertexFormat.useNormal) {
+				glm::vec3 normal = glm::vec3(vertices[vertexIndex], vertices[vertexIndex + 1], vertices[vertexIndex + 2]);
+				normal = glm::normalize(normalTransformMatrix * normal);
+				vertices[vertexIndex++] = normal.x;
+				vertices[vertexIndex++] = normal.y;
+				vertices[vertexIndex++] = normal.z;
+			}
+			if (vertexFormat.useTexCoord) vertexIndex += 2;
+			if (vertexFormat.useTangent) {
+				glm::vec3 tangent = glm::vec3(vertices[vertexIndex], vertices[vertexIndex + 1], vertices[vertexIndex + 2]);
+				tangent = glm::normalize(glm::mat3(transformMatrix) * tangent);
+				vertices[vertexIndex++] = tangent.x;
+				vertices[vertexIndex++] = tangent.y;
+				vertices[vertexIndex++] = tangent.z;
+			}
+		}
+		return;
+	}
+
 	float* vertices_device;
 	CHECK(cudaMalloc((void**)&vertices_device, sizeof(float) * vertexFloatNum));
 	CHECK(cudaMemcpy(vertices_device, vertices.data(), sizeof(float) * vertexFloatNum, cudaMemcpyHostToDevice));
-
-	glm::mat3 normalTransformMatrix = glm::inverse(glm::transpose(glm::mat3(transformMatrix)));
 
 	uint32_t gridSize = (vertexNum + 511) / 512;
 	uint32_t blockSize = vertexNum > 512 ? 512 : vertexNum;
@@ -156,7 +186,7 @@ __global__ void getVertices_device(float* vertices, uint32_t usability, uint32_t
 			result[floatIndex_new++] = 0.0f;
 		}
 	}
-	else if (usability & 1) floatIndex += 2;
+	else if (usability & 2) floatIndex += 2;
 	if (usability_new & 4) {
 		if (usability & 4) {
 			result[floatIndex_new++] = vertices[floatIndex++];

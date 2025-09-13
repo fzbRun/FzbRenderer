@@ -50,5 +50,6 @@ struct FzbImage {
 VkFormat fzbFindSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 VkFormat fzbFindDepthFormat();
 bool hasStencilComponent(VkFormat format);
+void fzbCopyImageToImage(VkCommandBuffer commandBuffer, VkImage srcImage, VkImage dstImage, VkExtent3D copyExtent);
 
 #endif

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 #include "../FzbBuffer/FzbBuffer.h"
 #include "../FzbPipeline/FzbPipeline.h"
 #include "../FzbDescriptor/FzbDescriptor.h"
@@ -221,14 +221,15 @@ struct FzbMesh {
 public:
 	std::string id;
 	std::string path;
-	std::vector<float> vertices;	//压缩前的顶点数据，压缩后就会被释放
-	std::vector<uint32_t> indices;	//压缩前的顶点索引数据，压缩后就会被释放
+	std::vector<float> vertices;	//压缩前的顶点数据
+	std::vector<uint32_t> indices;	//压缩前的顶点索引数据
 	uint32_t indexArraySize;
-	//std::vector<uint32_t> indexArrayOffset;
 	uint32_t indexArrayOffset;
 
-	FzbMaterial* material;	//sceneXML中指定的material
-	FzbVertexFormat vertexFormat;	//从obj中获取到的mesh的顶点格式
+	glm::mat4 transformMatrix = glm::mat4(1.0f);
+	FzbMaterial* material = nullptr;	//sceneXML中指定的material
+	FzbVertexFormat vertexFormat;	//所有LoopRender组件所要求的，以及sceneXML中material要求的顶点数据
+	//FzbVertexFormat vertexFormat_propocess;	//预处理组件所要求的顶点数据
 
 	uint32_t instanceNum = 1;
 	FzbAABBBox AABB;
@@ -263,9 +264,11 @@ FzbMesh processMesh(aiMesh* mesh, const aiScene* scene, FzbVertexFormat vertexFo
 std::vector<FzbMesh> processNode(aiNode* node, const aiScene* scene, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix);
 std::vector<FzbMesh> fzbGetMeshFromOBJ(std::string path, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix = glm::mat4(1.0f));
 
+/*
 void fzbCreateCube(FzbMesh& mesh);
 void fzbCreateCubeWireframe(FzbMesh& mesh);
 void fzbCreateRectangle(std::vector<float>& cubeVertices, std::vector<uint32_t>& cubeIndices, bool world = true);
+*/
 //--------------------------------------------------------------------------------------------------------------------
 
 /*

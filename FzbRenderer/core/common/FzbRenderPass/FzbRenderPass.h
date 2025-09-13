@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../StructSet.h"
+#include "../FzbCommon.h"
 #include "../FzbScene/FzbScene.h"
 #include "../FzbShader/FzbShader.h"
 #include "../FzbMesh/FzbMesh.h"
@@ -89,9 +89,6 @@ struct FzbSubPass {
 	VkBuffer vertexBuffer;
 	VkBuffer indexBuffer;
 
-	FzbPipelineCreateInfo pipelineCreateInfo;	//主要是pipeline的公共信息，如是否要背面剔除什么的
-	//std::vector<FzbMeshBatch> meshBatchs;
-	//std::vector<FzbScene*> scene;	//这个subPass要对哪些scene进行渲染
 	std::vector<FzbShader*> shaders;	//这个subPass要渲染哪些shader
 
 	FzbSubPass();

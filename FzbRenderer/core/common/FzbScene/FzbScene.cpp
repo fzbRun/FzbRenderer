@@ -19,7 +19,6 @@
 #include <thread>
 #include "CUDA/FzbSceneCUDA.cuh"
 
-
 std::vector<std::string> get_all_files(const std::string& dir_path) {
 	std::vector<std::string> filePaths;
 	for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
@@ -34,70 +33,26 @@ bool FzbVertexFormatLess::operator()(FzbVertexFormat const& a, FzbVertexFormat c
 };
 //-----------------------------------------------≥°æ∞----------------------------------------
 FzbScene::FzbScene() {};
-void FzbScene::setScenePath(std::string scenePath) {
-	this->scenePath = scenePath;
-}
-void FzbScene::initScene(bool compress, bool isMainScene) {
-	FzbVertexFormat vertexFormat = fzbVertexFormatMergeUpward(FzbRenderer::componentManager.vertexFormat_preprocess, FzbRenderer::componentManager.vertexFormat_looprender);
-	addSceneFromMitsubaXML(this->scenePath, vertexFormat);
-
-	std::vector<bool> useBuffer;
-	for (int i = 0; i < FzbRenderer::componentManager.useMainSceneBuffer_preprocess.size(); ++i)
-		useBuffer.push_back(FzbRenderer::componentManager.useMainSceneBuffer_preprocess[i] || FzbRenderer::componentManager.useMainSceneBuffer_looprender[i]);
-	std::vector<bool> useBufferHandle;
-	for (int i = 0; i < FzbRenderer::componentManager.useMainSceneBufferHandle_preprocess.size(); ++i)
-		useBufferHandle.push_back(FzbRenderer::componentManager.useMainSceneBufferHandle_preprocess[i] || FzbRenderer::componentManager.useMainSceneBufferHandle_looprender[i]);
-	createVertexBuffer(compress, useBufferHandle[0]);
-	createVertexPairDataBuffer(useBuffer[1], useBuffer[2], compress, useBufferHandle[1], useBufferHandle[2]);
-
-	createShaderMeshBatch();
-	createBufferAndDescriptorOfMaterialAndMesh();
-	createCameraAndLightBufferAndDescriptor();
-}
 void FzbScene::clean() {
 	VkDevice logicalDevice = FzbRenderer::globalData.logicalDevice;
 
+	for (auto& imagePair : this->sceneImages) imagePair.second.clean();
 	for (auto& materialPair : sceneMaterials) materialPair.second.clean();
-	for (auto& shaderPair : sceneShaders) shaderPair.second.clean();
-	for (auto& imagePair : sceneImages) imagePair.second.clean();
 	for (int i = 0; i < this->sceneMeshSet.size(); i++) sceneMeshSet[i].clean();
 
-	if(sceneDescriptorPool) vkDestroyDescriptorPool(logicalDevice, sceneDescriptorPool, nullptr);
 	if(FzbMeshDynamic::meshDescriptorSetLayout) vkDestroyDescriptorSetLayout(logicalDevice, FzbMeshDynamic::meshDescriptorSetLayout, nullptr);
 
 	vertexBuffer.clean();
 	indexBuffer.clean();
-	vertexPosBuffer.clean();
-	indexPosBuffer.clean();
-	vertexPosNormalBuffer.clean();
-	indexPosNormalBuffer.clean();
-
-	cameraBuffer.clean();
-	lightsBuffer.clean();
-	if(cameraAndLightsDescriptorSetLayout) vkDestroyDescriptorSetLayout(logicalDevice, cameraAndLightsDescriptorSetLayout, nullptr);
 }
 
-void FzbScene::addMeshToScene(FzbMesh mesh, FzbMaterial material, std::string shaderPath) {
-	this->sceneMaterials.insert({ material.id, material });
-	mesh.material = &this->sceneMaterials[material.id];
-	if (!this->sceneShaders.count(shaderPath)) {
-		this->sceneShaders.insert({ shaderPath, FzbShader(shaderPath) });
-	}
-	this->sceneShaders[shaderPath].createShaderVariant(&this->sceneMaterials[material.id], mesh.vertexFormat);
-	this->differentVertexFormatMeshIndexs[mesh.vertexFormat].push_back(this->sceneMeshSet.size());
-	this->sceneMeshSet.push_back(mesh);
-}
-void FzbScene::createDefaultMaterial(FzbVertexFormat vertexFormat) {
-	FzbMaterial defaultMaterial = FzbMaterial("defaultMaterial", "diffuse");
-	this->sceneMaterials.insert({ "defaultMaterial", defaultMaterial });
-	std::string shaderPath = fzbGetRootPath() + shaderPaths.at("diffuse");
-	this->sceneShaders.insert({ shaderPath, FzbShader(shaderPath) });
-	this->sceneShaders[shaderPath].createShaderVariant(&this->sceneMaterials["defaultMaterial"], vertexFormat);
-}
+/*
 void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFormat) {
 	if (path == "") return;
 	this->scenePath = fzbGetRootPath() + path;
-	createDefaultMaterial(vertexFormat);
+	FzbMaterial defaultMaterial = FzbMaterial("defaultMaterial", "diffuse");
+	defaultMaterial.vertexFormat.mergeUpward(vertexFormat);
+	this->sceneMaterials.insert({ "defaultMaterial", defaultMaterial });
 
 	pugi::xml_document doc;
 	std::string sceneXMLPath = this->scenePath + "/scene_onlyDiff.xml";
@@ -106,6 +61,7 @@ void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFo
 		throw std::runtime_error("pugixml¥Úø™Œƒº˛ ß∞‹");
 	}
 	pugi::xml_node scene = doc.document_element();	//ªÒ»°∏˘Ω⁄µ„£¨º¥<scene>
+
 	for (pugi::xml_node node : scene.children("sensor")) {	//’‚¿Ôø…ƒ‹”–Œ Ã‚£¨Œ“œ÷‘⁄ƒ¨»œ¥Ê‘⁄’‚–© Ù–‘£¨«“œ‡ª˙ «Õ∏ ”Õ∂”∞µƒ°£”–Œ Ã‚÷Æ∫Û‘ŸÀµ∞…
 		float fov = glm::radians(std::stof(node.select_node(".//float[@name='fov']").node().attribute("value").value()));
 		bool isPerspective = std::string(node.attribute("type").value()) == "perspective" ? true : false;
@@ -125,7 +81,6 @@ void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFo
 
 	pugi::xml_node bsdfsNode = scene.child("bsdfs");
 	for (pugi::xml_node bsdfNode : bsdfsNode.children("bsdf")) {
-
 		FzbMaterial material = FzbMaterial();
 		material.id = bsdfNode.attribute("id").value();
 		if (sceneMaterials.count(material.id)) {
@@ -135,54 +90,21 @@ void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFo
 
 		pugi::xml_node bsdf = bsdfNode.child("bsdf");
 		std::string materialType = bsdf.attribute("type").value();
-		material.type = materialType;	// == "diffuse" ? FZB_DIFFUSE : FZB_ROUGH_CONDUCTOR;
-		//std::string shaderPath = getRootPath() + "/shaders/forward/diffuse";
+		material.type = materialType;
+		material.getMaterialXMLInfo();
+
 		if (materialType == "diffuse") {
-			if (pugi::xml_node textureNode = bsdf.select_node(".//texture[@name='reflectance']").node()) {
-				std::string texturePath = textureNode.select_node(".//string[@name='filename']").node().attribute("value").value();
-				std::string filterType = textureNode.select_node(".//string[@name='filter_type']").node().attribute("value").value();
-				VkFilter filter = filterType == "bilinear" ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;
-				material.properties.textureProperties.insert({ "albedoMap", FzbTexture(texturePath, filter) });
-			}
-			if (pugi::xml_node rgbNode = bsdf.select_node(".//rgb[@name='reflectance']").node()) {
-				glm::vec3 albedo = fzbGetRGBFromString(rgbNode.attribute("value").value());
-				FzbNumberProperty numProperty(glm::vec4(albedo, 0.0f));
-				material.properties.numberProperties.insert({ "albedo", numProperty });
-			}
-			//shaderPath = getRootPath() + "/shaders/forward/diffuse";
+			material.getSceneXMLInfo(bsdf);
 		}
-		//else if (bsdf.attribute("type").value() == "roughconductor") {
-		//	if (pugi::xml_node roughness = bsdf.select_node("//float[@name='alpha']").node()) {
-		//		material.roughness = std::stof(roughness.attribute("value").value());
-		//	}
-		//	if (pugi::xml_node distribution = bsdf.select_node("//string[@name='distribution']").node()) {
-		//		material.distribution = distribution.attribute("value").value() == "ggx" ? FZB_GGX : FZB_BECKMENN;
-		//	}
-		//	if (pugi::xml_node spcularReflectanceTexture = bsdf.select_node("//texture[@name='specular_reflectance']").node()) {
-		//
-		//	}
-		//}
+
+		material.vertexFormat.mergeUpward(vertexFormat);
 		this->sceneMaterials.insert({ material.id, material });
-		//if (!this->sceneShaders.count(shaderPath)) {
-		//	this->sceneShaders.insert({ shaderPath, FzbShader(logicalDevice, shaderPath) });
-		//}
-		//this->sceneShaders[shaderPath].createShaderVariant(&sceneMaterials[material.id]);
-	}
-	for (auto& pair : sceneMaterials) {
-		FzbMaterial& material = pair.second;
-		std::string shaderPath = fzbGetRootPath() + shaderPaths.at(material.type);
-		if (!this->sceneShaders.count(shaderPath)) {
-			this->sceneShaders.insert({ shaderPath, FzbShader(shaderPath) });
-		}
-		this->sceneShaders[shaderPath].createShaderVariant(&sceneMaterials[material.id], vertexFormat);
 	}
 
 	pugi::xml_node shapesNode = scene.child("shapes");
 	for (pugi::xml_node shapeNode : shapesNode.children("shape")) {
 		std::string meshType = shapeNode.attribute("type").value();
-		if (meshType == "rectangle" || meshType == "emitter") {
-			continue;
-		}
+		if (meshType == "rectangle" || meshType == "emitter") continue;
 		std::string meshID = shapeNode.attribute("id").value();
 		pugi::xml_node tranform = shapeNode.select_node(".//transform[@name='to_world']").node();
 
@@ -202,14 +124,14 @@ void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFo
 		if (!sceneMaterials.count(materialID)) {
 			materialID = "defaultMaterial";
 		}
-		glm::mat4 modelMatrix(1.0f);
-		if (tranform) modelMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
+		glm::mat4 transformMatrix(1.0f);
+		if (tranform) transformMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
 
 		std::vector<FzbMesh> meshes;
 		if (meshType == "obj") {
 			if (pugi::xml_node pathNode = shapeNode.select_node(".//string[@name='filename']").node()) {
 				std::string objPath = this->scenePath + "/" + std::string(pathNode.attribute("value").value());
-				meshes = fzbGetMeshFromOBJ(objPath, sceneMaterials[materialID].vertexFormat, modelMatrix);
+				meshes = fzbGetMeshFromOBJ(objPath, sceneMaterials[materialID].vertexFormat, transformMatrix);
 			}
 			else {
 				throw std::runtime_error("objŒƒº˛√ª”–¬∑æ∂");
@@ -230,53 +152,12 @@ void FzbScene::addSceneFromMitsubaXML(std::string path, FzbVertexFormat vertexFo
 	}
 	doc.reset();
 }
-void FzbScene::createShaderMeshBatch() {
-	for (auto& pair : sceneShaders) {
-		FzbShader& shader = pair.second;
-		shader.createMeshBatch(sceneMeshSet);
-		this->sceneShaders_vector.push_back(&shader);
-	}
-}
-void FzbScene::createBufferAndDescriptorOfMaterialAndMesh() {
-	uint32_t textureNum = 0;
-	uint32_t numberBufferNum = 0;
-	for (auto& materialPair : this->sceneMaterials) {
-		FzbMaterial& material = materialPair.second;
-		material.createSource(scenePath, numberBufferNum, sceneImages);
-		/*
-		if (material.properties.numberProperties.size() > 0) {
-			material.createMaterialNumberPropertiesBuffer(physicalDevice, numberBufferNum);
-		}
-		for (auto& texturePair : material.properties.textureProperties) {
-			std::string texturePath = texturePair.second.path;
-			if (this->sceneImages.count(texturePath)) {
-				continue;
-			}
-			FzbImage image;
-			std::string texturePathFromModel = scenePath + "/" + texturePath;	//./models/xxx/textures/textureName.jpg
-			image.texturePath = texturePathFromModel.c_str();
-			image.filter = texturePair.second.filter;
-			image.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			image.fzbCreateImage(physicalDevice, logicalDevice, commandPool, graphicsQueue);
-			this->sceneImages.insert({ texturePath, image });
-		}
-		*/
-	}
-	textureNum = this->sceneImages.size();
-	numberBufferNum += sceneCameras.size() > 0 ? 1 : 0 + sceneLights.size() > 0 ? 1 : 0;
-	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum = { {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, textureNum},		//Œ∆¿Ì–≈œ¢
-																{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, numberBufferNum} };	//≤ƒ÷ –≈œ¢
-	this->sceneDescriptorPool = fzbCreateDescriptorPool(bufferTypeAndNum);
-	for (auto& shader : sceneShaders) {
-		shader.second.createDescriptor(sceneDescriptorPool, sceneImages);
-	}
-	//fzbCreateMeshDescriptor();	//’‚¿Ô”¶∏√º”∏ˆ≈–∂œ£¨∫Û√Ê‘ŸÀµ∞…
-}
+*/
 void FzbScene::createVertexBuffer(bool compress, bool useExternal) {	//ƒø«∞÷ª¥¶¿Ìæ≤Ã¨mesh
 	std::vector<float> sceneVertices;
 	std::vector<uint32_t> sceneIndices;
 	uint32_t FzbVertexByteSize = 0;
-	for (auto& pair : differentVertexFormatMeshIndexs) {
+	for (auto& pair : this->differentVertexFormatMeshIndexs) {
 		FzbVertexFormat vertexFormat = pair.first;
 		uint32_t vertexSize = vertexFormat.getVertexSize();
 
@@ -295,7 +176,6 @@ void FzbScene::createVertexBuffer(bool compress, bool useExternal) {	//ƒø«∞÷ª¥¶¿
 		compressIndices.reserve(indexNum);
 		for (int i = 0; i < meshIndexs.size(); i++) {
 			uint32_t meshIndex = meshIndexs[i];
-
 			sceneMeshSet[meshIndex].indexArrayOffset = sceneIndices.size() + compressIndices.size();
 
 			//’‚¿Ô”√¡Ÿ ± ˝◊È£¨“ÚŒ™ø…ƒ‹Õ¨“ª∏ˆmesh±ªÃÌº”∂‡¥Œ£¨»Áπ˚√ø¥Œ∂º÷±Ω”∂‘meshµƒindicesº”…œoffsetæÕª·≥ˆ¥Ì£¨À˘“‘–Ë“™ π”√¡Ÿ ± ˝æ›
@@ -314,19 +194,7 @@ void FzbScene::createVertexBuffer(bool compress, bool useExternal) {	//ƒø«∞÷ª¥¶¿
 		}
 
 		if (compress) compressSceneVertices_sharded(compressVertices, vertexFormat, compressIndices);
-		
-		/*
-		while (FzbVertexByteSize % vertexSize > 0) {
-			sceneVertices.push_back(0.0f);
-			FzbVertexByteSize += sizeof(float);
-		}
-		if (FzbVertexByteSize > 0) {
-			for (int i = 0; i < compressIndices.size(); i++) {
-				compressIndices[i] += FzbVertexByteSize / vertexSize;
-			}
-		}
-		FzbVertexByteSize += compressVertices.size() * sizeof(float);
-		*/
+
 		addPadding(sceneVertices, compressVertices, compressIndices, FzbVertexByteSize, vertexFormat);
 
 		sceneVertices.insert(sceneVertices.end(), compressVertices.begin(), compressVertices.end());
@@ -336,6 +204,7 @@ void FzbScene::createVertexBuffer(bool compress, bool useExternal) {	//ƒø«∞÷ª¥¶¿
 	vertexBuffer = fzbCreateStorageBuffer(sceneVertices.data(), sceneVertices.size() * sizeof(float), useExternal);
 	indexBuffer = fzbCreateStorageBuffer(sceneIndices.data(), sceneIndices.size() * sizeof(uint32_t), useExternal);
 }
+/*
 void FzbScene::createVertexPairDataBuffer(bool usePosData, bool usePosNormalData, bool compress, bool usePosDataExternal, bool usePosNormalDataExternal) {
 	if (usePosData) {
 		std::vector<float> sceneVertices;
@@ -355,11 +224,11 @@ void FzbScene::createVertexPairDataBuffer(bool usePosData, bool usePosNormalData
 				std::vector<float> meshVertices = mesh.getVertices(FzbVertexFormat());
 				std::vector<uint32_t> meshIndices = mesh.indices;
 				addData_uint(meshIndices.data(), sceneVertices.size() / 3, meshIndices.size());
-				/*
-				for (int j = 0; j < meshIndices.size(); j++) {
-					meshIndices[j] += sceneVertices.size() / 3;
-				}
-				*/
+				
+				//for (int j = 0; j < meshIndices.size(); j++) {
+				//	meshIndices[j] += sceneVertices.size() / 3;
+				//}
+				
 				sceneVertices.insert(sceneVertices.end(), meshVertices.begin(), meshVertices.end());
 				sceneIndices.insert(sceneIndices.end(), meshIndices.begin(), meshIndices.end());
 			}
@@ -386,11 +255,11 @@ void FzbScene::createVertexPairDataBuffer(bool usePosData, bool usePosNormalData
 				std::vector<float> meshVertices = mesh.getVertices(FzbVertexFormat(true));
 				std::vector<uint32_t> meshIndices = mesh.indices;
 				addData_uint(meshIndices.data(), sceneVertices.size() / 6, meshIndices.size());
-				/*
-				for (int j = 0; j < meshIndices.size(); j++) {
-					meshIndices[j] += sceneVertices.size() / 6;
-				}
-				*/
+				
+				//for (int j = 0; j < meshIndices.size(); j++) {
+				//	meshIndices[j] += sceneVertices.size() / 6;
+				//}
+				
 				sceneVertices.insert(sceneVertices.end(), meshVertices.begin(), meshVertices.end());
 				sceneIndices.insert(sceneIndices.end(), meshIndices.begin(), meshIndices.end());
 			}
@@ -400,77 +269,11 @@ void FzbScene::createVertexPairDataBuffer(bool usePosData, bool usePosNormalData
 		indexPosNormalBuffer = fzbCreateStorageBuffer(sceneIndices.data(), sceneIndices.size() * sizeof(uint32_t), usePosNormalDataExternal);
 	}
 }
-
-void FzbScene::createCameraAndLightBufferAndDescriptor() {
-	if (this->sceneCameras.size() == 0 && this->sceneLights.size() == 0) return;
-	bool useCameras = this->sceneCameras.size();
-	bool useLights = this->sceneLights.size();
-	std::vector<VkDescriptorType> descriptorTypes;
-	std::vector<VkShaderStageFlags> descriptorShaderFlags;
-
-	//cameraµƒ ˝æ›√ø÷°∂ºª·±‰ªØ£¨À˘“‘’‚¿Ô÷ª «¥¥Ω®buffer£¨µ´ «≤ªÃÓ»Î ˝æ›£¨æﬂÃÂ ˝æ›”…‰÷»æ◊Èº˛ÃÓ»Î
-	if (useCameras) {
-		cameraBuffer = fzbCreateUniformBuffers(sizeof(FzbCameraUniformBufferObject));
-		descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-		descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
-	}
-
-	if (useLights) {
-		lightsBuffer = fzbCreateUniformBuffers(sizeof(FzbLightsUniformBufferObject));
-		FzbLightsUniformBufferObject lightsData(sceneLights.size());
-		for (int i = 0; i < sceneLights.size(); i++) {
-			FzbLight& light = sceneLights[i];
-			lightsData.lightData[i].pos = glm::vec4(light.position, 1.0f);
-			lightsData.lightData[i].strength = glm::vec4(light.strength, 1.0f);
-		}
-		memcpy(lightsBuffer.mapped, &lightsData, sizeof(FzbLightsUniformBufferObject));
-		descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-		descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
-	}
-
-	cameraAndLightsDescriptorSetLayout = fzbCreateDescriptLayout(descriptorTypes.size(), descriptorTypes, descriptorShaderFlags);
-	cameraAndLightsDescriptorSet = fzbCreateDescriptorSet(sceneDescriptorPool, cameraAndLightsDescriptorSetLayout);
-
-	std::vector<VkWriteDescriptorSet> uniformDescriptorWrites(sceneCameras.size() + sceneLights.size());
-	int index = 0;
-	if (useCameras) {
-		VkDescriptorBufferInfo cameraUniformBufferInfo{};
-		cameraUniformBufferInfo.buffer = cameraBuffer.buffer;
-		cameraUniformBufferInfo.offset = 0;
-		cameraUniformBufferInfo.range = sizeof(FzbCameraUniformBufferObject);
-		uniformDescriptorWrites[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		uniformDescriptorWrites[index].dstSet = cameraAndLightsDescriptorSet;
-		uniformDescriptorWrites[index].dstBinding = 0;
-		uniformDescriptorWrites[index].dstArrayElement = 0;
-		uniformDescriptorWrites[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uniformDescriptorWrites[index].descriptorCount = 1;
-		uniformDescriptorWrites[index].pBufferInfo = &cameraUniformBufferInfo;
-		++index;
-	}
-
-	if (useLights) {
-		VkDescriptorBufferInfo lightUniformBufferInfo{};
-		lightUniformBufferInfo.buffer = lightsBuffer.buffer;
-		lightUniformBufferInfo.offset = 0;
-		lightUniformBufferInfo.range = sizeof(FzbLightsUniformBufferObject);
-		uniformDescriptorWrites[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		uniformDescriptorWrites[index].dstSet = cameraAndLightsDescriptorSet;
-		uniformDescriptorWrites[index].dstBinding = 1;
-		uniformDescriptorWrites[index].dstArrayElement = 0;
-		uniformDescriptorWrites[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		uniformDescriptorWrites[index].descriptorCount = 1;
-		uniformDescriptorWrites[index].pBufferInfo = &lightUniformBufferInfo;
-	}
-
-	vkUpdateDescriptorSets(FzbRenderer::globalData.logicalDevice, uniformDescriptorWrites.size(), uniformDescriptorWrites.data(), 0, nullptr);
-}
-void FzbScene::updateCameraBuffer() {
-	FzbCameraUniformBufferObject ubo{};
-	FzbCamera& camera = this->sceneCameras[0];
-	ubo.view = camera.GetViewMatrix();
-	ubo.proj = camera.GetProjMatrix();
-	ubo.cameraPos = glm::vec4(camera.position, 0.0f);
-	memcpy(cameraBuffer.mapped, &ubo, sizeof(ubo));
+*/
+void FzbScene::addMeshToScene(FzbMesh mesh) {
+	if(mesh.material) mesh.vertexFormat = mesh.material->vertexFormat;
+	this->differentVertexFormatMeshIndexs[mesh.vertexFormat].push_back(this->sceneMeshSet.size());
+	this->sceneMeshSet.push_back(mesh);
 }
 
 FzbAABBBox FzbScene::getAABB() {
@@ -501,4 +304,307 @@ void FzbScene::createAABB() {
 		AABB.leftZ = AABB.leftZ - 0.01;
 		AABB.rightZ = AABB.rightZ + 0.01;
 	}
+}
+
+FzbMainScene::FzbMainScene() {};
+FzbMainScene::FzbMainScene(std::string path) {
+	if (path == "") return;
+	this->scenePath = fzbGetRootPath() + path;
+	FzbMaterial defaultMaterial = FzbMaterial("defaultMaterial", "diffuse");
+	this->sceneMaterials.insert({ "defaultMaterial", defaultMaterial });
+
+	pugi::xml_document doc;
+	std::string sceneXMLPath = this->scenePath + "/scene_onlyDiff.xml";
+	auto result = doc.load_file(sceneXMLPath.c_str());
+	if (!result) {
+		throw std::runtime_error("pugixml¥Úø™Œƒº˛ ß∞‹");
+	}
+	pugi::xml_node scene = doc.document_element();	//ªÒ»°∏˘Ω⁄µ„£¨º¥<scene>
+
+	for (pugi::xml_node node : scene.children("sensor")) {	//’‚¿Ôø…ƒ‹”–Œ Ã‚£¨Œ“œ÷‘⁄ƒ¨»œ¥Ê‘⁄’‚–© Ù–‘£¨«“œ‡ª˙ «Õ∏ ”Õ∂”∞µƒ°£”–Œ Ã‚÷Æ∫Û‘ŸÀµ∞…
+		float fov = glm::radians(std::stof(node.select_node(".//float[@name='fov']").node().attribute("value").value()));
+		bool isPerspective = std::string(node.attribute("type").value()) == "perspective" ? true : false;
+		pugi::xml_node tranform = node.select_node(".//transform[@name='to_world']").node();
+		glm::mat4 inverseViewMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
+		glm::vec4 position = inverseViewMatrix[3];
+		VkExtent2D resolution = FzbRenderer::globalData.getResolution();
+		float aspect = (float)resolution.width / resolution.height;
+		float nearPlane = 0.1f;
+		float farPlane = 100.0f;
+		fov = 2.0f * atanf(tanf(fov * 0.5f) / aspect);	//»˝“∂≤›÷–∏¯µƒfov «ÀÆ∆Ω∑ΩœÚµƒ£¨∂¯glm÷–“™µƒ «¥π÷±∑ΩœÚµƒ
+		FzbCamera camera = FzbCamera(position, fov, aspect, nearPlane, farPlane);
+		camera.setViewMatrix(inverseViewMatrix, true);
+		camera.isPerspective = isPerspective;
+		this->sceneCameras.push_back(camera);
+	}
+
+	pugi::xml_node bsdfsNode = scene.child("bsdfs");
+	for (pugi::xml_node bsdfNode : bsdfsNode.children("bsdf")) {
+		std::string materialID = bsdfNode.attribute("id").value();
+		if (this->sceneMaterials.count(materialID)) {
+			std::cout << "÷ÿ∏¥material∂¡»°" << materialID << std::endl;
+			continue;
+		}
+		pugi::xml_node bsdf = bsdfNode.child("bsdf");
+		std::string materialType = bsdf.attribute("type").value();
+		FzbMaterial material = FzbMaterial(materialID, materialType);
+		material.getMaterialXMLInfo();
+		material.getSceneXMLInfo(bsdfNode);
+		this->sceneMaterials.insert({ material.id, material });
+	}
+
+	pugi::xml_node shapesNode = scene.child("shapes");
+	for (pugi::xml_node shapeNode : shapesNode.children("shape")) {
+		std::string meshType = shapeNode.attribute("type").value();
+		if (meshType == "rectangle" || meshType == "emitter") continue;
+		std::string meshID = shapeNode.attribute("id").value();
+		pugi::xml_node tranform = shapeNode.select_node(".//transform[@name='to_world']").node();
+
+		if (meshID == "Light") {
+			glm::mat4 modelMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
+			glm::vec3 position = glm::vec3(modelMatrix * glm::vec4(1.0f));
+			pugi::xml_node emitter = shapeNode.child("emitter");		//≤ª÷™µ¿ª·≤ªª·”–∂‡∏ˆ∑¢…‰∆˜£¨ƒ¨»œ1∏ˆ£¨“‘∫Û”ˆµΩ¡À‘ŸÀµ
+			glm::vec3 strength = fzbGetRGBFromString(emitter.select_node(".//rgb[@name='radiance']").node().attribute("value").value());
+			if (meshType == "point") {
+				this->sceneLights.push_back(FzbLight(position, strength));
+			}
+			continue;
+		}
+
+		pugi::xml_node material = shapeNode.select_node(".//ref").node();
+		std::string materialID = material.attribute("id").value();
+		if (!sceneMaterials.count(materialID)) materialID = "defaultMaterial";
+		glm::mat4 transformMatrix(1.0f);
+		if (tranform) transformMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
+
+		FzbMesh mesh;
+		if (meshType == "obj") {
+			if (pugi::xml_node pathNode = shapeNode.select_node(".//string[@name='filename']").node()) {
+				mesh.path = this->scenePath + "/" + std::string(pathNode.attribute("value").value());
+			}
+			else throw std::runtime_error("objŒƒº˛√ª”–¬∑æ∂");
+		}
+		else if (meshType == "rectangle") continue;
+		mesh.transformMatrix = transformMatrix;
+		mesh.material = &sceneMaterials[materialID];
+		//mesh.vertexFormat = mesh.material->vertexFormat;
+		//mesh.vertexFormat_propocess.available = false;
+		mesh.id = meshID;
+		this->sceneMeshSet.push_back(mesh);
+	}
+	doc.reset();
+}
+void FzbMainScene::initScene(bool compress, bool isMainScene) {
+	this->sceneMaterials["defaultMaterial"].vertexFormat.mergeUpward(vertexFormat_allMesh);
+	for (int i = 0; i < this->sceneMeshSet.size(); ++i) {
+		FzbMesh& mesh_nodata = this->sceneMeshSet[i];
+		mesh_nodata.vertexFormat.mergeUpward(mesh_nodata.material->vertexFormat);
+		mesh_nodata.vertexFormat.mergeUpward(vertexFormat_allMesh);
+	}
+
+	bool useVertexBufferForPrepocess = this->useVertexBuffer_prepocess;
+	if (useVertexBufferForPrepocess) {		//»Áπ˚‘§¥¶¿Ì◊Èº˛À˘–Ë∂•µ„ ˝æ›∏Ò Ω”Î—≠ª∑‰÷»æ◊Èº˛À˘–Ë∂•µ„ ˝æ›∏Ò Ω≤ªÕ¨£¨‘Ú–Ë“™¥¥Ω®‘§¥¶¿Ì∂•µ„ª∫≥Â
+		useVertexBufferForPrepocess = false;
+		for (int i = 0; i < this->sceneMeshSet.size(); ++i) {
+			FzbMesh& mesh_nodata = this->sceneMeshSet[i];
+			if (mesh_nodata.vertexFormat != this->vertexFormat_allMesh_prepocess) {
+				useVertexBufferForPrepocess = true;
+				break;
+			}
+		}
+	}
+
+	std::vector<FzbMesh> sceneMeshes_hasData; sceneMeshes_hasData.reserve(this->sceneMeshSet.size());
+	for (int i = 0; i < this->sceneMeshSet.size(); ++i) {
+		FzbMesh& mesh_nodata = this->sceneMeshSet[i];
+		std::vector<FzbMesh> meshes_hasData = fzbGetMeshFromOBJ(mesh_nodata.path, fzbVertexFormatMergeUpward(mesh_nodata.vertexFormat, vertexFormat_allMesh_prepocess), mesh_nodata.transformMatrix);
+		for (int j = 0; j < meshes_hasData.size(); ++j) {
+			FzbMesh& mesh_hasData = meshes_hasData[j];
+			mesh_hasData.id = mesh_nodata.id;
+			mesh_hasData.path = mesh_nodata.path;
+			mesh_hasData.vertexFormat = mesh_nodata.vertexFormat;	//÷ª∑¥”¶‰÷»æ—≠ª∑◊Èº˛À˘–Ëµƒ∂•µ„ ˝æ›µƒ∏Ò Ω
+			mesh_hasData.material = mesh_nodata.material;
+			mesh_hasData.material->vertexFormat = mesh_hasData.vertexFormat;
+
+			uint32_t index = (uint32_t)sceneMeshes_hasData.size() + j;
+			if (differentVertexFormatMeshIndexs.count(mesh_hasData.vertexFormat)) differentVertexFormatMeshIndexs[mesh_hasData.vertexFormat].push_back(index);
+			else differentVertexFormatMeshIndexs[mesh_hasData.vertexFormat] = { index };
+		}
+		sceneMeshes_hasData.insert(sceneMeshes_hasData.end(), meshes_hasData.begin(), meshes_hasData.end());
+	}
+	this->sceneMeshSet = sceneMeshes_hasData;
+
+	//≤ª π”√∑÷¡Ω÷÷«Èøˆ£∫1. ‘§¥¶¿Ì»∑ µ–Ë“™≤ªÕ¨∂•µ„ ˝æ›£ª2. ‘§¥¶¿ÌÀ˘–Ë∂•µ„ ˝æ›”Î‰÷»æ—≠ª∑À˘–Ë∂•µ„ ˝æ›œ‡Õ¨£¨‘Úπ≤”√“ª∏ˆ
+	if (useVertexBufferForPrepocess) {
+		createVertexBuffer(compress, useVertexBufferHandle);
+		createVertexBuffer_prepocess(compress, useVertexBufferHandle_preprocess);
+	}
+	else if (this->useVertexBuffer_prepocess) {
+		createVertexBuffer(compress, useVertexBufferHandle_preprocess || useVertexBufferHandle);
+		this->vertexBuffer_prepocess = vertexBuffer;
+		this->indexBuffer_prepocess = indexBuffer;
+	}else createVertexBuffer(compress, useVertexBufferHandle);
+	useVertexBuffer_prepocess = useVertexBufferForPrepocess;
+
+	createMaterialSource();
+	createCameraAndLightBuffer();
+}
+void FzbMainScene::createVertexBuffer_prepocess(bool compress, bool useExternal) {
+	std::vector<uint32_t> meshIndexs; meshIndexs.reserve(this->sceneMeshSet.size());
+	for (auto& pair : differentVertexFormatMeshIndexs) {
+		for (int i = 0; i < pair.second.size(); ++i) meshIndexs.push_back(pair.second[i]);
+	}
+	FzbVertexFormat vertexFormat = vertexFormat_allMesh_prepocess;
+	uint32_t vertexSize = vertexFormat.getVertexSize();
+
+	uint32_t vertexNum = 0;
+	uint32_t indexNum = 0;
+	for (int i = 0; i < meshIndexs.size(); i++) {
+		uint32_t meshIndex = meshIndexs[i];
+		vertexNum += sceneMeshSet[meshIndex].vertices.size();
+		indexNum += sceneMeshSet[meshIndex].indices.size();
+	}
+
+	std::vector<float> compressVertices;
+	compressVertices.reserve(vertexNum);
+	std::vector<uint32_t> compressIndices;
+	compressIndices.reserve(indexNum);
+	for (int i = 0; i < meshIndexs.size(); i++) {
+		uint32_t meshIndex = meshIndexs[i];
+		//sceneMeshSet[meshIndex].indexArrayOffset = compressIndices.size();
+
+		//’‚¿Ô”√¡Ÿ ± ˝◊È£¨“ÚŒ™ø…ƒ‹Õ¨“ª∏ˆmesh±ªÃÌº”∂‡¥Œ£¨»Áπ˚√ø¥Œ∂º÷±Ω”∂‘meshµƒindicesº”…œoffsetæÕª·≥ˆ¥Ì£¨À˘“‘–Ë“™ π”√¡Ÿ ± ˝æ›
+		//Õ¨ ±’‚≤ªª·”∞œÏmeshBatchµƒindexBuffer¥¥Ω®£¨“Ú¥Àindicesµƒ¥Û–°∫Õ‘⁄sceneIndices÷–µƒ∆´“∆∂º≤ª±‰°£
+		std::vector<uint32_t> meshIndices = sceneMeshSet[meshIndex].indices;
+		addData_uint(meshIndices.data(), compressVertices.size() / vertexSize, meshIndices.size());
+
+		std::vector<float> meshVertices = sceneMeshSet[meshIndex].getVertices(vertexFormat);
+		compressVertices.insert(compressVertices.end(), meshVertices.begin(), meshVertices.end());
+		compressIndices.insert(compressIndices.end(), meshIndices.begin(), meshIndices.end());
+	}
+	if (compress) compressSceneVertices_sharded(compressVertices, vertexFormat, compressIndices);
+
+	vertexBuffer_prepocess = fzbCreateStorageBuffer(compressVertices.data(), compressVertices.size() * sizeof(float), useExternal);
+	indexBuffer_prepocess = fzbCreateStorageBuffer(compressIndices.data(), compressIndices.size() * sizeof(uint32_t), useExternal);
+}
+void FzbMainScene::createMaterialSource() {
+	for (auto& materialPair : this->sceneMaterials) {
+		FzbMaterial& material = materialPair.second;
+		material.createSource(this->scenePath, this->sceneImages);
+	}
+}
+void FzbMainScene::createCameraAndLightBuffer() {
+	if (this->sceneCameras.size() == 0 && this->sceneLights.size() == 0) return;
+	bool useCameras = this->sceneCameras.size();
+	bool useLights = this->sceneLights.size();
+
+	//cameraµƒ ˝æ›√ø÷°∂ºª·±‰ªØ£¨À˘“‘’‚¿Ô÷ª «¥¥Ω®buffer£¨µ´ «≤ªÃÓ»Î ˝æ›£¨æﬂÃÂ ˝æ›”…‰÷»æ◊Èº˛ÃÓ»Î
+	if (useCameras) {
+		cameraBuffer = fzbCreateUniformBuffers(sizeof(FzbCameraUniformBufferObject));
+	}
+
+	if (useLights) {
+		lightsBuffer = fzbCreateUniformBuffers(sizeof(FzbLightsUniformBufferObject));
+		FzbLightsUniformBufferObject lightsData(sceneLights.size());
+		for (int i = 0; i < sceneLights.size(); i++) {
+			FzbLight& light = sceneLights[i];
+			lightsData.lightData[i].pos = glm::vec4(light.position, 1.0f);
+			lightsData.lightData[i].strength = glm::vec4(light.strength, 1.0f);
+		}
+		memcpy(lightsBuffer.mapped, &lightsData, sizeof(FzbLightsUniformBufferObject));
+	}
+}
+void FzbMainScene::createCameraAndLightDescriptor() {
+	if (cameraAndLightsDescriptorSet) return;
+
+	uint32_t uniformBufferNum = this->sceneCameras.size() > 0 ? 1 : 0 + this->sceneLights.size() > 0 ? 1 : 0;
+	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum = { {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, uniformBufferNum} };
+	this->cameraAndLigthsDescriptorPool = fzbCreateDescriptorPool(bufferTypeAndNum);
+
+
+	std::vector<FzbCamera>& sceneCameras = this->sceneCameras;
+	std::vector<FzbLight>& sceneLights = this->sceneLights;
+
+	if (sceneCameras.size() == 0 && sceneLights.size() == 0) return;
+	bool useCameras = sceneCameras.size();
+	bool useLights = sceneLights.size();
+	std::vector<VkDescriptorType> descriptorTypes;
+	std::vector<VkShaderStageFlags> descriptorShaderFlags;
+
+	//cameraµƒ ˝æ›√ø÷°∂ºª·±‰ªØ£¨À˘“‘’‚¿Ô÷ª «¥¥Ω®buffer£¨µ´ «≤ªÃÓ»Î ˝æ›£¨æﬂÃÂ ˝æ›”…‰÷»æ◊Èº˛ÃÓ»Î
+	if (useCameras) {
+		descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	}
+
+	if (useLights) {
+		descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+		descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	}
+
+	cameraAndLightsDescriptorSetLayout = fzbCreateDescriptLayout(descriptorTypes.size(), descriptorTypes, descriptorShaderFlags);
+	cameraAndLightsDescriptorSet = fzbCreateDescriptorSet(cameraAndLigthsDescriptorPool, cameraAndLightsDescriptorSetLayout);
+
+	std::vector<VkWriteDescriptorSet> uniformDescriptorWrites(sceneCameras.size() + sceneLights.size());
+	int index = 0;
+	if (useCameras) {
+		VkDescriptorBufferInfo cameraUniformBufferInfo{};
+		cameraUniformBufferInfo.buffer = this->cameraBuffer.buffer;
+		cameraUniformBufferInfo.offset = 0;
+		cameraUniformBufferInfo.range = sizeof(FzbCameraUniformBufferObject);
+		uniformDescriptorWrites[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		uniformDescriptorWrites[index].dstSet = cameraAndLightsDescriptorSet;
+		uniformDescriptorWrites[index].dstBinding = 0;
+		uniformDescriptorWrites[index].dstArrayElement = 0;
+		uniformDescriptorWrites[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformDescriptorWrites[index].descriptorCount = 1;
+		uniformDescriptorWrites[index].pBufferInfo = &cameraUniformBufferInfo;
+		++index;
+	}
+
+	if (useLights) {
+		VkDescriptorBufferInfo lightUniformBufferInfo{};
+		lightUniformBufferInfo.buffer = this->lightsBuffer.buffer;
+		lightUniformBufferInfo.offset = 0;
+		lightUniformBufferInfo.range = sizeof(FzbLightsUniformBufferObject);
+		uniformDescriptorWrites[index].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		uniformDescriptorWrites[index].dstSet = cameraAndLightsDescriptorSet;
+		uniformDescriptorWrites[index].dstBinding = 1;
+		uniformDescriptorWrites[index].dstArrayElement = 0;
+		uniformDescriptorWrites[index].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformDescriptorWrites[index].descriptorCount = 1;
+		uniformDescriptorWrites[index].pBufferInfo = &lightUniformBufferInfo;
+	}
+
+	vkUpdateDescriptorSets(FzbRenderer::globalData.logicalDevice, uniformDescriptorWrites.size(), uniformDescriptorWrites.data(), 0, nullptr);
+}
+void FzbMainScene::updateCameraBuffer() {
+	FzbCameraUniformBufferObject ubo{};
+	FzbCamera& camera = this->sceneCameras[0];
+	ubo.view = camera.GetViewMatrix();
+	ubo.proj = camera.GetProjMatrix();
+	ubo.cameraPos = glm::vec4(camera.position, 0.0f);
+	memcpy(cameraBuffer.mapped, &ubo, sizeof(ubo));
+}
+void FzbMainScene::addMaterialToScene(FzbMaterial material) {
+	this->sceneMaterials.insert({ material.id, material });
+}
+
+void FzbMainScene::clean() {
+	VkDevice logicalDevice = FzbRenderer::globalData.logicalDevice;
+
+	for (auto& imagePair : this->sceneImages) imagePair.second.clean();
+	for (auto& materialPair : sceneMaterials) materialPair.second.clean();
+	for (int i = 0; i < this->sceneMeshSet.size(); i++) sceneMeshSet[i].clean();
+
+	if (FzbMeshDynamic::meshDescriptorSetLayout) vkDestroyDescriptorSetLayout(logicalDevice, FzbMeshDynamic::meshDescriptorSetLayout, nullptr);
+
+	vertexBuffer.clean();
+	indexBuffer.clean();
+	//vertexBuffer_prepocessª·±ªcomponentManager‘⁄mainLoop«∞ Õ∑≈
+
+	cameraBuffer.clean();
+	lightsBuffer.clean();
+	if (cameraAndLightsDescriptorSetLayout) vkDestroyDescriptorSetLayout(logicalDevice, cameraAndLightsDescriptorSetLayout, nullptr);
+	if (cameraAndLigthsDescriptorPool) vkDestroyDescriptorPool(logicalDevice, cameraAndLigthsDescriptorPool, nullptr);
 }

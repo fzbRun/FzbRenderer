@@ -6,6 +6,7 @@ FzbFeatureComponent::FzbFeatureComponent(pugi::xml_document& doc) {};
 void FzbFeatureComponent::initGlobalData() {
 	this->mainScene = &FzbRenderer::globalData.mainScene;
 };
+void FzbFeatureComponent::prepocessClean() {};
 void FzbFeatureComponent::clean() {
 	FzbComponent::clean();
 }
