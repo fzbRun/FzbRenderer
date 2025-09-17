@@ -50,6 +50,8 @@ struct FzbMainScene : public FzbScene {
 	FzbBuffer indexBuffer_prepocess;
 	bool useVertexBufferHandle_preprocess = false;
 
+	bool useMaterialSource = true;	//如果useMaterialSource，则initScene会调用createMaterialSource函数；反之不会。当我们需要手动创建资源时，可以将其设置为false
+
 	std::vector<FzbCamera> sceneCameras;	//默认只有一个相机，后续代码也是按照一个相机写的，有多个相机再说吧
 	std::vector<FzbLight> sceneLights;		//光源最多传递16个到shader，且无论到不到16个都会传16个，因为要用uniformbuffer，需要固定数量，这也符合unitySRP中的默认
 	FzbBuffer cameraBuffer;

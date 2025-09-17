@@ -192,6 +192,7 @@ void FzbBuffer::fzbGetBufferDeviceAddress() {
 }
 void FzbBuffer::clean() {
 	if (buffer != VK_NULL_HANDLE) {
+		if(this->mapped) vkUnmapMemory(logicalDevice, memory);
 		vkDestroyBuffer(logicalDevice, buffer, nullptr);
 		vkFreeMemory(logicalDevice, memory, nullptr);
 		buffer = nullptr;
@@ -224,7 +225,7 @@ FzbBuffer fzbCreateStorageBuffer(uint32_t bufferSize, bool UseExternal) {
 	fzbBuffer.fzbCreateBuffer();
 	return fzbBuffer;
 }
-FzbBuffer fzbCreateUniformBuffers(uint32_t bufferSize) {
+FzbBuffer fzbCreateUniformBuffer(uint32_t bufferSize) {
 	FzbBuffer fzbBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	fzbBuffer.fzbCreateBuffer();
 	vkMapMemory(FzbRenderer::globalData.logicalDevice, fzbBuffer.memory, 0, bufferSize, 0, &fzbBuffer.mapped);

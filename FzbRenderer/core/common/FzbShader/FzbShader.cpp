@@ -571,6 +571,7 @@ std::vector<uint32_t> compileGLSL(
 	TBuiltInResource resources = DefaultTBuiltInResource;
 	FileIncluder includer(std::filesystem::path(filePath).parent_path().string());
 	if (!shader.parse(&resources, shaderVersion_I, ENoProfile, false, false, messages, includer)) {
+		std::cout << stageString + " GLSL compilation failed:\n" + std::string(shader.getInfoLog()) << std::endl;
 		throw std::runtime_error(stageString + " GLSL compilation failed:\n" + std::string(shader.getInfoLog()));
 	}
 
@@ -700,6 +701,12 @@ FzbShader::FzbShader(std::string path, FzbShaderExtensionsSetting extensionsSett
 	if (pugi::xml_node pipelineInfoNode = shaderInfos.child("Pipeline")) {
 		if (pugi::xml_node screenSpaceNode = pipelineInfoNode.child("screenSpace")) {
 			pipelineCreateInfo.screenSpace = true;
+			pipelineCreateInfo.cullMode = VK_CULL_MODE_NONE;
+			pipelineCreateInfo.dynamicView = VK_TRUE;			//¶¯Ì¬ÊÓ¿Ú
+			pipelineCreateInfo.dynamicStates = {
+				VK_DYNAMIC_STATE_VIEWPORT,
+				VK_DYNAMIC_STATE_SCISSOR
+			};
 		}
 		if (pugi::xml_node inputAssemblyInfoNode = pipelineInfoNode.child("inputAssemblyInfo")) {
 			if (pugi::xml_node primitiveTopologyNode = inputAssemblyInfoNode.child("primitiveTopology")) {
@@ -1166,7 +1173,14 @@ void FzbShaderVariant::createPipeline(VkRenderPass renderPass, uint32_t subPassI
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
 	VkVertexInputBindingDescription inputBindingDescriptor;
 	std::vector<VkVertexInputAttributeDescription> inputAttributeDescription;
-	if (!publicShader->pipelineCreateInfo.screenSpace) {
+	if (publicShader->pipelineCreateInfo.screenSpace) {
+		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		vertexInputInfo.vertexAttributeDescriptionCount = 0;
+		vertexInputInfo.pVertexAttributeDescriptions = nullptr;
+		vertexInputInfo.vertexBindingDescriptionCount = 0;
+		vertexInputInfo.pVertexBindingDescriptions = nullptr;
+	}
+	else {
 		inputBindingDescriptor = this->vertexFormat.getBindingDescription();
 		inputAttributeDescription = this->vertexFormat.getAttributeDescriptions();
 		vertexInputInfo = fzbCreateVertexInputCreateInfo(VK_TRUE, &inputBindingDescriptor, &inputAttributeDescription);

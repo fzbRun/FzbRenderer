@@ -38,7 +38,7 @@ cudaExternalSemaphore_t importVulkanSemaphoreObjectFromKMTHandle(HANDLE handle);
 void signalExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream);
 void waitExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream);
 void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, FzbImage& vkImage, HANDLE handle, unsigned long long size,
-    bool isDedicated, cudaExternalMemory_t& extMem, cudaMipmappedArray_t& mipmap, cudaTextureObject_t& texObj);
+    bool isDedicated, cudaExternalMemory_t& extMem, cudaMipmappedArray_t& mipmap, cudaTextureObject_t& texObj, bool sampleNormal = false);
 void fromVulkanImageToCudaSurface(VkPhysicalDevice vkPhysicalDevice, FzbImage& vkImage, HANDLE handle, unsigned long long size,
     bool isDedicated, cudaExternalMemory_t& extMem, cudaMipmappedArray_t& mipmap, cudaSurfaceObject_t& surfObj);
 #endif

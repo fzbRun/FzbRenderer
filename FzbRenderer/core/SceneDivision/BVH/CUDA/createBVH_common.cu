@@ -100,15 +100,12 @@ void BVHCuda::getBvhCuda(VkPhysicalDevice vkPhysicalDevice, HANDLE bvhNodeArrayH
     bvhTriangleInfoArrayMem = importVulkanMemoryObjectFromNTHandle(bvhTriangleInfoArrayHandle, sizeof(FzbBvhNodeTriangleInfo) * triangleNum, false);
     FzbBvhNodeTriangleInfo* vkBvhTriangleInfoArray = (FzbBvhNodeTriangleInfo*)mapBufferOntoExternalMemory(bvhTriangleInfoArrayMem, 0, sizeof(FzbBvhNodeTriangleInfo) * triangleNum);
     CHECK(cudaMemcpy(vkBvhTriangleInfoArray, this->bvhTriangleInfoArray, sizeof(FzbBvhNodeTriangleInfo) * triangleNum, cudaMemcpyDeviceToDevice));
-
-    signalExternalSemaphore(extBVHSemaphore, stream);
 }
 
 void BVHCuda::clean() {
     if(bvhNodeArrayExtMem) CHECK(cudaDestroyExternalMemory(bvhNodeArrayExtMem));
     if(bvhTriangleInfoArrayMem) CHECK(cudaDestroyExternalMemory(bvhTriangleInfoArrayMem));
 
-    if(vertices) CHECK(cudaFree(vertices));
     if(bvhNodeArray) CHECK(cudaFree(bvhNodeArray));
     if(bvhTriangleInfoArray) CHECK(cudaFree(bvhTriangleInfoArray));
 

@@ -179,6 +179,35 @@ __device__ uint32_t packUint3(uint3 valueU3) {
 __device__ uint3 unpackUint(uint32_t value) {
     return make_uint3((value >> 20) & 0x3FF, (value >> 10) & 0x3FF, value & 0x3FF);
 }
+
+__device__ __forceinline__ uint32_t packUnorm4x8(const float4 v) {
+    // clamp to [0,1], then map to 0..255 and round
+    float4 c;
+    c.x = fminf(fmaxf(v.x, 0.0f), 1.0f);
+    c.y = fminf(fmaxf(v.y, 0.0f), 1.0f);
+    c.z = fminf(fmaxf(v.z, 0.0f), 1.0f);
+    c.w = fminf(fmaxf(v.w, 0.0f), 1.0f);
+
+    uint32_t r = (uint32_t)(c.x * 255.0f + 0.5f) & 0xFFu;
+    uint32_t g = (uint32_t)(c.y * 255.0f + 0.5f) & 0xFFu;
+    uint32_t b = (uint32_t)(c.z * 255.0f + 0.5f) & 0xFFu;
+    uint32_t a = (uint32_t)(c.w * 255.0f + 0.5f) & 0xFFu;
+
+    // pack: lowest byte = R, then G, B, highest = A
+    return (a << 24) | (b << 16) | (g << 8) | r;
+}
+__device__ __forceinline__ float4 unpackUnorm4x8(const uint32_t v) {
+    uint32_t r = v & 0xFFu;
+    uint32_t g = (v >> 8) & 0xFFu;
+    uint32_t b = (v >> 16) & 0xFFu;
+    uint32_t a = (v >> 24) & 0xFFu;
+    float4 out;
+    out.x = (float)r / 255.0f;
+    out.y = (float)g / 255.0f;
+    out.z = (float)b / 255.0f;
+    out.w = (float)a / 255.0f;
+    return out;
+}
 //------------------------------------------原子操作-----------------------------------------------
 __device__ float atomicAddFloat(float* addr, float val) {
     int* iaddr = reinterpret_cast<int*>(addr);
@@ -235,6 +264,41 @@ __device__ float atomicMaxFloat(float* addr, float val) {
 
     return old_f;
 }
+
+__device__ void atomicMeanFloat4(uint32_t* addr, float4 val) {
+    uint32_t newVal = packUnorm4x8(val);
+    uint32_t curStoredVal = *addr;
+    uint32_t prevStoredVal = curStoredVal;
+    while (true) {
+        uint32_t old = atomicCAS(addr, prevStoredVal, newVal);
+        if (old == prevStoredVal) break;
+        prevStoredVal = old;
+        float4 rval = unpackUnorm4x8(prevStoredVal);
+
+        rval.x = rval.x * rval.w;
+        rval.y = rval.y * rval.w;
+        rval.z = rval.z * rval.w;
+
+        float4 curValF;
+        curValF.x = rval.x + val.x;
+        curValF.y = rval.y + val.y;
+        curValF.z = rval.z + val.z;
+        curValF.w = rval.w + val.w;
+
+        if (curValF.w > 0.0f) {
+            curValF.x /= curValF.w;
+            curValF.y /= curValF.w;
+            curValF.z /= curValF.w;
+        }
+        else {
+            curValF.x = 0.0f;
+            curValF.y = 0.0f;
+            curValF.z = 0.0f;
+        }
+        newVal = packUnorm4x8(curValF);
+    }
+}
+
 
 //----------------------------------------随机数------------------------------------------------
 __device__ uint32_t pcg(uint32_t& state)

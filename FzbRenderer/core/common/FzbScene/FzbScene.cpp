@@ -446,7 +446,7 @@ void FzbMainScene::initScene(bool compress, bool isMainScene) {
 	}else createVertexBuffer(compress, useVertexBufferHandle);
 	useVertexBuffer_prepocess = useVertexBufferForPrepocess;
 
-	createMaterialSource();
+	if(this->useMaterialSource) createMaterialSource();
 	createCameraAndLightBuffer();
 }
 void FzbMainScene::createVertexBuffer_prepocess(bool compress, bool useExternal) {
@@ -500,11 +500,11 @@ void FzbMainScene::createCameraAndLightBuffer() {
 
 	//camera的数据每帧都会变化，所以这里只是创建buffer，但是不填入数据，具体数据由渲染组件填入
 	if (useCameras) {
-		cameraBuffer = fzbCreateUniformBuffers(sizeof(FzbCameraUniformBufferObject));
+		cameraBuffer = fzbCreateUniformBuffer(sizeof(FzbCameraUniformBufferObject));
 	}
 
 	if (useLights) {
-		lightsBuffer = fzbCreateUniformBuffers(sizeof(FzbLightsUniformBufferObject));
+		lightsBuffer = fzbCreateUniformBuffer(sizeof(FzbLightsUniformBufferObject));
 		FzbLightsUniformBufferObject lightsData(sceneLights.size());
 		for (int i = 0; i < sceneLights.size(); i++) {
 			FzbLight& light = sceneLights[i];

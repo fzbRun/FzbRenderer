@@ -84,11 +84,11 @@ std::vector<float> FzbMesh::getVertices(FzbVertexFormat vertexFormat) {
 		if (vertexFormat.useTangent) {
 			if (!this->vertexFormat.useTangent) {
 				//throw std::runtime_error("mesh " + id + "没有tangent，没法获取");
-				vertexData.push_back(0.0f); vertexData.push_back(0.0f); vertexData.push_back(0.0f);
+				vertexData.push_back(0.0f); vertexData.push_back(0.0f); vertexData.push_back(0.0f); vertexData.push_back(0.0f);
 			}
 			else {
-				vertexData.insert(vertexData.end(), this->vertices.begin() + vertexFloatOffset, this->vertices.begin() + vertexFloatOffset + 3);	//加入tangent
-				vertexFloatOffset += 3;
+				vertexData.insert(vertexData.end(), this->vertices.begin() + vertexFloatOffset, this->vertices.begin() + vertexFloatOffset + 4);	//加入tangent
+				vertexFloatOffset += 4;
 			}
 		}
 	}
@@ -145,7 +145,7 @@ FzbMeshDynamic::FzbMeshDynamic() {
 void FzbMeshDynamic::createBuffer() {
 	FzbMeshUniformBufferObject uniformBufferObject;
 	uniformBufferObject.transforms = this->transforms;
-	this->meshBuffer = fzbCreateUniformBuffers(sizeof(FzbMeshUniformBufferObject));
+	this->meshBuffer = fzbCreateUniformBuffer(sizeof(FzbMeshUniformBufferObject));
 	memcpy(this->meshBuffer.mapped, &uniformBufferObject, sizeof(FzbMeshUniformBufferObject));
 }
 void FzbMeshDynamic::createDescriptor() {
@@ -228,9 +228,18 @@ FzbMesh processMesh(aiMesh* meshData, const aiScene* scene, FzbVertexFormat vert
 				fzbMesh.vertices.emplace_back(meshData->mTextureCoords[0][i].y);
 			}
 			if (vertexFormat.useTangent) {
+				glm::vec3 T(meshData->mTangents[i].x, meshData->mTangents[i].y, meshData->mTangents[i].z);
+				glm::vec3 B(meshData->mBitangents[i].x, meshData->mBitangents[i].y, meshData->mBitangents[i].z);
+				glm::vec3 N(meshData->mNormals[i].x, meshData->mNormals[i].y, meshData->mNormals[i].z);
+
+				T = glm::normalize(T);
+				N = glm::normalize(N);
+				float handed = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+
 				fzbMesh.vertices.emplace_back(meshData->mTangents[i].x);
 				fzbMesh.vertices.emplace_back(meshData->mTangents[i].y);
 				fzbMesh.vertices.emplace_back(meshData->mTangents[i].z);
+				fzbMesh.vertices.emplace_back(handed);
 			}
 		}
 	}

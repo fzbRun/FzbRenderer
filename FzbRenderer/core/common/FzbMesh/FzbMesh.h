@@ -242,6 +242,13 @@ public:
 	virtual void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t descriptorSetIndex);
 };
 
+struct FzbMeshCanvas : public FzbMesh {
+public:
+	void render(VkCommandBuffer commandBuffer, VkPipelineLayout pipelineLayout, uint32_t descriptorSetIndex) override {
+		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+	}
+};
+
 struct FzbMeshDynamic : public FzbMesh {
 	glm::mat4 transforms = glm::mat4(1.0f);	//±‰ªªæÿ’Û
 	FzbBuffer meshBuffer;

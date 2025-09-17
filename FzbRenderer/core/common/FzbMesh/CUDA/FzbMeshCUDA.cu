@@ -1,7 +1,8 @@
 #include "./FzbMeshCUDA.cuh"
 #include "../../../CUDA/commonCudaFunction.cuh"
 
-__global__ void createVertices(float* vertices, float* pos, float* normal, float* texCoords, float* tangent, uint32_t vertexFormat, uint32_t vertexSize, uint32_t vertexNum) {
+__global__ void createVertices(float* vertices, uint32_t vertexFormat, uint32_t vertexSize, uint32_t vertexNum,
+	float* pos, float* normal, float* texCoords, float* tangent, float* biTangent_device) {
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	if (threadIndex >= vertexNum) return;
 	bool useNormal = vertexFormat & 1u;
@@ -14,10 +15,13 @@ __global__ void createVertices(float* vertices, float* pos, float* normal, float
 	vertices[vertexIndex++] = pos[posIndex + 1];
 	vertices[vertexIndex++] = pos[posIndex + 2];
 
+	glm::vec3 N;
 	if (useNormal) {
-		vertices[vertexIndex++] = normal[posIndex];
-		vertices[vertexIndex++] = normal[posIndex + 1];
-		vertices[vertexIndex++] = normal[posIndex + 2];
+		N = glm::vec3(normal[posIndex], normal[posIndex + 1], normal[posIndex + 2]);
+		vertices[vertexIndex++] = N.x;
+		vertices[vertexIndex++] = N.y;
+		vertices[vertexIndex++] = N.z;
+		
 	}
 	if (useTexCoords) {
 		vertices[vertexIndex++] = texCoords[posIndex];
@@ -27,6 +31,11 @@ __global__ void createVertices(float* vertices, float* pos, float* normal, float
 		vertices[vertexIndex++] = tangent[posIndex];
 		vertices[vertexIndex++] = tangent[posIndex + 1];
 		vertices[vertexIndex++] = tangent[posIndex + 2];
+
+		glm::vec3 T(tangent[posIndex], tangent[posIndex + 1], tangent[posIndex + 2]);
+		glm::vec3 B(biTangent_device[posIndex], biTangent_device[posIndex + 1], biTangent_device[posIndex + 2]);
+		float handed = (glm::dot(glm::cross(N, T), B) < 0.0f) ? -1.0f : 1.0f;
+		vertices[vertexIndex++] = handed;
 	}
 }
 FzbMesh createVertices_CUDA(aiMesh* meshData, FzbVertexFormat vertexFormat) {
@@ -51,9 +60,13 @@ FzbMesh createVertices_CUDA(aiMesh* meshData, FzbVertexFormat vertexFormat) {
 	}
 
 	float* tangent_device = nullptr;
+	float* biTangent_device = nullptr;
 	if (mesh.vertexFormat.useTangent) {
 		CHECK(cudaMalloc((void**)&tangent_device, sizeof(float) * 3 * vertexNum));
 		CHECK(cudaMemcpy(tangent_device, meshData->mTangents, sizeof(float) * 3 * vertexNum, cudaMemcpyHostToDevice));
+
+		CHECK(cudaMalloc((void**)&biTangent_device, sizeof(float) * 3 * vertexNum));
+		CHECK(cudaMemcpy(biTangent_device, meshData->mBitangents, sizeof(float) * 3 * vertexNum, cudaMemcpyHostToDevice));
 	}
 
 	uint32_t verticesFloatNum = mesh.vertexFormat.getVertexSize() * vertexNum;
@@ -63,7 +76,8 @@ FzbMesh createVertices_CUDA(aiMesh* meshData, FzbVertexFormat vertexFormat) {
 
 	uint32_t gridSize = (vertexNum + 511) / 512;
 	uint32_t blockSize = vertexNum > 512 ? 512 : vertexNum;
-	createVertices<<<gridSize, blockSize>>>(vertices_device, pos_device, normal_device, texCoords_device, tangent_device, vertexFormatU, vertexFormat.getVertexSize(), vertexNum);
+	createVertices<<<gridSize, blockSize>>>(vertices_device, vertexFormatU, vertexFormat.getVertexSize(), vertexNum, 
+											pos_device, normal_device, texCoords_device, tangent_device, biTangent_device);
 	CHECK(cudaMemcpy(mesh.vertices.data(), vertices_device, sizeof(float) * verticesFloatNum, cudaMemcpyDeviceToHost));
 
 	CHECK(cudaFree(vertices_device));
@@ -191,8 +205,12 @@ __global__ void getVertices_device(float* vertices, uint32_t usability, uint32_t
 		if (usability & 4) {
 			result[floatIndex_new++] = vertices[floatIndex++];
 			result[floatIndex_new++] = vertices[floatIndex++];
+			result[floatIndex_new++] = vertices[floatIndex++];
+			result[floatIndex_new++] = vertices[floatIndex++];
 		}
 		else {
+			result[floatIndex_new++] = 0.0f;
+			result[floatIndex_new++] = 0.0f;
 			result[floatIndex_new++] = 0.0f;
 			result[floatIndex_new++] = 0.0f;
 		}

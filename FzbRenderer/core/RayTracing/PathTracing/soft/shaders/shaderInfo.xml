@@ -1,0 +1,14 @@
+<ShaderInfo>
+	<Properties>
+	</Properties>
+	<Macros>
+	</Macros>
+	<Shaders>
+		<shaderVersion value = "450" />
+		<shader name = "vertexShader" path = "vertexShader.glsl" />
+		<shader name = "fragmentShader" path = "fragmentShader.glsl" />
+	</Shaders>
+	<Pipeline>
+		<screenSpace/>
+	</Pipeline>
+</ShaderInfo>

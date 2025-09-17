@@ -2,44 +2,31 @@
 
 #include "../../../CUDA/vulkanCudaInterop.cuh"
 #include "../../../CUDA/commonCudaFunction.cuh"
+#include "../../../CUDA/commonStruct.cuh"
 #include "../../../common/FzbMesh/FzbMesh.h"
 #include "../../../common/FzbScene/FzbScene.h"
 
 #ifndef CREATE_BVH_CUH
 #define CREATE_BVH_CUH
 
-struct FzbAABB_BVH {
-	float leftX = FLT_MAX;
-	float rightX = -FLT_MAX;
-	float leftY = FLT_MAX;
-	float rightY = -FLT_MAX;
-	float leftZ = FLT_MAX;
-	float rightZ = -FLT_MAX;
-
-	__host__ __device__  FzbAABB_BVH() {};
-	__host__ __device__ FzbAABB_BVH(float leftX, float rightX, float leftY, float rightY, float leftZ, float rightZ) {
-		this->leftX = leftX;
-		this->rightX = rightX;
-		this->leftY = leftY;
-		this->rightY = rightY;
-		this->leftZ = leftZ;
-		this->rightZ = rightZ;
-	}
+struct FzbBVHSetting {
+	uint32_t maxDepth;
+	bool useRaserization = false;
+	bool useCudaExternalData = true;
 };
 
 //-------------------------------------------------------------------------------------------------------------
 struct FzbBvhNodeTriangleInfo {
-	int materialIndex;
+	uint32_t materialIndex;
 	uint32_t vertexFormat;	//3位，第一为表示是否使用法线，第二位表示是否使用uv，第三位表示是否使用tangent
 	uint32_t indices0;
 	uint32_t indices1;
 	uint32_t indices2;
-	//uint32_t meshVertexOffset;	//由于顶点格式不同，因此需要记录每个mesh顶点在数组中的偏移
 };
 struct FzbBvhNode {
 	uint32_t leftNodeIndex;
 	uint32_t rightNodeIndex;
-	FzbAABB_BVH AABB;
+	FzbAABB AABB;
 };
 
 /*
@@ -95,6 +82,8 @@ struct FzbBvhNode {
 struct BVHCuda {
 
 public:
+	FzbBVHSetting setting;
+
 	cudaExternalMemory_t bvhNodeArrayExtMem = nullptr;
 	cudaExternalMemory_t bvhTriangleInfoArrayMem = nullptr;
 	uint32_t triangleNum = 0;
@@ -110,7 +99,7 @@ public:
 
 	void createTriangleInfoArray(FzbMainScene* scene, cudaStream_t stream);
 	void createBvhCuda_recursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene& scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth);	//太慢了，废弃了，但是写了很多，不舍得删，放着吧
-	void createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene* scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth);	//不使用迭代
+	void createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene* scene, HANDLE bvhFinishedSemaphoreHandle, FzbBVHSetting setting);	//不使用迭代
 	void getBvhCuda(VkPhysicalDevice vkPhysicalDevice, HANDLE bvhNodeArrayHandle, HANDLE bvhTriangleInfoArrayMem);
 	void clean();
 };

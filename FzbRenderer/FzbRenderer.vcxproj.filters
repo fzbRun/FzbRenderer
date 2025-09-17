@@ -154,6 +154,12 @@
     <Filter Include="资源文件\core\common\FzbRasterizationRender">
       <UniqueIdentifier>{4c105cbd-7985-45c1-98ef-130f27b4fadb}</UniqueIdentifier>
     </Filter>
+    <Filter Include="资源文件\core\RayTracing\CUDA">
+      <UniqueIdentifier>{a3f3c9ac-68af-46f7-85a1-4ffd86cb7577}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="资源文件\core\RayTracing\PathTracing\soft\shaders">
+      <UniqueIdentifier>{1366296c-13a1-4945-bf66-d86faad9c638}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\SceneDivision\SVO\FzbSVO.h">
@@ -255,6 +261,21 @@
     <ClInclude Include="core\common\FzbMesh\FzbCreateSimpleMesh.h">
       <Filter>资源文件\core\common\FzbMesh</Filter>
     </ClInclude>
+    <ClInclude Include="core\RayTracing\CUDA\FzbCollisionDetection.cuh">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\CUDA\commonStruct.cuh">
+      <Filter>资源文件\core\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\CUDA\FzbGetTriangleAttribute.cuh">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\CUDA\FzbRayGenerate.cuh">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\CUDA\FzbGetIllumination.cuh">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="core\SceneDivision\SVO\CUDA\createSVO.cu">
@@ -283,6 +304,18 @@
     </CudaCompile>
     <CudaCompile Include="core\RayTracing\PathTracing\soft\CUDA\PathTracing_CUDA.cu">
       <Filter>资源文件\core\RayTracing\PathTracing\soft\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\RayTracing\CUDA\FzbCollisionDetection.cu">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\RayTracing\CUDA\FzbGetTriangleAttribute.cu">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\RayTracing\CUDA\FzbRayGenerate.cu">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
+    </CudaCompile>
+    <CudaCompile Include="core\RayTracing\CUDA\FzbGetIllumination.cu">
+      <Filter>资源文件\core\RayTracing\CUDA</Filter>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>
@@ -411,6 +444,12 @@
     <None Include="core\Materials\Diffuse\shaders\forwardRender\vertex.glsl">
       <Filter>资源文件\core\Materials\Diffuse\shaders\forwardRender</Filter>
     </None>
+    <None Include="core\RayTracing\PathTracing\soft\shaders\fragmentShader.glsl">
+      <Filter>资源文件\core\RayTracing\PathTracing\soft\shaders</Filter>
+    </None>
+    <None Include="core\RayTracing\PathTracing\soft\shaders\vertexShader.glsl">
+      <Filter>资源文件\core\RayTracing\PathTracing\soft\shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <Xml Include="core\SceneDivision\SVO\shaders\unuseSwizzle\shaderInfo.xml">
@@ -445,6 +484,9 @@
     </Xml>
     <Xml Include="core\Materials\Diffuse\shaders\forwardRender\shaderInfo.xml">
       <Filter>资源文件\core\Materials\Diffuse\shaders\forwardRender</Filter>
+    </Xml>
+    <Xml Include="core\RayTracing\PathTracing\soft\shaders\shaderInfo.xml">
+      <Filter>资源文件\core\RayTracing\PathTracing\soft\shaders</Filter>
     </Xml>
   </ItemGroup>
 </Project>

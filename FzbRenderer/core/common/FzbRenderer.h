@@ -7,6 +7,7 @@
 #ifndef FZB_APPLICATION_H
 #define FZB_APPLICATION_H
 
+std::shared_ptr<FzbFeatureComponent> createFzbComponent(std::string componentName, pugi::xml_node& node);
 class FzbRenderer {
 public:
 	std::string rendererName = "";

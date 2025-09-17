@@ -16,7 +16,7 @@ struct FzbTriangleTempInfo_nr {
     float3 pos1;
     float3 pos2;
     uint32_t nodeIndex;
-    FzbAABB_BVH AABB;
+    FzbAABB AABB;
     uint32_t triangleIndex;
 };
 
@@ -308,17 +308,18 @@ __global__ void checkNodeTriangleNum(FzbBvhNodeTempInfo* bvhNodeTempInfoArray, F
     }
 }
 //------------------------------------------------------------函数-------------------------------------------------
-void BVHCuda::createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene* scene, HANDLE bvhFinishedSemaphoreHandle, uint32_t maxDepth) {
+void BVHCuda::createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMainScene* scene, HANDLE bvhFinishedSemaphoreHandle, FzbBVHSetting setting) {
     //先判断是否是同一个物理设备
     if (getCudaDeviceForVulkanPhysicalDevice(vkPhysicalDevice) == cudaInvalidDeviceId) {
         throw std::runtime_error("CUDA与Vulkan用的不是同一个GPU！！！");
     }
     extBVHSemaphore = importVulkanSemaphoreObjectFromNTHandle(bvhFinishedSemaphoreHandle);
 
+    this->setting = setting;
     CHECK(cudaStreamCreate(&stream));
-    //-------------------------------------------------初始化triangleInfoArray----------------------------------------------
     cudaExternalMemory_t vertexExtMem = importVulkanMemoryObjectFromNTHandle(scene->vertexBuffer.handle, scene->vertexBuffer.size, false);
     this->vertices = (float*)mapBufferOntoExternalMemory(vertexExtMem, 0, scene->vertexBuffer.size);
+    //-------------------------------------------------初始化triangleInfoArray----------------------------------------------
     this->triangleNum = scene->indexBuffer.size / sizeof(uint32_t) / 3;
     createTriangleInfoArray(scene, stream);
     //-------------------------------------------初始化bvhNodeArray----------------------------------
@@ -361,9 +362,9 @@ void BVHCuda::createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMa
     uint32_t nonLeafTriangleNum;
     CHECK(cudaMemcpy(&nonLeafTriangleNum, triangleNum_ptr1, sizeof(uint32_t), cudaMemcpyDeviceToHost));
 
-    uint32_t* isPrintfs;
-    CHECK(cudaMalloc((void**)&isPrintfs, sizeof(uint32_t) * bvhNodeNum));
-    CHECK(cudaMemset(isPrintfs, 0, sizeof(uint32_t) * bvhNodeNum));
+    //uint32_t* isPrintfs;
+    //CHECK(cudaMalloc((void**)&isPrintfs, sizeof(uint32_t) * bvhNodeNum));
+    //CHECK(cudaMemset(isPrintfs, 0, sizeof(uint32_t) * bvhNodeNum));
     int time = 0;
     while (nonLeafTriangleNum > 0) {
         gridSize = ceil((float)nonLeafTriangleNum / 512);
@@ -425,13 +426,18 @@ void BVHCuda::createBvhCuda_noRecursion(VkPhysicalDevice vkPhysicalDevice, FzbMa
         */
     }
 
+    signalExternalSemaphore(extBVHSemaphore, stream);
+
+    CHECK(cudaFree(vertices));
     CHECK(cudaDestroyExternalMemory(vertexExtMem));
+    CHECK(cudaDestroyExternalSemaphore(extBVHSemaphore));
     CHECK(cudaFree(triangleTempInfoArray));
     CHECK(cudaFree(nodeTempInfoArray));
     CHECK(cudaFree(triangleIndices0));
     CHECK(cudaFree(triangleIndices1));
     CHECK(cudaFree(triangleNum_ptr0));
     CHECK(cudaFree(triangleNum_ptr1));
+   //CHECK(cudaFree(isPrintfs));
 }
 
 #endif

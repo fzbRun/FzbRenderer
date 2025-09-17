@@ -29,7 +29,7 @@ public:
 
 	VkBuffer buffer = nullptr;
 	VkDeviceMemory memory = nullptr;
-	void* mapped;
+	void* mapped = nullptr;
 	HANDLE handle = INVALID_HANDLE_VALUE;
 	uint64_t deviceAddress;
 	uint32_t size;
@@ -203,7 +203,7 @@ struct FzbStorageBuffer : public FzbBuffer {
 FzbBuffer fzbCreateStorageBuffer(void* bufferData, uint32_t bufferSize, bool UseExternal = false);
 //创造一个空的buffer
 FzbBuffer fzbCreateStorageBuffer(uint32_t bufferSize, bool UseExternal = false);
-FzbBuffer fzbCreateUniformBuffers(uint32_t bufferSize);
+FzbBuffer fzbCreateUniformBuffer(uint32_t bufferSize);
 FzbBuffer fzbCreateIndirectCommandBuffer(void* bufferData, uint32_t bufferSize);
 /*
 void fzbCreateBuffer(VkPhysicalDevice physicalDevice, VkDevice logicalDevice, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, FzbBuffer& fzbBuffer, bool UseExternal = false) {

@@ -9,6 +9,7 @@
 
 struct FzbRasterizationSourceManager {
 	FzbScene componentScene;
+	FzbMeshCanvas canvans;
 	std::map<std::string, FzbShader> shaderSet;	//第一个string是shaderPath
 
 	std::map<FzbMesh*, FzbMaterial*> meshMaterialPairs;	//一个renderPass所需要的mesh以及它对应的material
@@ -18,6 +19,7 @@ struct FzbRasterizationSourceManager {
 	VkDescriptorPool descriptorPool = nullptr;	//包括所有material和mesh的资源
 
 	FzbRasterizationSourceManager();
+	void createCanvas(FzbMaterial material);
 	void addMeshMaterial(std::vector<FzbMesh>& meshes, FzbMaterial material = FzbMaterial(), bool loopRender = true);
 	void addSource(std::map<std::string, FzbShaderInfo> shaderInfos);
 

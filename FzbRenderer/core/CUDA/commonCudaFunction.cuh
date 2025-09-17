@@ -58,10 +58,13 @@ float* sumFloat(float* input, float* output);
 
 __device__ uint32_t packUint3(uint3 valueU3);
 __device__ uint3 unpackUint(uint32_t value);
+__device__ uint32_t packUnorm4x8(const float4 v);
+__device__ float4 unpackUnorm4x8(const uint32_t v);
 
 __device__ float atomicAddFloat(float* addr, float val);
 __device__ float atomicMinFloat(float* addr, float val);
 __device__ float atomicMaxFloat(float* addr, float val);
+__device__ void atomicMeanFloat4(uint32_t* addr, float4 val);
 
 __device__ uint32_t pcg(uint32_t& state);
 __device__ uint2 pcg2d(uint2 v);

@@ -3,6 +3,10 @@
 
 FzbRasterizationSourceManager::FzbRasterizationSourceManager() {};
 
+void FzbRasterizationSourceManager::createCanvas(FzbMaterial material) {
+	if (!this->componentScene.sceneMaterials.count(material.id)) this->componentScene.sceneMaterials.insert({ material.id, material });
+	this->meshMaterialPairs.insert({ &this->canvans, &this->componentScene.sceneMaterials[material.id] });
+}
 void FzbRasterizationSourceManager::addMeshMaterial(std::vector<FzbMesh>& meshes, FzbMaterial material, bool loopRender) {
 	if (material == FzbMaterial()) {
 		for (int i = 0; i < meshes.size(); ++i) {

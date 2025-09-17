@@ -27,7 +27,7 @@ FzbSVO_Debug::FzbSVO_Debug(pugi::xml_node& SVONode) {
 		this->setting.useBlock = std::string(SVOSettingNode.child("useBlock").attribute("value").value()) == "true";
 		this->setting.useCube = std::string(SVOSettingNode.child("useCube").attribute("value").value()) == "true";
 	}
-	addMainSceneVertexInfo();
+	addMainSceneInfo();
 	addExtensions();
 }
 
@@ -86,7 +86,7 @@ void FzbSVO_Debug::clean() {
 	svoCudaSemaphore.clean();
 }
 
-void FzbSVO_Debug::addMainSceneVertexInfo() {
+void FzbSVO_Debug::addMainSceneInfo() {
 	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat(true));
 	FzbRenderer::globalData.mainScene.useVertexBuffer_prepocess = true;
 	FzbRenderer::globalData.mainScene.vertexFormat_allMesh_prepocess.mergeUpward(FzbVertexFormat(true));
@@ -165,7 +165,7 @@ void FzbSVO_Debug::createVoxelGridMap() {
 void FzbSVO_Debug::createVoxelGridMapBuffer() {
 	fzbCreateCommandBuffers(2);
 
-	svoUniformBuffer = fzbCreateUniformBuffers(sizeof(SVOUniform));
+	svoUniformBuffer = fzbCreateUniformBuffer(sizeof(SVOUniform));
 	FzbAABBBox mianSceneAABB = mainScene->getAABB();
 	mianSceneAABB.createDistanceAndCenter(setting.useCube, 1.2);
 	float distanceX = mianSceneAABB.distanceX;

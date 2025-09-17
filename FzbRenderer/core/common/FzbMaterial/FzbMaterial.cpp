@@ -88,7 +88,7 @@ void FzbMaterial::createMaterialNumberPropertiesBuffer() {
 		for (auto& property : this->properties.numberProperties) {
 			numberProperties.push_back(property.second.value);
 		}
-		this->numberPropertiesBuffer = fzbCreateUniformBuffers(bufferSize);
+		this->numberPropertiesBuffer = fzbCreateUniformBuffer(bufferSize);
 		memcpy(numberPropertiesBuffer.mapped, numberProperties.data(), numberProperties.size() * sizeof(glm::vec4));
 	}
 }

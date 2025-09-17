@@ -276,7 +276,7 @@ unsigned int getCudaMipmappedArrayFlagsForVulkanImage(VkImageViewType vkImageVie
 }
 
 void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, FzbImage& vkImage, HANDLE handle, unsigned long long size,
-    bool isDedicated, cudaExternalMemory_t& extMem, cudaMipmappedArray_t& mipmap, cudaTextureObject_t& texObj) {
+    bool isDedicated, cudaExternalMemory_t& extMem, cudaMipmappedArray_t& mipmap, cudaTextureObject_t& texObj, bool sampleNormal) {
 
     //先判断是否是同一个物理设备
     if (getCudaDeviceForVulkanPhysicalDevice(vkPhysicalDevice) == cudaInvalidDeviceId) {
@@ -304,7 +304,7 @@ void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, FzbImage& v
     texDesc.addressMode[2] = cudaAddressModeClamp;
     texDesc.filterMode = cudaFilterModePoint;
     texDesc.readMode = cudaReadModeElementType;
-    texDesc.normalizedCoords = 0;
+    texDesc.normalizedCoords = sampleNormal;
 
     CHECK(cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL));
 

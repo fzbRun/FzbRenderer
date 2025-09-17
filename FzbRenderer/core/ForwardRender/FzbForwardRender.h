@@ -30,7 +30,7 @@ private:
 	FzbRasterizationSourceManager sourceManager;
 	FzbImage depthMap;
 
-	void addMainSceneVertexInfo() override;
+	void addMainSceneInfo() override;
 	void addExtensions() override;
 
 	void presentPrepare() override;

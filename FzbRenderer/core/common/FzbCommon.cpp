@@ -20,7 +20,7 @@ FzbVertexFormat::FzbVertexFormat(bool useNormal, bool useTexCoord, bool useTange
 	this->useTangent = useTangent;
 }
 uint32_t FzbVertexFormat::getVertexSize() const {
-	uint32_t attributeNum = 3 + useNormal * 3 + useTexCoord * 2 + useTangent * 3;
+	uint32_t attributeNum = 3 + useNormal * 3 + useTexCoord * 2 + useTangent * 4;
 	return attributeNum;
 }
 VkVertexInputBindingDescription FzbVertexFormat::getBindingDescription() {

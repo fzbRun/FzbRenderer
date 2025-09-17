@@ -172,10 +172,17 @@
     <ClInclude Include="core\common\FzbShader\FzbShader.h" />
     <ClInclude Include="core\common\FzbCommon.h" />
     <ClInclude Include="core\CUDA\commonCudaFunction.cuh" />
+    <ClInclude Include="core\CUDA\commonStruct.cuh" />
     <ClInclude Include="core\CUDA\vulkanCudaInterop.cuh" />
     <ClInclude Include="core\ForwardRender\FzbForwardRender.h" />
     <ClInclude Include="core\Materials\Diffuse\FzbDiffuseMaterial.h" />
     <ClInclude Include="core\O-CNN\FzbOCNN.h" />
+    <ClInclude Include="core\RayTracing\CUDA\FzbCollisionDetection.cuh" />
+    <ClInclude Include="core\RayTracing\CUDA\FzbGetIllumination.cuh">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="core\RayTracing\CUDA\FzbGetTriangleAttribute.cuh" />
+    <ClInclude Include="core\RayTracing\CUDA\FzbRayGenerate.cuh" />
     <ClInclude Include="core\RayTracing\PathTracing\soft\CUDA\PathTracing_CUDA.cuh" />
     <ClInclude Include="core\RayTracing\PathTracing\soft\FzbPathTracingMaterial.h" />
     <ClInclude Include="core\RayTracing\PathTracing\soft\FzbPathTracing_soft.h" />
@@ -217,6 +224,16 @@
     <CudaCompile Include="core\common\FzbScene\CUDA\FzbSceneCUDA.cu" />
     <CudaCompile Include="core\CUDA\commonCudaFunction.cu" />
     <CudaCompile Include="core\CUDA\vulkanCudaInterop.cu" />
+    <CudaCompile Include="core\RayTracing\CUDA\FzbCollisionDetection.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </CudaCompile>
+    <CudaCompile Include="core\RayTracing\CUDA\FzbGetIllumination.cu" />
+    <CudaCompile Include="core\RayTracing\CUDA\FzbGetTriangleAttribute.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </CudaCompile>
+    <CudaCompile Include="core\RayTracing\CUDA\FzbRayGenerate.cu">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </CudaCompile>
     <CudaCompile Include="core\RayTracing\PathTracing\soft\CUDA\PathTracing_CUDA.cu">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
     </CudaCompile>
@@ -230,6 +247,8 @@
   <ItemGroup>
     <None Include="core\Materials\Diffuse\shaders\forwardRender\fragment.glsl" />
     <None Include="core\Materials\Diffuse\shaders\forwardRender\vertex.glsl" />
+    <None Include="core\RayTracing\PathTracing\soft\shaders\fragmentShader.glsl" />
+    <None Include="core\RayTracing\PathTracing\soft\shaders\vertexShader.glsl" />
     <None Include="core\SceneDivision\BVH\shaders\present\fragment.glsl" />
     <None Include="core\SceneDivision\BVH\shaders\present\geometry.glsl" />
     <None Include="core\SceneDivision\BVH\shaders\present\vertex.glsl" />
@@ -251,6 +270,7 @@
   <ItemGroup>
     <Xml Include="core\Materials\Diffuse\materialInfo.xml" />
     <Xml Include="core\Materials\Diffuse\shaders\forwardRender\shaderInfo.xml" />
+    <Xml Include="core\RayTracing\PathTracing\soft\shaders\shaderInfo.xml" />
     <Xml Include="core\SceneDivision\BVH\shaders\present\shaderInfo.xml" />
     <Xml Include="core\SceneDivision\SVO\shaders\present\shaderInfo.xml" />
     <Xml Include="core\SceneDivision\SVO\shaders\present_SVO\shaderInfo.xml" />

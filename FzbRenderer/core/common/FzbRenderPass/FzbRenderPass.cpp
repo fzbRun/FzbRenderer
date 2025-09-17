@@ -25,7 +25,7 @@ void FzbSubPass::createPipeline() {
 	}
 }
 void FzbSubPass::render(VkCommandBuffer commandBuffer, VkBuffer& vertexBuffer) {
-	if (vertexBuffer != this->vertexBuffer || vertexBuffer == nullptr) {
+	if (vertexBuffer != this->vertexBuffer) {	// || vertexBuffer == nullptr
 		VkBuffer vertexBuffers[] = { this->vertexBuffer };
 		VkDeviceSize offsets[] = { 0 };
 		vkCmdBindVertexBuffers(commandBuffer, 0, 1, vertexBuffers, offsets);

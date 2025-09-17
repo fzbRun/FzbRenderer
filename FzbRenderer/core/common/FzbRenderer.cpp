@@ -2,11 +2,14 @@
 #include "../ForwardRender/FzbForwardRender.h"
 #include "../SceneDivision/SVO/FzbSVO.h"
 #include "../SceneDivision/BVH/FzbBVH.h"
+#include "../RayTracing/PathTracing/soft/FzbPathTracing_soft.h"
+
 #include <glslang/Public/ShaderLang.h>
 #include <chrono>
 
 std::map<std::string, FzbFeatureComponentName> featureComponentMap{
 	{ "Forward", FZB_RENDERER_FORWARD },
+	{ "PathTracing_soft", FZB_RENDERER_PATH_TRACING_SOFT },
 	{ "BVH", FZB_FEATURE_COMPONENT_BVH },
 	{ "BVH_Debug", FZB_FEATURE_COMPONENT_BVH_DEBUG },
 	{ "SVO", FZB_FEATURE_COMPONENT_SVO },
@@ -17,9 +20,12 @@ std::shared_ptr<FzbFeatureComponent> createFzbComponent(std::string componentNam
 	if (featureComponentMap.count(componentName)) {
 		name = featureComponentMap[componentName];
 		switch (name) {
-			case FZB_RENDERER_FORWARD: return std::make_shared<FzbForwardRender>(node);
-			case FZB_FEATURE_COMPONENT_BVH_DEBUG: return std::make_shared<FzbBVH_Debug>(node);
-			case FZB_FEATURE_COMPONENT_SVO_DEBUG: return std::make_shared<FzbSVO_Debug>(node);
+			case FZB_RENDERER_FORWARD: return std::make_unique<FzbForwardRender>(node);
+			case FZB_RENDERER_PATH_TRACING_SOFT: return std::make_unique<FzbPathTracing_soft>(node);
+			case FZB_FEATURE_COMPONENT_BVH: return std::make_unique<FzbBVH>(node);
+			case FZB_FEATURE_COMPONENT_BVH_DEBUG: return std::make_unique<FzbBVH_Debug>(node);
+			//case FZB_FEATURE_COMPONENT_SVO: return std::make_unique<FzbSVO>(node);
+			case FZB_FEATURE_COMPONENT_SVO_DEBUG: return std::make_unique<FzbSVO_Debug>(node);
 		}
 		return nullptr;
 	}

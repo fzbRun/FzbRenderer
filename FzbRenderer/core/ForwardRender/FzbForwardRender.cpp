@@ -8,7 +8,7 @@ FzbForwardRender::FzbForwardRender(pugi::xml_node& ForwardRenderNode) {
 	this->componentInfo.name = FZB_RENDERER_FORWARD;
 	this->componentInfo.type = FZB_RENDER_COMPONENT;
 
-	addMainSceneVertexInfo();
+	addMainSceneInfo();
 	addExtensions();
 };
 
@@ -31,7 +31,7 @@ VkSemaphore FzbForwardRender::render(uint32_t imageIndex, VkSemaphore startSemap
 	return renderFinishedSemaphore.semaphore;
 }
 
-void FzbForwardRender::addMainSceneVertexInfo() {
+void FzbForwardRender::addMainSceneInfo() {
 	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat(true));
 	//FzbRenderer::globalData.mainScene.useVertexBufferHandle_looprender = { false, false, false };
 }
