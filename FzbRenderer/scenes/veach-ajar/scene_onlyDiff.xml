@@ -56,16 +56,21 @@
 			</bsdf>
 		</bsdf>
 	</bsdfs>
-	<shapes>
-		<shape type="point" id="Light">
-			<transform name="to_world">
-				<matrix value="0.730445 0 0 -4.4391 0 -1.32136 -1.42138e-007 1.50656 0 1.42138e-007 -1.93037 -4.44377 0 0 0 1" />
-			</transform>
-			<ref id="LightBSDF" />
+	<lights>
+		<light type="point" id="Light">
+			<shape>
+				<transform name="to_world">
+					<matrix value="0.730445 0 0 -4.4391 0 -1.32136 -1.42138e-007 1.50656 0 1.42138e-007 -1.93037 -4.44377 0 0 0 1" />
+				</transform>
+				<ref id="LightBSDF" />
+				<hasAddMesh value = "true" />
+			</shape>
 			<emitter type="point">
 				<rgb name="radiance" value="1, 1, 1" />
 			</emitter>
-		</shape>
+		</light>
+	</lights>
+	<shapes>
 		<shape type="obj" id="Landscape">
 			<string name="filename" value="models/Mesh008.obj" />
 			<transform name="to_world">

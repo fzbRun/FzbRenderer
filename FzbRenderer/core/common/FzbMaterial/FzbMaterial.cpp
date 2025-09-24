@@ -70,7 +70,7 @@ void FzbMaterial::createSource(std::string scenePath, std::map<std::string, FzbI
 			continue;
 		}
 		FzbImage image;
-		std::string texturePathFromModel = (this->path == "" ? scenePath : this->path) + "/" + texturePath;	//./models/xxx/textures/textureName.jpg
+		std::string texturePathFromModel = (this->path == "" ? scenePath : this->path) + "/" + texturePath;	//./scenes/xxx + / + textures/textureName.jpg
 		image.texturePath = texturePathFromModel.c_str();
 		image.filter = texturePair.second.filter;
 		image.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;

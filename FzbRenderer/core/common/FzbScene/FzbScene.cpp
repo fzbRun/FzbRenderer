@@ -193,7 +193,7 @@ void FzbScene::createVertexBuffer(bool compress, bool useExternal) {	//Ä¿Ç°Ö»´¦À
 			compressIndices.insert(compressIndices.end(), meshIndices.begin(), meshIndices.end());
 		}
 
-		if (compress) compressSceneVertices_sharded(compressVertices, vertexFormat, compressIndices);
+		if (compress) compressSceneVertices(compressVertices, vertexFormat, compressIndices);
 
 		addPadding(sceneVertices, compressVertices, compressIndices, FzbVertexByteSize, vertexFormat);
 
@@ -337,7 +337,7 @@ FzbMainScene::FzbMainScene(std::string path) {
 		camera.isPerspective = isPerspective;
 		this->sceneCameras.push_back(camera);
 	}
-
+	
 	pugi::xml_node bsdfsNode = scene.child("bsdfs");
 	for (pugi::xml_node bsdfNode : bsdfsNode.children("bsdf")) {
 		std::string materialID = bsdfNode.attribute("id").value();
@@ -353,27 +353,80 @@ FzbMainScene::FzbMainScene(std::string path) {
 		this->sceneMaterials.insert({ material.id, material });
 	}
 
+	if (pugi::xml_node lightsNode = scene.child("lights")) {
+		for (pugi::xml_node lightNode : lightsNode.children("light")) {
+			std::string lightType = lightNode.attribute("type").value();
+			std::string lightID = lightNode.attribute("id").value();
+			pugi::xml_node shapeNode = lightNode.child("shape");
+
+			glm::mat4 transformMatrix = glm::mat4(1.0f);
+			if(pugi::xml_node tranform = shapeNode.select_node(".//transform[@name='to_world']").node())
+				transformMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
+
+			glm::vec3 strength = glm::vec3(1.0f);	//Ä¬ÈÏÖµ
+			if (pugi::xml_node emitter = lightNode.child("emitter"))
+				strength = fzbGetRGBFromString(emitter.select_node(".//rgb[@name='radiance']").node().attribute("value").value());
+
+			FzbLight light;
+			if (lightType == "point") {
+				glm::vec3 position = glm::vec3(transformMatrix * glm::vec4(1.0f));
+				light = FzbLight(position, strength);
+			}
+			else if (lightType == "rectangle") {
+				std::string lightDataPath;
+				if (pugi::xml_node pathNode = shapeNode.select_node(".//string[@name='filename']").node()) {
+					lightDataPath = this->scenePath + "/" + std::string(pathNode.attribute("value").value());
+					light = FzbLight(lightDataPath);
+				}
+				else light = FzbLight(transformMatrix, strength);
+
+				//ËµÃ÷¹âÔ´meshÔÚºóĞø²»»á×Ô¶¯Ìí¼Óµ½sceneMeshSetÖĞ£¬ĞèÒªÎÒÃÇÊÖ¶¯Ìí¼Ó
+				if (pugi::xml_node meshNode = shapeNode.child("hasAddMesh")) {
+					if (std::string(meshNode.attribute("value").value()) == "false") {
+						FzbMesh ligtMesh;
+						std::string materialID;
+						if (pugi::xml_node material = shapeNode.select_node(".//ref").node()) {
+							materialID = material.attribute("id").value();
+							//Èç¹ûÃ»ÓĞmtl£¬²¢ÇÒ¸øµÄmateralIDÒ²Ã»ÓĞ¶ÔÓ¦µÄmaterial£¬Ôò¸øÄ¬ÈÏ²ÄÖÊ
+							if (!sceneMaterials.count(materialID)) materialID = "defaultMaterial";
+						}
+						ligtMesh.transformMatrix = transformMatrix;
+						ligtMesh.material = &sceneMaterials[materialID];
+						ligtMesh.id = materialID;
+						this->sceneMeshSet.push_back(ligtMesh);
+					}
+				}
+			}
+			this->sceneLights.push_back(light);
+		}
+	}
+
 	pugi::xml_node shapesNode = scene.child("shapes");
 	for (pugi::xml_node shapeNode : shapesNode.children("shape")) {
 		std::string meshType = shapeNode.attribute("type").value();
-		if (meshType == "rectangle" || meshType == "emitter") continue;
 		std::string meshID = shapeNode.attribute("id").value();
 		pugi::xml_node tranform = shapeNode.select_node(".//transform[@name='to_world']").node();
 
-		if (meshID == "Light") {
-			glm::mat4 modelMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
-			glm::vec3 position = glm::vec3(modelMatrix * glm::vec4(1.0f));
-			pugi::xml_node emitter = shapeNode.child("emitter");		//²»ÖªµÀ»á²»»áÓĞ¶à¸ö·¢ÉäÆ÷£¬Ä¬ÈÏ1¸ö£¬ÒÔºóÓöµ½ÁËÔÙËµ
-			glm::vec3 strength = fzbGetRGBFromString(emitter.select_node(".//rgb[@name='radiance']").node().attribute("value").value());
-			if (meshType == "point") {
-				this->sceneLights.push_back(FzbLight(position, strength));
-			}
-			continue;
-		}
+		//if (meshID == "Light") {
+		//	glm::mat4 modelMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
+		//	glm::vec3 strength = glm::vec3(1.0f);	//Ä¬ÈÏÖµ
+		//	if (pugi::xml_node emitter = shapeNode.child("emitter")) 
+		//		strength = fzbGetRGBFromString(emitter.select_node(".//rgb[@name='radiance']").node().attribute("value").value());
+		//	
+		//	if (meshType == "point") {
+		//		glm::vec3 position = glm::vec3(modelMatrix * glm::vec4(1.0f));
+		//		this->sceneLights.push_back(FzbLight(position, strength));
+		//	}
+		//	else if (meshType == "rectangle") {
+		//		
+		//	}
+		//	continue;
+		//}
 
 		pugi::xml_node material = shapeNode.select_node(".//ref").node();
 		std::string materialID = material.attribute("id").value();
 		if (!sceneMaterials.count(materialID)) materialID = "defaultMaterial";
+
 		glm::mat4 transformMatrix(1.0f);
 		if (tranform) transformMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
 
@@ -387,8 +440,6 @@ FzbMainScene::FzbMainScene(std::string path) {
 		else if (meshType == "rectangle") continue;
 		mesh.transformMatrix = transformMatrix;
 		mesh.material = &sceneMaterials[materialID];
-		//mesh.vertexFormat = mesh.material->vertexFormat;
-		//mesh.vertexFormat_propocess.available = false;
 		mesh.id = meshID;
 		this->sceneMeshSet.push_back(mesh);
 	}
@@ -420,10 +471,18 @@ void FzbMainScene::initScene(bool compress, bool isMainScene) {
 		std::vector<FzbMesh> meshes_hasData = fzbGetMeshFromOBJ(mesh_nodata.path, fzbVertexFormatMergeUpward(mesh_nodata.vertexFormat, vertexFormat_allMesh_prepocess), mesh_nodata.transformMatrix);
 		for (int j = 0; j < meshes_hasData.size(); ++j) {
 			FzbMesh& mesh_hasData = meshes_hasData[j];
-			mesh_hasData.id = mesh_nodata.id;
 			mesh_hasData.path = mesh_nodata.path;
-			mesh_hasData.vertexFormat = mesh_nodata.vertexFormat;	//Ö»·´Ó¦äÖÈ¾Ñ­»·×é¼şËùĞèµÄ¶¥µãÊı¾İµÄ¸ñÊ½
-			mesh_hasData.material = mesh_nodata.material;
+			//ÕâÀïµÃ·ÖmaterialÊÇ´ÓsceneXMLÖĞµÃµ½µÄ»¹ÊÇ´ÓmeshµÄmtlÖĞµÃµ½µÄ£¬Èç¹ûÊÇÇ°Õß£¬ÔòmaterialµÄvertexFormatµÈ¶¼ÊÇÕıÈ·µÄ£»·ñÔòmaterialµÄvertexFormatµÈ¶¼ÓĞÎÊÌâ
+			if (mesh_hasData.mtlMaterial) {
+				mesh_hasData.id = mesh_hasData.material->id;
+				mesh_hasData.vertexFormat = fzbVertexFormatMergeUpward(mesh_hasData.material->vertexFormat, vertexFormat_allMesh);	//mesh_nodata.vertexFormat = vertexFormat_allMesh
+			}
+			else {
+				mesh_hasData.id = mesh_nodata.id;
+				mesh_hasData.materialIndex = mesh_nodata.materialIndex;
+				mesh_hasData.vertexFormat = mesh_nodata.vertexFormat;	//Ö»·´Ó¦äÖÈ¾Ñ­»·×é¼şËùĞèµÄ¶¥µãÊı¾İµÄ¸ñÊ½
+				mesh_hasData.material = mesh_nodata.material;
+			}
 			mesh_hasData.material->vertexFormat = mesh_hasData.vertexFormat;
 
 			uint32_t index = (uint32_t)sceneMeshes_hasData.size() + j;
@@ -433,6 +492,13 @@ void FzbMainScene::initScene(bool compress, bool isMainScene) {
 		sceneMeshes_hasData.insert(sceneMeshes_hasData.end(), meshes_hasData.begin(), meshes_hasData.end());
 	}
 	this->sceneMeshSet = sceneMeshes_hasData;
+	for (int i = 0; i < this->sceneMeshSet.size(); ++i) {
+		FzbMesh& mesh = this->sceneMeshSet[i];
+		for (auto& pair : sceneMaterials) {
+			if (pair.first == mesh.material->id) break;
+			else ++mesh.materialIndex;		//Õâ¸öÖ÷ÒªÊÇÓĞÊ±ºòĞèÒªÔÚbufferÖĞ»ñÈ¡ÏàÓ¦µÄmaterial
+		}
+	}
 
 	//²»Ê¹ÓÃ·ÖÁ½ÖÖÇé¿ö£º1. Ô¤´¦ÀíÈ·ÊµĞèÒª²»Í¬¶¥µãÊı¾İ£»2. Ô¤´¦ÀíËùĞè¶¥µãÊı¾İÓëäÖÈ¾Ñ­»·ËùĞè¶¥µãÊı¾İÏàÍ¬£¬Ôò¹²ÓÃÒ»¸ö
 	if (useVertexBufferForPrepocess) {

@@ -124,10 +124,6 @@ void FzbRenderPass::render(VkCommandBuffer commandBuffer, uint32_t imageIndex) {
 	}
 
 	vkCmdEndRenderPass(commandBuffer);
-
-	if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-		throw std::runtime_error("failed to record command buffer!");
-	}
 }
 
 VkAttachmentDescription fzbCreateDepthAttachment() {

@@ -36,7 +36,7 @@ struct FzbScene {
 	void clean();
 
 private:
-	FzbAABBBox AABB;
+	FzbAABBBox AABB = FzbAABBBox();
 };
 
 struct FzbMainScene : public FzbScene {

@@ -354,6 +354,26 @@ __device__ float2 Hammersley(uint i, uint N)
     return make_float2(float(i) / float(N), RadicalInverse_VdC(i));
 }
 
+__global__ void init_curand_states(curandState* states, unsigned long seed, int n) {
+    int idx = threadIdx.x + blockIdx.x * blockDim.x;
+    if (idx < n) {
+        curand_init(seed, idx, 0, &states[idx]);
+    }
+}
+//__device__ float getCudaRandomNumber() {
+//    uint32_t threadIndex = threadIdx.x + blockIdx.x * blockDim.x;
+//    return curand_uniform(&systemRandomNumberStates[threadIndex]);    //0-1
+//}
+__device__ float getRandomNumber(uint32_t& randomNumberSeed) {
+    if (useCudaRandom) {
+        uint32_t threadIndex = threadIdx.x + blockIdx.x * blockDim.x;
+        return curand_uniform(&systemRandomNumberStates[threadIndex]);    //0-1
+    }
+    else return rand(randomNumberSeed);
+}
+
+//---------------------------------------------------------------------------------------
+
 __global__ void addDate_float_device(float* data, float date, uint32_t dataNum) {
     uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
     if (threadIndex >= dataNum) return;

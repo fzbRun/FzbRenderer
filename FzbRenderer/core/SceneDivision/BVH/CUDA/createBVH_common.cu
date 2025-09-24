@@ -8,7 +8,7 @@
 
 //---------------------------------------------------------核函数---------------------------------------------------------
 __global__ void createTriangleInfoArrayCUDA(FzbBvhNodeTriangleInfo* triangleInfoArray, uint32_t* sceneIndices, uint32_t indexOffset, 
-    uint32_t indexNum, uint32_t triangleOffset, uint32_t vertexFormat) {
+    uint32_t indexNum, uint32_t triangleOffset, uint32_t vertexFormat, uint32_t materialIndex) {
     uint32_t threadIndex = blockDim.x * blockIdx.x + threadIdx.x;   //表示mesh的第几个索引
     if (threadIndex >= indexNum) {
         return;
@@ -21,6 +21,7 @@ __global__ void createTriangleInfoArrayCUDA(FzbBvhNodeTriangleInfo* triangleInfo
         triangleInfoArray[triangleOffset + triangleIndex].indices0 = sceneIndices[indexOffset + threadIndex];
     }
     else if (indexIndex == 1) {
+        triangleInfoArray[triangleOffset + triangleIndex].materialIndex = materialIndex;
         triangleInfoArray[triangleOffset + triangleIndex].indices1 = sceneIndices[indexOffset + threadIndex];
     }
     else {
@@ -36,6 +37,8 @@ __global__ void initBvhNode(FzbBvhNode* bvhNodeArray, uint32_t nodeNum) {
     FzbBvhNode node;
     node.leftNodeIndex = 0;
     node.rightNodeIndex = 0;
+    node.triangleCount = 1;
+    //node.depth = 1;
     node.AABB.leftX = FLT_MAX;
     node.AABB.rightX = -FLT_MAX;
     node.AABB.leftY = FLT_MAX;
@@ -54,17 +57,18 @@ void BVHCuda::createTriangleInfoArray(FzbMainScene* scene, cudaStream_t stream) 
 
     uint32_t triangleOffset = 0;
     /*
-    for (int i = 0; i < scene->sceneMeshIndices.size(); i++) {
-        FzbMesh& mesh = scene->sceneMeshSet[scene->sceneMeshIndices[i]];
-
-        FzbVertexFormat vertexFormat = mesh.vertexFormat;
+    for (auto& meshIndices : scene->differentVertexFormatMeshIndexs) {
+        FzbVertexFormat vertexFormat = meshIndices.first;
         uint32_t vertexFormatU = (vertexFormat.useTangent << 2) | (vertexFormat.useTexCoord << 1) | (vertexFormat.useNormal);
-        uint32_t meshIndexOffset = mesh.indexArrayOffset;
-        uint32_t indexNum = mesh.indexArraySize;
-
-        uint32_t gridSize = ceil((float)mesh.indexArraySize / 1024);
-        uint32_t blockSize = mesh.indexArraySize > 1024 ? 1024 : mesh.indexArraySize;
-        createTriangleInfoArrayCUDA << < gridSize, blockSize, 0, stream >> > (bvhTriangleInfoArray, sceneIndices, meshIndexOffset, indexNum, triangleOffset, vertexFormatU);
+        uint32_t indexNum = 0;
+        uint32_t indexOffset = scene->sceneMeshSet[meshIndices.second[0]].indexArrayOffset;     //这种vertexFormat的mesh的索引的起始索引
+        for (int i = 0; i < meshIndices.second.size(); ++i) {
+            FzbMesh& mesh = scene->sceneMeshSet[meshIndices.second[i]];
+            indexNum += mesh.indexArraySize;
+        }
+        uint32_t gridSize = (indexNum + 1023) / 1024;
+        uint32_t blockSize = indexNum > 1024 ? 1024 : indexNum;
+        createTriangleInfoArrayCUDA << < gridSize, blockSize, 0, stream >> > (bvhTriangleInfoArray, sceneIndices, indexOffset, indexNum, triangleOffset, vertexFormatU);
 
         triangleOffset += indexNum / 3;
     }
@@ -72,19 +76,20 @@ void BVHCuda::createTriangleInfoArray(FzbMainScene* scene, cudaStream_t stream) 
     for (auto& meshIndices : scene->differentVertexFormatMeshIndexs) {
         FzbVertexFormat vertexFormat = meshIndices.first;
         uint32_t vertexFormatU = (vertexFormat.useTangent << 2) | (vertexFormat.useTexCoord << 1) | (vertexFormat.useNormal);
-        uint32_t indexNum = 0;
-        uint32_t indexOffset = scene->sceneMeshSet[meshIndices.second[0]].indexArrayOffset;
         for (int i = 0; i < meshIndices.second.size(); ++i) {
             FzbMesh& mesh = scene->sceneMeshSet[meshIndices.second[i]];
-            indexNum += mesh.indexArraySize;
-        }
-        uint32_t gridSize = ceil((float)indexNum / 1024);
-        uint32_t blockSize = indexNum > 1024 ? 1024 : indexNum;
-        createTriangleInfoArrayCUDA << < gridSize, blockSize, 0, stream >> > (bvhTriangleInfoArray, sceneIndices, indexOffset, indexNum, triangleOffset, vertexFormatU);
+            uint32_t indexOffset = mesh.indexArrayOffset;
+            uint32_t indexNum = mesh.indexArraySize;
+            uint32_t materialIndex = mesh.materialIndex;
+            uint32_t gridSize = (indexNum + 1023) / 1024;
+            uint32_t blockSize = indexNum > 1024 ? 1024 : indexNum;
+            createTriangleInfoArrayCUDA << < gridSize, blockSize, 0, stream >> > (bvhTriangleInfoArray, sceneIndices, indexOffset, indexNum, triangleOffset, vertexFormatU, materialIndex);
 
-        triangleOffset += indexNum / 3;
+            triangleOffset += indexNum / 3;
+        }
     }
     CHECK(cudaDestroyExternalMemory(indexExtMem));
+    CHECK(cudaFree(sceneIndices));
 }
 
 void BVHCuda::getBvhCuda(VkPhysicalDevice vkPhysicalDevice, HANDLE bvhNodeArrayHandle, HANDLE bvhTriangleInfoArrayHandle) {

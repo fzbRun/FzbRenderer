@@ -17,16 +17,20 @@ struct FzbBVHSetting {
 
 //-------------------------------------------------------------------------------------------------------------
 struct FzbBvhNodeTriangleInfo {
-	uint32_t materialIndex;
-	uint32_t vertexFormat;	//3位，第一为表示是否使用法线，第二位表示是否使用uv，第三位表示是否使用tangent
+	uint8_t materialIndex;
+	uint8_t vertexFormat;	//3位，第一为表示是否使用法线，第二位表示是否使用uv，第三位表示是否使用tangent
+	//会填充2字节
 	uint32_t indices0;
 	uint32_t indices1;
 	uint32_t indices2;
+	//FzbAABB AABB;
 };
 struct FzbBvhNode {
 	uint32_t leftNodeIndex;
-	uint32_t rightNodeIndex;
+	uint32_t rightNodeIndex;	//如果当前是叶节点，则表示节点中第一个三角形的起始索引
+	uint32_t triangleCount;		//叶节点记录node中的三角形数；非叶节点则为0
 	FzbAABB AABB;
+	//uint32_t depth;
 };
 
 /*
@@ -87,6 +91,7 @@ public:
 	cudaExternalMemory_t bvhNodeArrayExtMem = nullptr;
 	cudaExternalMemory_t bvhTriangleInfoArrayMem = nullptr;
 	uint32_t triangleNum = 0;
+	//uint32_t nodeCount = 0;
 
 	float* vertices = nullptr;
 	FzbBvhNode* bvhNodeArray = nullptr;

@@ -9,22 +9,15 @@ enum MaterialType {
 	diffuse = 0,
 	roughconductor = 1
 };
-MaterialType getMaterialType(std::string materialTypeString) {
-	if (materialTypeString == "diffuse") return diffuse;
-	else if (materialTypeString == "roughconductor") return roughconductor;
-}
+MaterialType getMaterialType(std::string materialTypeString);
 
 struct FzbPathTracingMaterialUniformObject {
-	MaterialType materialType = diffuse;	//enum默认使用int来表示
+	uint32_t materialType;	//enum默认使用int来表示
 	int textureIndex[3];
 	glm::vec4 numberAttribute[8];
-	glm::vec4 emitter;	//第一位为bool，判断是否自发光
-
-	FzbPathTracingMaterialUniformObject() {
-		for (int i = 0; i < 3; ++i) textureIndex[i] = -1;
-		for (int i = 0; i < 8; ++i) numberAttribute[i] = glm::vec4(1.0f);
-	}
+	glm::vec4 emissive;	//第一位为bool，判断是否自发光
 };
+FzbPathTracingMaterialUniformObject createInitialMaterialUniformObject();
 
 //指明diffuseMaterial所需的数据在FzbPathTracingMaterialUniformObject中的索引
 struct FzbPathTracingDiffuseMaterialInfo {

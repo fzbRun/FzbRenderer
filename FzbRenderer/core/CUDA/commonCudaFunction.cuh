@@ -8,9 +8,15 @@
 #include <device_launch_parameters.h>
 #include <vector_types.h>
 #include <helper_math.h>
+#include <curand_kernel.h>
 
 #ifndef COMMON_CUDA_FUNCTION_CUH
 #define COMMON_CUDA_FUNCTION_CUH
+
+extern __constant__ bool useCudaRandom;
+extern __constant__ curandState* systemRandomNumberStates;
+extern __constant__ uint32_t systemRandomNumberSeed;
+//----------------------------------------------------------------------------------------------
 
 #define CHECK(call)\
 {\
@@ -71,6 +77,8 @@ __device__ uint2 pcg2d(uint2 v);
 __device__ float rand(uint32_t& seed);
 __device__ float RadicalInverse_VdC(uint bits);
 __device__ float2 Hammersley(uint i, uint N);
+__global__ void init_curand_states(curandState* states, unsigned long seed, int n);
+__device__ float getRandomNumber(uint32_t& randomNumberSeed);
 
 __global__ void addDate_float_device(float* data, float date, uint32_t dataNum);
 void addDateCUDA_float(float* data, float date, uint32_t dataNum);

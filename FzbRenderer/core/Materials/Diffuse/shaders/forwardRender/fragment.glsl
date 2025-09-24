@@ -62,6 +62,9 @@ layout(set = 1, binding = textureNum) uniform MaterialBuffer{
 #ifdef useAlbedo
 	vec4 albedo;
 #endif
+#ifdef useEmissive
+	vec4 emissive;
+#endif
 };
 #endif
 

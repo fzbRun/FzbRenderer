@@ -6,6 +6,7 @@
 
 #include <glslang/Public/ShaderLang.h>
 #include <chrono>
+#include <random>
 
 std::map<std::string, FzbFeatureComponentName> featureComponentMap{
 	{ "Forward", FZB_RENDERER_FORWARD },
@@ -69,7 +70,7 @@ void FzbRenderer::initRendererFromXMLInfo(std::string rendererXML) {
 	this->globalData.init(this->rendererName.c_str());
 	this->componentManager.componentInit();
 
-	imageAvailableSemaphore = FzbSemaphore(false);
+	imageAvailableSemaphore = FzbSemaphore(this->useImageAvailableSemaphoreHandle);
 	fence = fzbCreateFence();
 }
 
@@ -84,6 +85,9 @@ void FzbRenderer::mainLoop() {
 		glfwPollEvents();
 		drawFrame();
 	}
+	//globalData.processInput();
+	//glfwPollEvents();
+	//drawFrame();
 	vkDeviceWaitIdle(globalData.logicalDevice);
 }
 void FzbRenderer::drawFrame() {
@@ -110,12 +114,12 @@ void FzbRenderer::drawFrame() {
 	updateGlobalData();
 	vkResetFences(globalData.logicalDevice, 1, &fence);
 
-	VkSemaphore renderFinishedSemaphore = this->componentManager.componentActivate(imageIndex, imageAvailableSemaphore.semaphore, fence);
+	FzbSemaphore renderFinishedSemaphore = this->componentManager.componentActivate(imageIndex, imageAvailableSemaphore, fence);
 	
 	VkPresentInfoKHR presentInfo{};
 	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores = &renderFinishedSemaphore; 	// svoSetting.UseSVO ? &fzbSVO->presentSemaphore.semaphore : &renderFinishedSemaphores.semaphore;
+	presentInfo.pWaitSemaphores = &renderFinishedSemaphore.semaphore; 	// svoSetting.UseSVO ? &fzbSVO->presentSemaphore.semaphore : &renderFinishedSemaphores.semaphore;
 
 	VkSwapchainKHR swapChains[] = { globalData.swapChain };
 	presentInfo.swapchainCount = 1;
@@ -139,6 +143,15 @@ void FzbRenderer::updateGlobalData() {
 	globalData.deltaTime = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - globalData.lastTime).count();
 	globalData.lastTime = currentTime;
 	globalData.mainScene.updateCameraBuffer();
+	globalData.frameIndex = ++globalData.frameIndex & 1023;
+
+	std::random_device rd;
+	std::mt19937 gen(rd()); // Mersenne Twister 引擎
+	VkExtent2D resolution = globalData.getResolution();
+	uint64_t offset = uint64_t(resolution.width) * resolution.height * 1000ull;
+	unsigned int maxVal = (offset < UINT_MAX) ? (UINT_MAX - offset) : 0;
+	std::uniform_int_distribution<uint32_t> distInt(0, maxVal);	// 生成均匀分布整数
+	globalData.randomNumber = distInt(gen);
 }
 
 void FzbRenderer::clean() {

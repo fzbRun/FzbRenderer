@@ -1,3 +1,7 @@
+#extension GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_shader_8bit_storage : require
+#extension GL_EXT_shader_16bit_storage : require
+
 layout(triangles) in;
 layout(triangle_strip, max_vertices = 3) out;
 
@@ -22,10 +26,24 @@ struct FzbAABB {
 struct FzbBvhNode {
 	uint leftNodeIndex;
 	uint rightNodeIndex;
+	uint triangleNum;
 	FzbAABB AABB;
+	//uint depth;
 };
-layout(set = 1, binding = 1, std430) readonly buffer FzbSVONodes {
+layout(set = 1, binding = 1) readonly buffer FzbSVONodes {
 	FzbBvhNode fzbBVHNodes[];
+};
+
+struct FzbBvhNodeTriangleInfo {
+	uint8_t materialIndex;
+	uint8_t vertexFormat;	//3位，第一为表示是否使用法线，第二位表示是否使用uv，第三位表示是否使用tangent
+	uint indices0;
+	uint indices1;
+	uint indices2;
+	//FzbAABB AABB;
+};
+layout(set = 1, binding = 2, scalar) readonly buffer FzbTriangleInfos {
+	FzbBvhNodeTriangleInfo fzbTriangles[];
 };
 
 layout(location = 0) out vec3 worldPos;
@@ -47,6 +65,7 @@ void main() {
 	if (bcPos.x < nodeAABB.leftX || bcPos.x > nodeAABB.rightX || bcPos.y < nodeAABB.leftY || bcPos.y > nodeAABB.rightY || bcPos.z < nodeAABB.leftZ || bcPos.z > nodeAABB.rightZ) {
 		return;
 	}
+	if (fzbTriangles[0].indices0 == 100) return;
 
 	worldPos = p0;
 	gl_Position = cubo.proj * cubo.view * gl_in[0].gl_Position;

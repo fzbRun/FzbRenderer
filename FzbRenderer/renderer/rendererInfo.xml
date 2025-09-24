@@ -1,8 +1,11 @@
 <renderer>
 	<name value = "FzbRenderer" />
 	<resolution width = "1280" height = "720" />
-	<sceneXML path = "/scenes/veach-ajar" />
-	<!--rendererType value = "Forward" -->
+	<sceneXML path = "/scenes/bearBox" />
+	<!--
+	<rendererType value = "Forward">
+		<available value = "true" />
+	</rendererType>
 	<rendererType value = "PathTracing_soft">
 		<available value = "true" />
 		<childComponents>
@@ -11,7 +14,18 @@
 			</featureComponent>
 		</childComponents>
 	</rendererType>
-	<!--
+	-->
+	<rendererType value = "PathTracing_soft">
+		<available value = "true" />
+		<rendererComponentSetting>
+			<spp value = "32" />
+		</rendererComponentSetting>
+		<childComponents>
+			<featureComponent name = "BVH">
+				<available value = "true" />
+			</featureComponent>
+		</childComponents>
+	</rendererType>
 	<featureComponents>
 		<featureComponent name = "BVH_Debug">
 			<available value = "false" />
@@ -28,5 +42,4 @@
 			</featureComponentSetting>
 		</featureComponent>
 	</featureComponents> 
-	-->
 </renderer>

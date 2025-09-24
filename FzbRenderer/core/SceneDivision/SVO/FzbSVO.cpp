@@ -42,18 +42,18 @@ void FzbSVO_Debug::init() {
 	presentPrepare();
 }
 
-VkSemaphore FzbSVO_Debug::render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence) {
+FzbSemaphore FzbSVO_Debug::render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence) {
 	VkCommandBuffer commandBuffer = commandBuffers[1];
 	vkResetCommandBuffer(commandBuffer, 0);
 	fzbBeginCommandBuffer(commandBuffer);
 
 	renderRenderPass.render(commandBuffer, imageIndex);
 
-	std::vector<VkSemaphore> waitSemaphores = { startSemaphore };
+	std::vector<VkSemaphore> waitSemaphores = { startSemaphore.semaphore };
 	std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
-	fzbSubmitCommandBuffer(commandBuffer, { startSemaphore }, waitStages, { renderFinishedSemaphore.semaphore }, fence);
+	fzbSubmitCommandBuffer(commandBuffer, { startSemaphore.semaphore }, waitStages, { renderFinishedSemaphore.semaphore }, fence);
 
-	return renderFinishedSemaphore.semaphore;
+	return renderFinishedSemaphore;
 }
 
 void FzbSVO_Debug::clean() {

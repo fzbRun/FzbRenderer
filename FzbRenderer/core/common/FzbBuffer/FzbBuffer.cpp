@@ -75,6 +75,9 @@ void fzbSubmitCommandBuffer(VkCommandBuffer commandBuffer,
 	std::vector<VkPipelineStageFlags> waitStages,
 	std::vector<VkSemaphore> signalSemphores,
 	VkFence fence) {
+	if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
+		throw std::runtime_error("failed to record command buffer!");
+	}
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;

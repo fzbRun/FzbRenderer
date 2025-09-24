@@ -31,6 +31,7 @@ public:
 	VkDescriptorSet descriptorSet;
 
 	FzbSemaphore bvhCudaSemaphore;
+	std::unique_ptr<BVHCuda> bvhCuda;
 	
 	FzbBVH();
 	FzbBVH(pugi::xml_node& BVHNode);
@@ -40,7 +41,6 @@ public:
 
 private:
 	FzbBVHUniform kdUniform;
-	std::unique_ptr<BVHCuda> bvhCuda;
 
 	void addExtensions();
 	void createBVH();
@@ -58,12 +58,11 @@ public:
 
 	void init() override;
 
-	VkSemaphore render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE);
+	FzbSemaphore render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) override;
 
 	void clean();
 
 private:
-
 	FzbBVHSetting setting;
 	FzbBVHUniform kdUniform;
 

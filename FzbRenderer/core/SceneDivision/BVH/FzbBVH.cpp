@@ -1,5 +1,6 @@
 #include "./FzbBVH.h"
 #include "../../common/FzbRenderer.h"
+#include "../../RayTracing/CUDA/FzbCollisionDetection.cuh"
 
 FzbBVH::FzbBVH() {
 	addMainSceneInfo();
@@ -30,7 +31,7 @@ void FzbBVH::clean() {
 }
 
 void FzbBVH::addMainSceneInfo() {
-	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat(true));
+	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat());
 	FzbRenderer::globalData.mainScene.useVertexBufferHandle = true;
 }
 void FzbBVH::addExtensions() {
@@ -53,7 +54,7 @@ void FzbBVH::createBVH() {
 		bvhNodeArray = fzbCreateStorageBuffer(sizeof(FzbBvhNode) * (bvhCuda->triangleNum * 2 - 1), true);
 		bvhTriangleInfoArray = fzbCreateStorageBuffer(sizeof(FzbBvhNodeTriangleInfo) * bvhCuda->triangleNum, true);
 		bvhCuda->getBvhCuda(physicalDevice, bvhNodeArray.handle, bvhTriangleInfoArray.handle);
-		bvhCuda->clean();
+		//bvhCuda->clean();
 	}
 }
 
@@ -117,6 +118,7 @@ FzbBVH_Debug::FzbBVH_Debug(pugi::xml_node& BVHNode) {
 
 void FzbBVH_Debug::init() {
 	FzbFeatureComponent_LoopRender::init();
+	//FzbAABBBox AABB = mainScene->getAABB();
 	bvhCuda = std::make_unique<BVHCuda>();
 	createBVH();
 	createBuffer();
@@ -124,7 +126,7 @@ void FzbBVH_Debug::init() {
 	presentPrepare();
 }
 
-VkSemaphore FzbBVH_Debug::render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence) {
+FzbSemaphore FzbBVH_Debug::render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence) {
 	VkCommandBuffer commandBuffer = commandBuffers[0];
 	vkResetCommandBuffer(commandBuffer, 0);
 
@@ -139,23 +141,11 @@ VkSemaphore FzbBVH_Debug::render(uint32_t imageIndex, VkSemaphore startSemaphore
 
 	renderRenderPass.render(commandBuffer, imageIndex);
 
-	std::vector<VkSemaphore> waitSemaphores = { startSemaphore };
-	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
-	VkSubmitInfo submitInfo{};
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.waitSemaphoreCount = 1;	// waitSemaphores.size();
-	submitInfo.pWaitSemaphores = waitSemaphores.data();
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &commandBuffer;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderFinishedSemaphore.semaphore;
+	std::vector<VkSemaphore> waitSemaphores = { startSemaphore.semaphore };
+	std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+	fzbSubmitCommandBuffer(commandBuffer, waitSemaphores, waitStages, { renderFinishedSemaphore.semaphore }, fence);
 
-	if (vkQueueSubmit(FzbRenderer::globalData.graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS) {
-		throw std::runtime_error("failed to submit draw command buffer!");
-	}
-
-	return renderFinishedSemaphore.semaphore;
+	return renderFinishedSemaphore;
 }
 
 void FzbBVH_Debug::clean() {
@@ -177,7 +167,7 @@ void FzbBVH_Debug::clean() {
 
 //虽然创建bvh是预处理，但是实际上用到的适合loopRender相同的顶点数据，所以可以直接使用
 void FzbBVH_Debug::addMainSceneInfo() {
-	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat(true));
+	FzbRenderer::globalData.mainScene.vertexFormat_allMesh.mergeUpward(FzbVertexFormat());
 	FzbRenderer::globalData.mainScene.useVertexBufferHandle = true;
 }
 void FzbBVH_Debug::addExtensions() {
@@ -198,6 +188,7 @@ void FzbBVH_Debug::createBVH() {
 	bvhCudaSemaphore = FzbSemaphore(true);		//当bvh创建完成后唤醒
 
 	//bvhCuda->createBvhCuda_recursion(physicalDevice, mainComponentScene, bvhCudaSemaphore.handle, setting);
+	this->setting.maxDepth = BVH_MAX_DEPTH;
 	bvhCuda->createBvhCuda_noRecursion(FzbRenderer::globalData.physicalDevice, mainScene, bvhCudaSemaphore.handle, setting);
 
 	bvhNodeArray = fzbCreateStorageBuffer(sizeof(FzbBvhNode) * (bvhCuda->triangleNum * 2 - 1), true);
@@ -220,15 +211,15 @@ void FzbBVH_Debug::createBuffer() {
 void FzbBVH_Debug::createDescriptor() {
 	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
-	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1 });
+	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 2 });
 	this->descriptorPool = fzbCreateDescriptorPool(bufferTypeAndNum);
 
-	std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
-	std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
-	descriptorSetLayout = fzbCreateDescriptLayout(2, descriptorTypes, descriptorShaderFlags);
+	std::vector<VkDescriptorType> descriptorTypes = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER };
+	std::vector<VkShaderStageFlags> descriptorShaderFlags = { VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL, VK_SHADER_STAGE_ALL };
+	descriptorSetLayout = fzbCreateDescriptLayout(3, descriptorTypes, descriptorShaderFlags);
 	descriptorSet = fzbCreateDescriptorSet(descriptorPool, descriptorSetLayout);
 
-	std::array<VkWriteDescriptorSet, 2> descriptorWrites{};
+	std::array<VkWriteDescriptorSet, 3> descriptorWrites{};
 	VkDescriptorBufferInfo uniformBufferInfo{};
 	uniformBufferInfo.buffer = uniformBuffer.buffer;
 	uniformBufferInfo.offset = 0;
@@ -252,6 +243,18 @@ void FzbBVH_Debug::createDescriptor() {
 	descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	descriptorWrites[1].descriptorCount = 1;
 	descriptorWrites[1].pBufferInfo = &nodeBufferInfo;
+
+	VkDescriptorBufferInfo triagnleBufferInfo{};
+	triagnleBufferInfo.buffer = bvhTriangleInfoArray.buffer;
+	triagnleBufferInfo.offset = 0;
+	triagnleBufferInfo.range = sizeof(FzbBvhNodeTriangleInfo) * bvhCuda->triangleNum;
+	descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrites[2].dstSet = descriptorSet;
+	descriptorWrites[2].dstBinding = 2;
+	descriptorWrites[2].dstArrayElement = 0;
+	descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	descriptorWrites[2].descriptorCount = 1;
+	descriptorWrites[2].pBufferInfo = &triagnleBufferInfo;
 
 	vkUpdateDescriptorSets(FzbRenderer::globalData.logicalDevice, descriptorWrites.size(), descriptorWrites.data(), 0, nullptr);
 }

@@ -15,10 +15,14 @@ struct FzbTriangleAttribute {
 	glm::vec3 normal;
 	glm::vec2 texCoords;
 	glm::vec3 albedo;
+	glm::vec3 emissive;
 	uint32_t materialType;
 };
 
-__device__ void getTriangleVertexAttribute(float* __restrict__ vertices, cudaTextureObject_t* __restrict__ materialTextures, FzbBvhNodeTriangleInfo triangle, FzbTriangleAttribute& triangleAttribute);
-__device__ void getTriangleMaterialAttribute(cudaTextureObject_t* __restrict__ materialTextures, uint32_t materialIndex,FzbTriangleAttribute& triangleAttribute);
+const uint32_t maxMaterialCount = 128;
+extern __constant__ FzbPathTracingMaterialUniformObject materialInfoArray[maxMaterialCount];
+
+__device__ void getTriangleVertexAttribute(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTriangleAttribute& triangleAttribute);
+__device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures, FzbBvhNodeTriangleInfo triangle, FzbTriangleAttribute& triangleAttribute);
 
 #endif

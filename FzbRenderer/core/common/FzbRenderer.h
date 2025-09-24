@@ -13,6 +13,7 @@ public:
 	std::string rendererName = "";
 	inline static FzbMainComponent globalData = FzbMainComponent();
 	inline static 	FzbFeatureComponentManager componentManager = FzbFeatureComponentManager();
+	inline static bool useImageAvailableSemaphoreHandle = false;
 
 	FzbRenderer(std::string rendererXML);
 	void run();

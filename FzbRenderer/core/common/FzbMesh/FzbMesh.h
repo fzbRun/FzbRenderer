@@ -226,8 +226,10 @@ public:
 	uint32_t indexArraySize;
 	uint32_t indexArrayOffset;
 
+	bool mtlMaterial = false;
 	glm::mat4 transformMatrix = glm::mat4(1.0f);
 	FzbMaterial* material = nullptr;	//sceneXML中指定的material
+	uint32_t materialIndex = 0;		//material在sceneMaterial数组中的索引
 	FzbVertexFormat vertexFormat;	//所有LoopRender组件所要求的，以及sceneXML中material要求的顶点数据
 	//FzbVertexFormat vertexFormat_propocess;	//预处理组件所要求的顶点数据
 
@@ -266,10 +268,7 @@ struct FzbMeshDynamic : public FzbMesh {
 };
 void fzbCreateMeshDescriptor();
 
-std::vector<FzbTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName);
-FzbMesh processMesh(aiMesh* mesh, const aiScene* scene, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix);
-std::vector<FzbMesh> processNode(aiNode* node, const aiScene* scene, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix);
-std::vector<FzbMesh> fzbGetMeshFromOBJ(std::string path, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix = glm::mat4(1.0f));
+std::vector<FzbMesh> fzbGetMeshFromOBJ(std::string path, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix = glm::mat4(1.0f), std::map<std::string, FzbMaterial>* sceneMaterials = nullptr);
 
 /*
 void fzbCreateCube(FzbMesh& mesh);
@@ -344,11 +343,21 @@ struct FzbLight {
 public:
 	FzbLIghtType type = FZB_POINT;
 	glm::vec3 position;
-	glm::vec3 strength;
+	glm::vec3 strength = glm::vec3(1.0f);		//radiance
+	glm::vec3 normal;
+	glm::vec3 edge0;
+	glm::vec3 edge1;
+	float area;
+	FzbMaterial* material;
+	uint32_t materialIndex;
+
 	glm::mat4 viewMatrix;
 	glm::mat4 projMatrix;
 
+	FzbLight();
 	FzbLight(glm::vec3 position, glm::vec3 strength, glm::mat4 viewMatrix = glm::mat4());
+	FzbLight(std::string dataPath, glm::mat4 modelMatrix = glm::mat4(1.0f), glm::vec3 strength = glm::vec3(1.0f));		//根据path，从.obj和.mtl中读取light的数据，只支持矩形面光源（目前）
+	FzbLight(glm::mat4 modelMatrix, glm::vec3 strength);	//根据modelMatrix创建面光源
 };
 
 #endif

@@ -452,7 +452,6 @@ VkPhysicalDeviceFeatures2 FzbMainComponent::createPhysicalDeviceFeatures(VkPhysi
 	return features2;
 }
 void FzbMainComponent::createLogicalDevice(VkPhysicalDeviceFeatures* deviceFeatures, std::vector<const char*> deviceExtensions, const void* pNextFeatures, std::vector<const char*> validationLayers) {
-
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	std::set<uint32_t> uniqueQueueFamilies = { queueFamilyIndices.graphicsAndComputeFamily.value(), queueFamilyIndices.presentFamily.value() };
 
@@ -500,7 +499,6 @@ void FzbMainComponent::createLogicalDevice(VkPhysicalDeviceFeatures* deviceFeatu
 	vkGetDeviceQueue(this->logicalDevice, queueFamilyIndices.graphicsAndComputeFamily.value(), 0, &this->graphicsQueue);
 	vkGetDeviceQueue(this->logicalDevice, queueFamilyIndices.graphicsAndComputeFamily.value(), 0, &this->computeQueue);
 	vkGetDeviceQueue(this->logicalDevice, queueFamilyIndices.presentFamily.value(), 0, &this->presentQueue);
-
 }
 void FzbMainComponent::createDevice() {
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
@@ -511,11 +509,16 @@ void FzbMainComponent::createDevice() {
 	VkPhysicalDeviceVulkan11Features vk11Features{};
 	vk11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
 	vk11Features.shaderDrawParameters = VK_TRUE;
+	vk11Features.storageBuffer16BitAccess = VK_TRUE;
 
 	VkPhysicalDeviceVulkan12Features vk12Features{};
 	vk12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 	vk12Features.drawIndirectCount = VK_TRUE;
 	vk12Features.descriptorIndexing = VK_TRUE;
+	vk12Features.storageBuffer8BitAccess = VK_TRUE;
+	vk12Features.shaderInt8 = VK_TRUE;
+	vk12Features.shaderFloat16 = VK_TRUE;
+	vk12Features.scalarBlockLayout = VK_TRUE;
 
 	VkPhysicalDeviceFeatures2 feature2 = createPhysicalDeviceFeatures(deviceFeatures, &vk11Features, &vk12Features);
 

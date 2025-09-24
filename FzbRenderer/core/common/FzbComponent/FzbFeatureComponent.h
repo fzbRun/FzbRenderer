@@ -15,21 +15,19 @@ enum FzbFeatureComponentName {
 	FZB_FEATURE_COMPONENT_SVO,
 	FZB_FEATURE_COMPONENT_SVO_DEBUG
 };
-
 enum FzbFeatureComponentType {
 	FZB_RENDER_COMPONENT,
 	FZB_POST_PROCESS_COMPONENT,
 	FZB_PREPROCESS_FEATURE_COMPONENT,
 	FZB_LOOPRENDER_FEATURE_COMPONENT,
 };
-
 struct FzbFeatureComponentInfo {
 	bool available = false;
 	FzbFeatureComponentName name;
 	FzbFeatureComponentType type;
 	//std::vector<bool> useMainSceneBufferHandle = { false, false, false };
 };
-
+//-----------------------------------------------功能组件---------------------------------------------
 struct FzbFeatureComponent : public FzbComponent {
 public:
 	FzbFeatureComponentInfo componentInfo;
@@ -52,17 +50,27 @@ public:
 	virtual void prepocessClean();
 	void clean() override;
 };
-
+//-----------------------------------------------渲染组件---------------------------------------------
 struct FzbRendererComponent : public FzbFeatureComponent {
 	std::vector<FzbImage*> frameBufferImages;
 	FzbRenderPass renderRenderPass;
 	FzbSemaphore renderFinishedSemaphore;
 
+	FzbRendererComponent();
+	void init() override;
 	virtual void presentPrepare() = 0;	//创建各种渲染的变量，如缓冲区、renderPass
+
+	virtual void createImages() = 0;
 	void destroyFrameBuffer();
 	void createFrameBuffer();
-};
 
+	virtual VkSemaphore render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) = 0;
+	void clean() override;
+
+private:
+	void prepocessClean();
+};
+//-----------------------------------------------渲染循环组件---------------------------------------------
 struct FzbFeatureComponent_LoopRender : public FzbFeatureComponent {
 public:
 	std::vector<FzbImage*> frameBufferImages;
@@ -75,14 +83,14 @@ public:
 	virtual void createImages() = 0;
 	//virtual void createSubPass() = 0;
 	virtual void presentPrepare() = 0;	//创建各种渲染的变量，如缓冲区、renderPass
-	virtual VkSemaphore render(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) = 0;
+	virtual FzbSemaphore render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) = 0;
 
 	void destroyFrameBuffer();
 	void createFrameBuffer();
 
 	void clean() override;
 };
-
+//-----------------------------------------------预处理组件---------------------------------------------
 struct FzbFeatureComponent_PreProcess : public FzbFeatureComponent {
 	FzbFeatureComponent_PreProcess();
 	void init() override;

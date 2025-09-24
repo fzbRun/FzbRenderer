@@ -1,14 +1,15 @@
 #include "FzbFeatureComponentManager.h"
 #include "../FzbRenderer.h"
+#include <cuda_runtime_api.h>
 
 FzbFeatureComponentManager::FzbFeatureComponentManager() {
-	this->postProcessingComponent = nullptr;
+	//this->postProcessingComponent = nullptr;
 };
 void FzbFeatureComponentManager::addFeatureComponent(std::shared_ptr<FzbFeatureComponent> featureComponent) {
 	if (featureComponent == nullptr) return;
 	if (featureComponent->componentInfo.available == false) return;
 	if (featureComponent->componentInfo.type == FZB_RENDER_COMPONENT) this->renderComponent = std::dynamic_pointer_cast<FzbFeatureComponent_LoopRender>(featureComponent);
-	else if (featureComponent->componentInfo.type == FZB_POST_PROCESS_COMPONENT) this->postProcessingComponent = std::dynamic_pointer_cast<FzbFeatureComponent_LoopRender>(featureComponent);
+	//else if (featureComponent->componentInfo.type == FZB_POST_PROCESS_COMPONENT) this->postProcessingComponent = std::dynamic_pointer_cast<FzbFeatureComponent_LoopRender>(featureComponent);
 	else if (featureComponent->componentInfo.type == FZB_PREPROCESS_FEATURE_COMPONENT) {
 		std::shared_ptr<FzbFeatureComponent_PreProcess> featureComponent_PreProcess = std::dynamic_pointer_cast<FzbFeatureComponent_PreProcess>(featureComponent);
 		this->preprocessFeatureComponent.push_back(featureComponent_PreProcess);
@@ -70,9 +71,10 @@ void FzbFeatureComponentManager::init() {
 */
 void FzbFeatureComponentManager::prepocessClean() {
 	vkDeviceWaitIdle(FzbRenderer::globalData.logicalDevice);	//阻塞CPU，等待logicalDevice所有任务执行完成
+	cudaDeviceSynchronize();
 
 	if (renderComponent) this->renderComponent->prepocessClean();
-	if (postProcessingComponent) this->postProcessingComponent->prepocessClean();
+	//if (postProcessingComponent) this->postProcessingComponent->prepocessClean();
 	for (int i = 0; i < preprocessFeatureComponent.size(); i++) preprocessFeatureComponent[i]->prepocessClean();
 	for (int i = 0; i < loopRenderFeatureComponent.size(); i++) loopRenderFeatureComponent[i]->prepocessClean();
 
@@ -88,27 +90,27 @@ void FzbFeatureComponentManager::prepocessClean() {
 }
 void FzbFeatureComponentManager::componentInit() {
 	if (renderComponent) this->renderComponent->init();
-	if (postProcessingComponent) this->postProcessingComponent->init();
+	//if (postProcessingComponent) this->postProcessingComponent->init();
 	for (int i = 0; i < preprocessFeatureComponent.size(); i++) preprocessFeatureComponent[i]->init();
 	for (int i = 0; i < loopRenderFeatureComponent.size(); i++) loopRenderFeatureComponent[i]->init();
 
 	prepocessClean();
 }
 
-VkSemaphore FzbFeatureComponentManager::componentActivate(uint32_t imageIndex, VkSemaphore startSemaphore, VkFence fence) {
+FzbSemaphore FzbFeatureComponentManager::componentActivate(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence) {
 	for (int i = 0; i < this->loopRenderFeatureComponent.size(); i++) {
-		if(renderComponent == nullptr && postProcessingComponent == nullptr && i == this->loopRenderFeatureComponent.size() - 1)
+		if(renderComponent == nullptr && i == this->loopRenderFeatureComponent.size() - 1)
 			startSemaphore = this->loopRenderFeatureComponent[i]->render(imageIndex, startSemaphore, fence);
 		else startSemaphore = this->loopRenderFeatureComponent[i]->render(imageIndex, startSemaphore, VK_NULL_HANDLE);
 	}
-	if (renderComponent) startSemaphore = this->renderComponent->render(imageIndex, startSemaphore, postProcessingComponent ? VK_NULL_HANDLE : fence);
-	if (postProcessingComponent) startSemaphore = this->postProcessingComponent->render(imageIndex, startSemaphore, fence);
+	if (renderComponent) startSemaphore = this->renderComponent->render(imageIndex, startSemaphore, fence);
+	//if (postProcessingComponent) startSemaphore = this->postProcessingComponent->render(imageIndex, startSemaphore, fence);
 	return startSemaphore;
 }
 
 void FzbFeatureComponentManager::clean() {
 	if (renderComponent) this->renderComponent->clean();
-	if (postProcessingComponent) this->postProcessingComponent->clean();
+	//if (postProcessingComponent) this->postProcessingComponent->clean();
 	for (int i = 0; i < this->preprocessFeatureComponent.size(); i++)
 		this->preprocessFeatureComponent[i]->clean();
 	for (int i = 0; i < this->loopRenderFeatureComponent.size(); i++)

@@ -65,7 +65,7 @@ struct FzbShaderInfo {
 struct FzbShader {
 	std::string path;
 	FzbShaderProperty properties;
-	std::string shaderVersion = "450";
+	std::string shaderVersion = "460";
 	std::map<std::string, bool> macros;
 	std::map<VkShaderStageFlagBits, std::string> shaders;
 	std::vector<FzbShaderVariant> shaderVariants;

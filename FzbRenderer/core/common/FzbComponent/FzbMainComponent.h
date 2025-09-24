@@ -33,6 +33,8 @@ public:
 	float lastX;
 	float lastY;
 	bool framebufferResized = false;
+	uint32_t frameIndex = 0;
+	uint32_t randomNumber = 0;
 
 	FzbMainScene mainScene = FzbMainScene();
 	inline static FzbCamera* camera = nullptr;

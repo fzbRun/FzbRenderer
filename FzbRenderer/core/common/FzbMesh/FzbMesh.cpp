@@ -124,18 +124,18 @@ void FzbMesh::createAABB() {
 		AABB.rightZ = z > AABB.rightZ ? z : AABB.rightZ;
 	}
 	//对于面，我们给个0.02的宽度
-	if (AABB.leftX == AABB.rightX) {
-		AABB.leftX = AABB.leftX - 0.01;
-		AABB.rightX = AABB.rightX + 0.01;
-	}
-	if (AABB.leftY == AABB.rightY) {
-		AABB.leftY = AABB.leftY - 0.01;
-		AABB.rightY = AABB.rightY + 0.01;
-	}
-	if (AABB.leftZ == AABB.rightZ) {
-		AABB.leftZ = AABB.leftZ - 0.01;
-		AABB.rightZ = AABB.rightZ + 0.01;
-	}
+	//if (AABB.leftX == AABB.rightX) {
+	//	AABB.leftX = AABB.leftX - 0.01;
+	//	AABB.rightX = AABB.rightX + 0.01;
+	//}
+	//if (AABB.leftY == AABB.rightY) {
+	//	AABB.leftY = AABB.leftY - 0.01;
+	//	AABB.rightY = AABB.rightY + 0.01;
+	//}
+	//if (AABB.leftZ == AABB.rightZ) {
+	//	AABB.leftZ = AABB.leftZ - 0.01;
+	//	AABB.rightZ = AABB.rightZ + 0.01;
+	//}
 }
 //---------------------------------------------------dynamicMesh---------------------------------------
 FzbMeshDynamic::FzbMeshDynamic() {
@@ -179,22 +179,42 @@ void fzbCreateMeshDescriptor() {
 	FzbMeshDynamic::meshDescriptorSetLayout = fzbCreateDescriptLayout(1, { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER }, { VK_SHADER_STAGE_ALL });
 }
 //---------------------------------------------------加载mesh--------------------------------------------
-std::vector<FzbTexture> loadMaterialTextures(aiMaterial* mat, aiTextureType type, std::string typeName) {
-	std::vector<FzbTexture> textures;
+void loadMaterialTextures(FzbMaterial& material, aiMaterial* mat, aiTextureType type, std::string typeName) {
 	for (unsigned int i = 0; i < mat->GetTextureCount(type); i++)
 	{
-		aiString str;
-		mat->GetTexture(type, i, &str);
+		aiString path;
+		mat->GetTexture(type, i, &path);
+		std::string texturePath = path.C_Str();
+		//./scenes/sceneName/textures/xxx.jpg，这规定我们需要将texture放到models同级目录的textures下，这是为了与没有mtl的scene匹配
+		texturePath = "textures/" + texturePath;	
 		FzbTexture texture;
-		//texture.id = TextureFromFile(str.C_Str(), directory);
-		//texture.type = typeName;
-		texture.path = str.C_Str();		//meshPathDirectory + '/' + str.C_Str();
-		textures.push_back(texture);
-		//sceneTextures->push_back(texture); // 添加到已加载的纹理中
+		texture.path = path.C_Str();	
+		material.properties.textureProperties.insert({ typeName, texture });
 	}
-	return textures;
 }
-FzbMesh processMesh(aiMesh* meshData, const aiScene* scene, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix) {
+/*
+如果obj文件带有mtl文件作为材质信息，那么我们就根据mtl文件创建相应的material，存入mainScene的sceneMaterials中
+也可以给一个material数组引用，不一定是mainScene的
+*/
+FzbMaterial getMaterialFromMTL(aiMaterial* materialData) {
+	FzbMaterial material;
+	loadMaterialTextures(material, materialData, aiTextureType_DIFFUSE, "albedoMap");
+	//loadMaterialTextures(material, materialData, aiTextureType_SPECULAR, "specularMap");
+	loadMaterialTextures(material, materialData, aiTextureType_HEIGHT, "normalMap");
+
+	material.vertexFormat.useTexCoord = material.properties.textureProperties.size() > 0;
+
+	aiColor3D color;
+	//materialData->Get(AI_MATKEY_COLOR_AMBIENT, color);
+	materialData->Get(AI_MATKEY_COLOR_DIFFUSE, color);
+	material.properties.numberProperties.insert({ "albedo",  { glm::vec4(color.r, color.g, color.b, 1.0) } });
+	//materialData->Get(AI_MATKEY_COLOR_SPECULAR, color);
+	materialData->Get(AI_MATKEY_COLOR_EMISSIVE, color);
+	if(color.r != 0.0f || color.g != 0.0f || color.b != 0.0f) material.properties.numberProperties.insert({ "emissive", { glm::vec4(color.r, color.g, color.b, 1.0) } });
+
+	return material;
+}
+FzbMesh processMesh(aiMesh* meshData, const aiScene* sceneData, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix, std::map<std::string, FzbMaterial>* sceneMaterials) {
 	FzbMesh fzbMesh;
 	if (vertexFormat.useNormal) {
 		if (meshData->HasNormals()) fzbMesh.vertexFormat.useNormal = true;
@@ -257,36 +277,48 @@ FzbMesh processMesh(aiMesh* meshData, const aiScene* scene, FzbVertexFormat vert
 		offset += face.mNumIndices;
 	}
 	fzbMesh.indexArraySize = fzbMesh.indices.size();
+
+	if (sceneData->mNumMaterials > 1) {		//有一个默认材质
+		aiMaterial* materialData = sceneData->mMaterials[meshData->mMaterialIndex];
+		FzbMaterial material = getMaterialFromMTL(materialData);
+		material.id = std::string(meshData->mName.C_Str()) + "Material";
+		material.type = "diffuse";
+		sceneMaterials->insert({ material.id, material });
+		fzbMesh.material = &sceneMaterials->at(material.id);
+		fzbMesh.mtlMaterial = true;
+	}
+
 	return fzbMesh;
 }
-std::vector<FzbMesh> processNode(aiNode* node, const aiScene* scene, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix) {
+std::vector<FzbMesh> processNode(aiNode* node, const aiScene* sceneData, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix, std::map<std::string, FzbMaterial>* sceneMaterials) {
 	std::vector<FzbMesh> meshes;
 	for (uint32_t i = 0; i < node->mNumMeshes; i++) {
-		aiMesh* meshData = scene->mMeshes[node->mMeshes[i]];
-		meshes.push_back(processMesh(meshData, scene, vertexFormat, transformMatrix));
+		aiMesh* meshData = sceneData->mMeshes[node->mMeshes[i]];
+		meshes.push_back(processMesh(meshData, sceneData, vertexFormat, transformMatrix, sceneMaterials));
 	}
 
 	for (uint32_t i = 0; i < node->mNumChildren; i++) {
-		std::vector<FzbMesh> results = processNode(node->mChildren[i], scene, vertexFormat, transformMatrix);
+		std::vector<FzbMesh> results = processNode(node->mChildren[i], sceneData, vertexFormat, transformMatrix, sceneMaterials);
 		meshes.insert(meshes.begin(), results.begin(), results.end());
 	}
 	return meshes;
 }
-std::vector<FzbMesh> fzbGetMeshFromOBJ(std::string path, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix) {
+std::vector<FzbMesh> fzbGetMeshFromOBJ(std::string path, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix, std::map<std::string, FzbMaterial>* sceneMaterials) {
 	Assimp::Importer import;
 	uint32_t needs = aiProcess_Triangulate |
 		(vertexFormat.useTexCoord ? aiProcess_FlipUVs : aiPostProcessSteps(0u)) |
 		(vertexFormat.useNormal ? aiProcess_GenSmoothNormals : aiPostProcessSteps(0u)) |
 		(vertexFormat.useTangent ? aiProcess_CalcTangentSpace : aiPostProcessSteps(0u));
-	const aiScene* scene = import.ReadFile(path, needs);	//相对地址从main程序目录开始，也就是在FzbRenderer下，所以相对地址要从那里开始
+	const aiScene* sceneData = import.ReadFile(path, needs);	//相对地址从main程序目录开始，也就是在FzbRenderer下，所以相对地址要从那里开始
 
-	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+	if (!sceneData || sceneData->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !sceneData->mRootNode) {
 		std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
 		throw std::runtime_error("ERROR::ASSIMP::" + (std::string)import.GetErrorString());
 	}
 
 	//std::string  meshPathDirectory = path.substr(0, path.find_last_of('/'));
-	std::vector<FzbMesh> meshes = processNode(scene->mRootNode, scene, vertexFormat, transformMatrix);
+	if (sceneMaterials == nullptr) sceneMaterials = &FzbRenderer::globalData.mainScene.sceneMaterials;
+	std::vector<FzbMesh> meshes = processNode(sceneData->mRootNode, sceneData, vertexFormat, transformMatrix, sceneMaterials);
 	return meshes;
 }
 
@@ -368,8 +400,27 @@ void FzbMeshBatch::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeli
 	//vkCmdDrawIndexedIndirect(commandBuffer, drawIndexedIndirectCommandBuffer.buffer, 0, drawIndexedIndirectCommandSize, sizeof(VkDrawIndexedIndirectCommand));
 }
 
+FzbLight::FzbLight() {};
 FzbLight::FzbLight(glm::vec3 position, glm::vec3 strength, glm::mat4 viewMatrix) {
 	this->position = position;
 	this->strength = strength;
 	this->viewMatrix = viewMatrix;
 }
+FzbLight::FzbLight(std::string dataPath, glm::mat4 modelMatrix, glm::vec3 strength) {
+	this->type = FZB_AREA;
+	std::vector<FzbMesh> lights = fzbGetMeshFromOBJ(dataPath, FzbVertexFormat(true), modelMatrix);
+	FzbMesh ligtMesh = lights[0];
+	std::vector<glm::vec3> vertexPos(ligtMesh.indices.size());
+	for (int i = 0; i < ligtMesh.indices.size(); ++i) {
+		uint32_t startIndex = ligtMesh.indices[i] * 6;
+		vertexPos[i] = glm::vec3(ligtMesh.vertices[startIndex], ligtMesh.vertices[startIndex + 1], ligtMesh.vertices[startIndex + 2]);
+	}
+	this->normal = glm::vec3(ligtMesh.vertices[3], ligtMesh.vertices[4], ligtMesh.vertices[5]);
+	this->edge0 = vertexPos[1] - vertexPos[0];
+	this->edge1 = vertexPos[vertexPos.size() - 1] - vertexPos[0];
+	this->position = vertexPos[0];
+	if(strength == glm::vec3(1.0f)) this->strength = ligtMesh.material->properties.numberProperties["emissive"].value;
+	this->area = glm::length(this->edge0) * glm::length(this->edge1);
+	this->material = ligtMesh.material;
+}
+FzbLight::FzbLight(glm::mat4 modelMatrix, glm::vec3 strength) {};

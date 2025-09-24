@@ -3,6 +3,7 @@
 		<property name = "albedoMap" type = "texture"/>
 		<property name = "normalMap" type = "texture"/>
 		<property name = "albedo" type = "rgba" value = "1.0, 1.0, 1.0, 1.0"/>
+		<property name = "emissive" type = "rgba" value = "1.0, 1.0, 1.0, 1.0"/>
 	</Properties>
 	<Macros>	<!--规定宏必须是use + 属性名-->
 		<macro name = "useVertexNormal" usability = "true" />
@@ -13,6 +14,7 @@
 		<macro name = "useNumberProperty" usability = "false" />
 		<macro name = "useAlbedoMap" usability = "false" />
 		<macro name = "useAlbedo" usability = "false" />
+		<macro name = "useEmissive" usability = "false" />
 		<macro name = "useNormalMap" usability = "false" />
 		
 		<macro name = "useFaceNormal" usability = "false" />
