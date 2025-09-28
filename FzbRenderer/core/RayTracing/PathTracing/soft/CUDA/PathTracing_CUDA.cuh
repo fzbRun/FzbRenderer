@@ -75,5 +75,4 @@ private:
 	uint32_t runCount = 0;
 	double meanRunTime = 0.0;
 };
-
 #endif

@@ -8,6 +8,9 @@
 	</rendererType>
 	<rendererType value = "PathTracing_soft">
 		<available value = "true" />
+		<rendererComponentSetting>
+			<spp value = "1" />
+		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "BVH">
 				<available value = "true" />
@@ -18,7 +21,7 @@
 	<rendererType value = "PathTracing_soft">
 		<available value = "true" />
 		<rendererComponentSetting>
-			<spp value = "32" />
+			<spp value = "1" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "BVH">

@@ -4,6 +4,7 @@
 #include <iostream>
 #include "../FzbRenderer.h"
 #include "CUDA/FzbMeshCUDA.cuh"
+#include "FzbCreateSimpleMesh.h"
 
 float FzbAABBBox::getAxis(uint32_t k) {
 	if (k > 5) throw std::out_of_range("getAxis: AABBÃ»ÓÐµÚ" + std::to_string(k) + "Öá");
@@ -210,8 +211,21 @@ FzbMaterial getMaterialFromMTL(aiMaterial* materialData) {
 	material.properties.numberProperties.insert({ "albedo",  { glm::vec4(color.r, color.g, color.b, 1.0) } });
 	//materialData->Get(AI_MATKEY_COLOR_SPECULAR, color);
 	materialData->Get(AI_MATKEY_COLOR_EMISSIVE, color);
-	if(color.r != 0.0f || color.g != 0.0f || color.b != 0.0f) material.properties.numberProperties.insert({ "emissive", { glm::vec4(color.r, color.g, color.b, 1.0) } });
+	material.properties.numberProperties.insert({ "emissive", { glm::vec4(color.r, color.g, color.b, 1.0) } });
 
+	int illumModel = 0;
+	//materialData->Get(AI_MATKEY_SHADING_MODEL, illumModel);
+	materialData->Get("$mat.illum", 0, 0, illumModel);
+	if (illumModel == 0) {	//diffuse
+		material.type = "diffuse";
+	}
+	else if (illumModel == 1) {	//roughconductor
+		material.type = "roughconductor";
+		float opacity = 1.0f;
+		materialData->Get(AI_MATKEY_OPACITY, opacity);
+		material.properties.numberProperties.insert({ "bsdfPara", { glm::vec4(opacity, 0.0f, 0.0f, 0.0f) } });
+	}
+	
 	return material;
 }
 FzbMesh processMesh(aiMesh* meshData, const aiScene* sceneData, FzbVertexFormat vertexFormat, glm::mat4 transformMatrix, std::map<std::string, FzbMaterial>* sceneMaterials) {
@@ -282,7 +296,6 @@ FzbMesh processMesh(aiMesh* meshData, const aiScene* sceneData, FzbVertexFormat 
 		aiMaterial* materialData = sceneData->mMaterials[meshData->mMaterialIndex];
 		FzbMaterial material = getMaterialFromMTL(materialData);
 		material.id = std::string(meshData->mName.C_Str()) + "Material";
-		material.type = "diffuse";
 		sceneMaterials->insert({ material.id, material });
 		fzbMesh.material = &sceneMaterials->at(material.id);
 		fzbMesh.mtlMaterial = true;
@@ -401,26 +414,33 @@ void FzbMeshBatch::render(VkCommandBuffer commandBuffer, VkPipelineLayout pipeli
 }
 
 FzbLight::FzbLight() {};
-FzbLight::FzbLight(glm::vec3 position, glm::vec3 strength, glm::mat4 viewMatrix) {
+FzbLight::FzbLight(glm::vec3 position, glm::mat4 viewMatrix) {
 	this->position = position;
-	this->strength = strength;
 	this->viewMatrix = viewMatrix;
 }
-FzbLight::FzbLight(std::string dataPath, glm::mat4 modelMatrix, glm::vec3 strength) {
+FzbLight::FzbLight(std::string dataPath, glm::mat4 modelMatrix) {
 	this->type = FZB_AREA;
 	std::vector<FzbMesh> lights = fzbGetMeshFromOBJ(dataPath, FzbVertexFormat(true), modelMatrix);
-	FzbMesh ligtMesh = lights[0];
-	std::vector<glm::vec3> vertexPos(ligtMesh.indices.size());
-	for (int i = 0; i < ligtMesh.indices.size(); ++i) {
-		uint32_t startIndex = ligtMesh.indices[i] * 6;
-		vertexPos[i] = glm::vec3(ligtMesh.vertices[startIndex], ligtMesh.vertices[startIndex + 1], ligtMesh.vertices[startIndex + 2]);
+	FzbMesh lightMesh = lights[0];
+	std::vector<glm::vec3> vertexPos(lightMesh.indices.size());
+	for (int i = 0; i < lightMesh.indices.size(); ++i) {
+		uint32_t startIndex = lightMesh.indices[i] * 6;
+		vertexPos[i] = glm::vec3(lightMesh.vertices[startIndex], lightMesh.vertices[startIndex + 1], lightMesh.vertices[startIndex + 2]);
 	}
-	this->normal = glm::vec3(ligtMesh.vertices[3], ligtMesh.vertices[4], ligtMesh.vertices[5]);
+	this->normal = glm::vec3(lightMesh.vertices[3], lightMesh.vertices[4], lightMesh.vertices[5]);
 	this->edge0 = vertexPos[1] - vertexPos[0];
 	this->edge1 = vertexPos[vertexPos.size() - 1] - vertexPos[0];
 	this->position = vertexPos[0];
-	if(strength == glm::vec3(1.0f)) this->strength = ligtMesh.material->properties.numberProperties["emissive"].value;
 	this->area = glm::length(this->edge0) * glm::length(this->edge1);
-	this->material = ligtMesh.material;
+	this->material = lightMesh.material;
+	this->strength = this->material->properties.numberProperties["emissive"].value;
 }
-FzbLight::FzbLight(glm::mat4 modelMatrix, glm::vec3 strength) {};
+FzbLight::FzbLight(glm::mat4 modelMatrix) {
+	FzbMesh lightMesh;
+	fzbCreateRectangle(lightMesh, FzbVertexFormat(true), modelMatrix);
+	this->normal = glm::vec3(lightMesh.vertices[3], lightMesh.vertices[4], lightMesh.vertices[5]);
+	this->edge0 = glm::vec3(lightMesh.vertices[6] - lightMesh.vertices[0], lightMesh.vertices[7] - lightMesh.vertices[1], lightMesh.vertices[8] - lightMesh.vertices[2]);
+	this->edge1 = glm::vec3(lightMesh.vertices[18] - lightMesh.vertices[0], lightMesh.vertices[19] - lightMesh.vertices[1], lightMesh.vertices[20] - lightMesh.vertices[2]);
+	this->position = glm::vec3(lightMesh.vertices[0], lightMesh.vertices[1], lightMesh.vertices[2]);
+	this->area = glm::length(this->edge0) * glm::length(this->edge1);
+};

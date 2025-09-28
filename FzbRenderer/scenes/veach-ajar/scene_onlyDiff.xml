@@ -47,8 +47,11 @@
 		</bsdf>
 		<bsdf type="twosided" id="LightBSDF">
 			<bsdf type="diffuse">
-				<rgb name="reflectance" value="0, 0, 0" />
+				<rgb name="reflectance" value="1, 1, 1" />
 			</bsdf>
+			<emissive>
+				<rgb name="radiance" value="20, 20, 20" />
+			</emissive>
 		</bsdf>
 		<bsdf type="twosided" id="Pot3BSDF">
 			<bsdf type="diffuse">
@@ -57,17 +60,14 @@
 		</bsdf>
 	</bsdfs>
 	<lights>
-		<light type="point" id="Light">
+		<light type="rectangle" id="Light">
 			<shape>
 				<transform name="to_world">
 					<matrix value="0.730445 0 0 -4.4391 0 -1.32136 -1.42138e-007 1.50656 0 1.42138e-007 -1.93037 -4.44377 0 0 0 1" />
 				</transform>
 				<ref id="LightBSDF" />
-				<hasAddMesh value = "true" />
+				<hasAddMesh value = "false" />
 			</shape>
-			<emitter type="point">
-				<rgb name="radiance" value="1, 1, 1" />
-			</emitter>
 		</light>
 	</lights>
 	<shapes>

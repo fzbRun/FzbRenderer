@@ -2,7 +2,7 @@
 #include "../../SceneDivision/BVH/CUDA/createBVH.cuh"
 
 //-------------------------------------------------------------------------------------------------
-__device__ glm::mat3 getTBN(glm::vec3 edge0, glm::vec3 edge1, glm::vec2 uv_diff0, glm::vec2 uv_diff1, glm::vec3 normal) {
+__device__ glm::mat3 getTBN(const glm::vec3& edge0, const glm::vec3& edge1, const glm::vec2& uv_diff0, const glm::vec2& uv_diff1, const glm::vec3& normal, float& handed) {
 	glm::vec3 tangent;
 	glm::vec3 bitangent;
 	float determinant = uv_diff0.x * uv_diff1.y - uv_diff0.y * uv_diff1.x;
@@ -22,12 +22,12 @@ __device__ glm::mat3 getTBN(glm::vec3 edge0, glm::vec3 edge1, glm::vec2 uv_diff0
 		bitangent = r * (-uv_diff1.x * edge0 + uv_diff0.x * edge1);
 
 		tangent = glm::normalize(tangent - normal * glm::dot(normal, tangent));
-		float handed = (glm::dot(glm::cross(normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
+		handed = (glm::dot(glm::cross(normal, tangent), bitangent) < 0.0f) ? -1.0f : 1.0f;
 		bitangent = glm::cross(normal, tangent) * handed;
 	}
 	return glm::mat3(tangent, bitangent, normal);
 }
-__device__ void getTriangleVertexAttribute(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTriangleAttribute& triangleAttribute) {
+__device__ void getTriangleVertexPos(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTrianglePos& trianglePos) {
 	//FzbPathTracingMaterialUniformObject material = materialInfoArray[triangle.materialIndex];
 	//triangleAttribute.materialType = material.materialType;
 
@@ -40,9 +40,9 @@ __device__ void getTriangleVertexAttribute(const float* __restrict__ vertices, F
 	uint32_t attributeStartIndex2 = triangle.indices2 * vertexStride;
 
 	//获取顶点
-	triangleAttribute.pos0 = glm::vec3(vertices[attributeStartIndex0], vertices[attributeStartIndex0 + 1], vertices[attributeStartIndex0 + 2]);
-	triangleAttribute.pos1 = glm::vec3(vertices[attributeStartIndex1], vertices[attributeStartIndex1 + 1], vertices[attributeStartIndex1 + 2]);
-	triangleAttribute.pos2 = glm::vec3(vertices[attributeStartIndex2], vertices[attributeStartIndex2 + 1], vertices[attributeStartIndex2 + 2]);
+	trianglePos.pos0 = glm::vec3(vertices[attributeStartIndex0], vertices[attributeStartIndex0 + 1], vertices[attributeStartIndex0 + 2]);
+	trianglePos.pos1 = glm::vec3(vertices[attributeStartIndex1], vertices[attributeStartIndex1 + 1], vertices[attributeStartIndex1 + 2]);
+	trianglePos.pos2 = glm::vec3(vertices[attributeStartIndex2], vertices[attributeStartIndex2 + 1], vertices[attributeStartIndex2 + 2]);
 	//attributeStartIndex0 += 3;
 	//attributeStartIndex1 += 3;
 	//attributeStartIndex2 += 3;
@@ -107,8 +107,9 @@ __device__ void getTriangleVertexAttribute(const float* __restrict__ vertices, F
 }
 __device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices,
 	const cudaTextureObject_t* __restrict__ materialTextures,
-	FzbBvhNodeTriangleInfo triangle, FzbTriangleAttribute& triangleAttribute) {
+	const FzbBvhNodeTriangleInfo& triangle, FzbTriangleAttribute& triangleAttribute, const glm::vec3& hitPos) {
 	FzbPathTracingMaterialUniformObject material = materialInfoArray[triangle.materialIndex];
+	triangleAttribute.materialType = material.materialType;
 	
 	int vertexStride = 3; // 位置总是有3个分量
 	if (triangle.vertexFormat & 1) vertexStride += 3; // 法线
@@ -118,8 +119,8 @@ __device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices,
 	uint32_t attributeStartIndex1 = triangle.indices1 * vertexStride + 3;
 	uint32_t attributeStartIndex2 = triangle.indices2 * vertexStride + 3;
 
-	glm::vec3 edge0 = triangleAttribute.pos1 - triangleAttribute.pos0;
-	glm::vec3 edge1 = triangleAttribute.pos2 - triangleAttribute.pos0;
+	glm::vec3 edge0 = triangleAttribute.pos.pos1 - triangleAttribute.pos.pos0;
+	glm::vec3 edge1 = triangleAttribute.pos.pos2 - triangleAttribute.pos.pos0;
 	//获取法线
 	if (triangle.vertexFormat & 1) {	//三角形顶点属性有法线
 		glm::vec3 normal0 = glm::vec3(vertices[attributeStartIndex0], vertices[attributeStartIndex0 + 1], vertices[attributeStartIndex0 + 2]);
@@ -131,15 +132,24 @@ __device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices,
 		triangleAttribute.normal = glm::normalize((normal0 + normal1 + normal2) / 3.0f);
 	}
 	else triangleAttribute.normal = glm::normalize(glm::cross(edge0, edge1)); //没有法线，那么使用面法线
-	//获取texCoords，根据三个顶点的线性插值
+	//获取texCoords，根据三个顶点的线性插值；不对，不应该这样，应该根据hitPos的位置来决定texCoord
 	glm::vec2 texCoords0;
 	glm::vec2 texCoords1;
 	glm::vec2 texCoords2;
 	if (triangle.vertexFormat & 2) {
+		float weight0 = glm::length(hitPos - triangleAttribute.pos.pos0);
+		float weight1 = glm::length(hitPos - triangleAttribute.pos.pos1);
+		float weight2 = glm::length(hitPos - triangleAttribute.pos.pos2);
+		weight0 = 1.0f / (weight0 + 1e-5f);
+		weight1 = 1.0f / (weight1 + 1e-5f);
+		weight2 = 1.0f / (weight2 + 1e-5f);
+
 		texCoords0 = glm::vec2(vertices[attributeStartIndex0], vertices[attributeStartIndex0 + 1]);
 		texCoords1 = glm::vec2(vertices[attributeStartIndex1], vertices[attributeStartIndex1 + 1]);
 		texCoords2 = glm::vec2(vertices[attributeStartIndex2], vertices[attributeStartIndex2 + 1]);
-		triangleAttribute.texCoords = (texCoords0 + texCoords1 + texCoords2) / 3.0f;
+		triangleAttribute.texCoords = weight0 * texCoords0 + weight1 * texCoords1 + weight2 * texCoords2;//(texCoords0 + texCoords1 + texCoords2) / 3.0f;
+		triangleAttribute.texCoords /= (weight0 + weight1 + weight2);
+		//printf("%f %f\n", triangleAttribute.texCoords.x, triangleAttribute.texCoords.y);
 		attributeStartIndex0 += 2;
 		attributeStartIndex1 += 2;
 		attributeStartIndex2 += 2;
@@ -153,11 +163,13 @@ __device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices,
 		glm::vec3 tangent2 = glm::vec3(vertices[attributeStartIndex2], vertices[attributeStartIndex2 + 1], vertices[attributeStartIndex0 + 2]);
 		float handed = vertices[attributeStartIndex0 + 3];
 		tangent = glm::normalize((tangent0 + tangent1 + tangent2) / 3.0f);
+		triangleAttribute.tangent = tangent;
+		triangleAttribute.handed = handed;
 	}
 
 	if (material.textureIndex[0] > -1) {	//	//如果存在normalMap，则采样获取normal
-		cudaTextureObject_t noramlTexture = materialTextures[material.textureIndex[1]];
-		float4 textureNormal = tex2D<float4>(noramlTexture, triangleAttribute.texCoords.x, triangleAttribute.texCoords.y);
+		cudaTextureObject_t normalTexture = materialTextures[material.textureIndex[0]];
+		float4 textureNormal = tex2D<float4>(normalTexture, triangleAttribute.texCoords.x, triangleAttribute.texCoords.y);
 
 		//创建TBN，将textureNormal变换到worldSpace中
 		glm::mat3 TBN;
@@ -169,19 +181,27 @@ __device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices,
 		else {
 			glm::vec2 uv_diff0 = texCoords1 - texCoords0;
 			glm::vec2 uv_diff1 = texCoords2 - texCoords0;
-			TBN = getTBN(edge0, edge1, uv_diff0, uv_diff1, triangleAttribute.normal);
+			TBN = getTBN(edge0, edge1, uv_diff0, uv_diff1, triangleAttribute.normal, handed);
+			triangleAttribute.tangent = TBN[0];
+			triangleAttribute.handed = handed;
 		}
 		triangleAttribute.normal = glm::normalize(TBN * (glm::vec3(textureNormal.x, textureNormal.y, textureNormal.z) * 2.0f - 1.0f));
 	}
 	
-	if (material.materialType == 0) {	//diffuse材质的material
-		//获取albedo
+	triangleAttribute.albedo = material.numberAttribute[0];	//获取albedo
+	if (material.textureIndex[1] > -1) {	//有albedoMap
+		cudaTextureObject_t albedoTexture = materialTextures[material.textureIndex[1]];
+		float4 textureAlbedo = tex2D<float4>(albedoTexture, triangleAttribute.texCoords.x, triangleAttribute.texCoords.y);
+		triangleAttribute.albedo *= glm::vec3(textureAlbedo.x, textureAlbedo.y, textureAlbedo.z);
+	}
+	if (material.materialType == 1) {
 		triangleAttribute.albedo = material.numberAttribute[0];
-		if (material.textureIndex[1] > -1) {	//有albedoMap
-			cudaTextureObject_t albedoTexture = materialTextures[material.textureIndex[0]];
-			float4 textureAlbedo = tex2D<float4>(albedoTexture, triangleAttribute.texCoords.x, triangleAttribute.texCoords.y);
-			triangleAttribute.albedo *= glm::vec3(textureAlbedo.x, textureAlbedo.y, textureAlbedo.z);
-		}
+		triangleAttribute.roughness = glm::clamp(material.numberAttribute[1].x, 0.1f, 1.0f);
+		//if (triangleAttribute.albedo == glm::vec3(0.0f)) {	//如果使用eta和k
+		//	glm::vec3 eta = material.numberAttribute[2];
+		//	glm::vec3 k = material.numberAttribute[3];
+		//	triangleAttribute.albedo = ((eta - 1.0f) * (eta - 1.0f) + k * k) / ((eta + 1.0f) * (eta + 1.0f) + k * k);
+		//}
 	}
 	triangleAttribute.emissive = material.emissive;
 }

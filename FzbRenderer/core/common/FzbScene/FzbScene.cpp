@@ -3,6 +3,7 @@
 #include "./FzbScene.h"
 #include "../FzbRenderer.h"
 #include "./compressVertices.h"
+#include "../FzbMesh/FzbCreateSimpleMesh.h"
 
 #include <glm/ext/matrix_transform.hpp>
 
@@ -363,37 +364,44 @@ FzbMainScene::FzbMainScene(std::string path) {
 			if(pugi::xml_node tranform = shapeNode.select_node(".//transform[@name='to_world']").node())
 				transformMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
 
-			glm::vec3 strength = glm::vec3(1.0f);	//默认值
-			if (pugi::xml_node emitter = lightNode.child("emitter"))
-				strength = fzbGetRGBFromString(emitter.select_node(".//rgb[@name='radiance']").node().attribute("value").value());
+			//glm::vec3 strength = glm::vec3(1.0f);	//默认值
+			//if (pugi::xml_node emitter = lightNode.child("emitter"))
+			//	strength = fzbGetRGBFromString(emitter.select_node(".//rgb[@name='radiance']").node().attribute("value").value());
 
 			FzbLight light;
 			if (lightType == "point") {
 				glm::vec3 position = glm::vec3(transformMatrix * glm::vec4(1.0f));
-				light = FzbLight(position, strength);
+				light = FzbLight(position);
 			}
 			else if (lightType == "rectangle") {
-				std::string lightDataPath;
+				std::string lightDataPath = "";
 				if (pugi::xml_node pathNode = shapeNode.select_node(".//string[@name='filename']").node()) {
 					lightDataPath = this->scenePath + "/" + std::string(pathNode.attribute("value").value());
 					light = FzbLight(lightDataPath);
 				}
-				else light = FzbLight(transformMatrix, strength);
+				else light = FzbLight(transformMatrix);
 
 				//说明光源mesh在后续不会自动添加到sceneMeshSet中，需要我们手动添加
 				if (pugi::xml_node meshNode = shapeNode.child("hasAddMesh")) {
 					if (std::string(meshNode.attribute("value").value()) == "false") {
-						FzbMesh ligtMesh;
+						FzbMesh lightMesh;
 						std::string materialID;
 						if (pugi::xml_node material = shapeNode.select_node(".//ref").node()) {
 							materialID = material.attribute("id").value();
 							//如果没有mtl，并且给的materalID也没有对应的material，则给默认材质
-							if (!sceneMaterials.count(materialID)) materialID = "defaultMaterial";
+							if (!sceneMaterials.count(materialID)) if (!sceneMaterials.count(materialID)) materialID = "defaultMaterial";
 						}
-						ligtMesh.transformMatrix = transformMatrix;
-						ligtMesh.material = &sceneMaterials[materialID];
-						ligtMesh.id = materialID;
-						this->sceneMeshSet.push_back(ligtMesh);
+						light.strength = sceneMaterials[materialID].properties.numberProperties["emissive"].value;
+
+						lightMesh.type = rectangle;
+						lightMesh.path = lightDataPath;
+						lightMesh.transformMatrix = transformMatrix;
+						lightMesh.material = &sceneMaterials[materialID];
+						lightMesh.id = materialID;
+						//uint32_t index = (uint32_t)this->sceneMeshSet.size();
+						//if (differentVertexFormatMeshIndexs.count(lightMesh.vertexFormat)) differentVertexFormatMeshIndexs[lightMesh.vertexFormat].push_back(index);
+						//else differentVertexFormatMeshIndexs[lightMesh.vertexFormat] = { index };
+						this->sceneMeshSet.push_back(lightMesh);
 					}
 				}
 			}
@@ -423,8 +431,8 @@ FzbMainScene::FzbMainScene(std::string path) {
 		//	continue;
 		//}
 
-		pugi::xml_node material = shapeNode.select_node(".//ref").node();
-		std::string materialID = material.attribute("id").value();
+		std::string materialID = "defaultMaterial";
+		if (pugi::xml_node material = shapeNode.select_node(".//ref").node()) materialID = material.attribute("id").value();
 		if (!sceneMaterials.count(materialID)) materialID = "defaultMaterial";
 
 		glm::mat4 transformMatrix(1.0f);
@@ -468,7 +476,11 @@ void FzbMainScene::initScene(bool compress, bool isMainScene) {
 	std::vector<FzbMesh> sceneMeshes_hasData; sceneMeshes_hasData.reserve(this->sceneMeshSet.size());
 	for (int i = 0; i < this->sceneMeshSet.size(); ++i) {
 		FzbMesh& mesh_nodata = this->sceneMeshSet[i];
-		std::vector<FzbMesh> meshes_hasData = fzbGetMeshFromOBJ(mesh_nodata.path, fzbVertexFormatMergeUpward(mesh_nodata.vertexFormat, vertexFormat_allMesh_prepocess), mesh_nodata.transformMatrix);
+		std::vector<FzbMesh> meshes_hasData(1);
+		FzbVertexFormat vertexFormat_all = fzbVertexFormatMergeUpward(mesh_nodata.vertexFormat, vertexFormat_allMesh_prepocess);
+		if (mesh_nodata.path == "") {
+			if (mesh_nodata.type == rectangle) fzbCreateRectangle(meshes_hasData[0], vertexFormat_all, mesh_nodata.transformMatrix);
+		}else meshes_hasData = fzbGetMeshFromOBJ(mesh_nodata.path, vertexFormat_all, mesh_nodata.transformMatrix);
 		for (int j = 0; j < meshes_hasData.size(); ++j) {
 			FzbMesh& mesh_hasData = meshes_hasData[j];
 			mesh_hasData.path = mesh_nodata.path;
@@ -491,6 +503,7 @@ void FzbMainScene::initScene(bool compress, bool isMainScene) {
 		}
 		sceneMeshes_hasData.insert(sceneMeshes_hasData.end(), meshes_hasData.begin(), meshes_hasData.end());
 	}
+	//this->sceneMeshSet.insert(this->sceneMeshSet.end(), sceneMeshes_hasData.begin(), sceneMeshes_hasData.end());
 	this->sceneMeshSet = sceneMeshes_hasData;
 	for (int i = 0; i < this->sceneMeshSet.size(); ++i) {
 		FzbMesh& mesh = this->sceneMeshSet[i];
@@ -565,19 +578,17 @@ void FzbMainScene::createCameraAndLightBuffer() {
 	bool useLights = this->sceneLights.size();
 
 	//camera的数据每帧都会变化，所以这里只是创建buffer，但是不填入数据，具体数据由渲染组件填入
-	if (useCameras) {
-		cameraBuffer = fzbCreateUniformBuffer(sizeof(FzbCameraUniformBufferObject));
-	}
+	if (useCameras) this->cameraBuffer = fzbCreateUniformBuffer(sizeof(FzbCameraUniformBufferObject));
 
 	if (useLights) {
-		lightsBuffer = fzbCreateUniformBuffer(sizeof(FzbLightsUniformBufferObject));
+		this->lightsBuffer = fzbCreateUniformBuffer(sizeof(FzbLightsUniformBufferObject));
 		FzbLightsUniformBufferObject lightsData(sceneLights.size());
 		for (int i = 0; i < sceneLights.size(); i++) {
 			FzbLight& light = sceneLights[i];
 			lightsData.lightData[i].pos = glm::vec4(light.position, 1.0f);
 			lightsData.lightData[i].strength = glm::vec4(light.strength, 1.0f);
 		}
-		memcpy(lightsBuffer.mapped, &lightsData, sizeof(FzbLightsUniformBufferObject));
+		memcpy(this->lightsBuffer.mapped, &lightsData, sizeof(FzbLightsUniformBufferObject));
 	}
 }
 void FzbMainScene::createCameraAndLightDescriptor() {
@@ -613,8 +624,8 @@ void FzbMainScene::createCameraAndLightDescriptor() {
 
 	std::vector<VkWriteDescriptorSet> uniformDescriptorWrites(sceneCameras.size() + sceneLights.size());
 	int index = 0;
+	VkDescriptorBufferInfo cameraUniformBufferInfo{};
 	if (useCameras) {
-		VkDescriptorBufferInfo cameraUniformBufferInfo{};
 		cameraUniformBufferInfo.buffer = this->cameraBuffer.buffer;
 		cameraUniformBufferInfo.offset = 0;
 		cameraUniformBufferInfo.range = sizeof(FzbCameraUniformBufferObject);
@@ -628,8 +639,8 @@ void FzbMainScene::createCameraAndLightDescriptor() {
 		++index;
 	}
 
+	VkDescriptorBufferInfo lightUniformBufferInfo{};
 	if (useLights) {
-		VkDescriptorBufferInfo lightUniformBufferInfo{};
 		lightUniformBufferInfo.buffer = this->lightsBuffer.buffer;
 		lightUniformBufferInfo.offset = 0;
 		lightUniformBufferInfo.range = sizeof(FzbLightsUniformBufferObject);

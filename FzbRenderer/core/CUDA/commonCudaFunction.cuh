@@ -9,6 +9,7 @@
 #include <vector_types.h>
 #include <helper_math.h>
 #include <curand_kernel.h>
+#include "../common/FzbCommon.h"
 
 #ifndef COMMON_CUDA_FUNCTION_CUH
 #define COMMON_CUDA_FUNCTION_CUH
@@ -76,9 +77,10 @@ __device__ uint32_t pcg(uint32_t& state);
 __device__ uint2 pcg2d(uint2 v);
 __device__ float rand(uint32_t& seed);
 __device__ float RadicalInverse_VdC(uint bits);
-__device__ float2 Hammersley(uint i, uint N);
+__device__ glm::vec2 Hammersley(uint i, uint N);
 __global__ void init_curand_states(curandState* states, unsigned long seed, int n);
-__device__ float getRandomNumber(uint32_t& randomNumberSeed);
+__device__ float getCudaRandomNumber();
+//__device__ float getRandomNumberFromSeed(uint32_t& randomNumberSeed);
 
 __global__ void addDate_float_device(float* data, float date, uint32_t dataNum);
 void addDateCUDA_float(float* data, float date, uint32_t dataNum);

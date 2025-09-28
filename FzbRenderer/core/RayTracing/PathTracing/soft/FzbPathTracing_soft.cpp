@@ -89,36 +89,33 @@ void FzbPathTracing_soft::presentPrepare() {
 };
 
 FzbPathTracingCudaSourceSet FzbPathTracing_soft::createSource() {
-	std::unordered_set<std::string> sceneImagePaths;
+	std::unordered_map<std::string, int> sceneImagePaths;
 	for (auto& materialPair : this->mainScene->sceneMaterials) {
 		FzbMaterial& material = materialPair.second;
-
 		FzbPathTracingMaterialUniformObject materialUniformObject = createInitialMaterialUniformObject();
-		materialUniformObject.materialType = getMaterialType(material.type);
-		int textureCount = 0;
-		int numberAttributeCount = 0;
+		materialUniformObject.materialType = fzbGetPathTracingMaterialType(material.type);
 
 		for (auto& texturePair : material.properties.textureProperties) {
 			FzbTexture& texture = texturePair.second;
-			if (sceneImagePaths.count(texture.path)) continue;
-			FzbImage image;
-			std::string texturePathFromModel = this->mainScene->scenePath + "/" + texture.path;
-			image.texturePath = texturePathFromModel.c_str();
-			image.filter = texturePair.second.filter;
-			image.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR;
-			image.UseExternal = true;
-			image.initImage();
-
-			sceneImagePaths.insert(texture.path);
-			this->sceneTextures.push_back(image);
-			texture.image = &this->sceneTextures[this->sceneTextures.size() - 1];
-			materialUniformObject.textureIndex[textureCount++] = this->sceneTextures.size() - 1;
+			if (!sceneImagePaths.count(texture.path)) {
+				FzbImage image;
+				std::string texturePathFromModel = this->mainScene->scenePath + "/" + texture.path;
+				image.texturePath = texturePathFromModel.c_str();
+				image.filter = texturePair.second.filter;
+				image.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR;
+				image.UseExternal = true;
+				image.initImage();
+				this->sceneTextures.push_back(image);
+				sceneImagePaths.insert({ texture.path,this->sceneTextures.size() - 1 });
+			}
+			texture.image = &this->sceneTextures[sceneImagePaths[texture.path]];
+			materialUniformObject.textureIndex[material.getMaterialAttributeIndex(texturePair.first)] = sceneImagePaths[texture.path];
 		}
 
 		for (auto& numberPropertyPair : material.properties.numberProperties) {
 			FzbNumberProperty& numberProperty = numberPropertyPair.second;
 			if (numberPropertyPair.first == "emissive") materialUniformObject.emissive = numberProperty.value;
-			else materialUniformObject.numberAttribute[numberAttributeCount++] = numberProperty.value;
+			else materialUniformObject.numberAttribute[material.getMaterialAttributeIndex(numberPropertyPair.first)] = numberProperty.value;
 		}
 		this->sceneMaterialInfoArray.push_back(materialUniformObject);
 	}

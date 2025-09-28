@@ -303,9 +303,11 @@ __device__ void atomicMeanFloat4(uint32_t* addr, float4 val) {
 //----------------------------------------Ëæ»úÊý------------------------------------------------
 __device__ uint32_t pcg(uint32_t& state)
 {
-    uint32_t prev = state * 747796405u + 2891336453u;
-    uint32_t word = ((prev >> ((prev >> 28u) + 4u)) ^ prev) * 277803737u;
-    state = prev;
+    //uint32_t prev = state * 747796405u + 2891336453u;
+    //uint32_t word = ((prev >> ((prev >> 28u) + 4u)) ^ prev) * 277803737u;
+    //state = prev;
+    state = state * 747796405u + 2891336453u;
+    uint32_t word = ((state >> ((state >> 28u) + 4u)) ^ state) * 277803737u;
     return (word >> 22u) ^ word;
 }
 
@@ -349,9 +351,9 @@ __device__ float RadicalInverse_VdC(uint bits)
     bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
     return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
-__device__ float2 Hammersley(uint i, uint N)
+__device__ glm::vec2 Hammersley(uint i, uint N)
 {
-    return make_float2(float(i) / float(N), RadicalInverse_VdC(i));
+    return glm::vec2(float(i) / float(N), RadicalInverse_VdC(i));
 }
 
 __global__ void init_curand_states(curandState* states, unsigned long seed, int n) {
@@ -360,16 +362,9 @@ __global__ void init_curand_states(curandState* states, unsigned long seed, int 
         curand_init(seed, idx, 0, &states[idx]);
     }
 }
-//__device__ float getCudaRandomNumber() {
-//    uint32_t threadIndex = threadIdx.x + blockIdx.x * blockDim.x;
-//    return curand_uniform(&systemRandomNumberStates[threadIndex]);    //0-1
-//}
-__device__ float getRandomNumber(uint32_t& randomNumberSeed) {
-    if (useCudaRandom) {
-        uint32_t threadIndex = threadIdx.x + blockIdx.x * blockDim.x;
-        return curand_uniform(&systemRandomNumberStates[threadIndex]);    //0-1
-    }
-    else return rand(randomNumberSeed);
+__device__ float getCudaRandomNumber() {
+    uint32_t threadIndex = threadIdx.x + blockIdx.x * blockDim.x;
+    return curand_uniform(&systemRandomNumberStates[threadIndex]);    //0-1
 }
 
 //---------------------------------------------------------------------------------------

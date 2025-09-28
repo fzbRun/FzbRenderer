@@ -18,7 +18,6 @@
 			<transform name="to_world">
 				<matrix value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1" />
 			</transform>
-			<ref id="MaterialBSDF" />
 		</shape>
 	</shapes>
 </scene>

@@ -973,9 +973,9 @@ void FzbShader::createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMaterialPa
 		shaderVariants[i].createMeshBatch(meshMaterialPairs);
 	}
 }
-void FzbShader::createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages) {
+void FzbShader::createDescriptor(VkDescriptorPool sceneDescriptorPool) {
 	for (int i = 0; i < shaderVariants.size(); i++) {
-		shaderVariants[i].createDescriptor(sceneDescriptorPool, sceneImages);
+		shaderVariants[i].createDescriptor(sceneDescriptorPool);
 	}
 }
 void FzbShader::createPipeline(VkRenderPass renderPass, uint32_t subPassIndex, std::vector<VkDescriptorSetLayout> descriptorSetLayouts) {
@@ -1066,7 +1066,7 @@ FzbShaderVariant::FzbShaderVariant(FzbShader* publicShader, FzbMaterial* materia
 	}
 	changeVertexFormatAndMacros(material->vertexFormat);
 }
-void FzbShaderVariant::createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages) {
+void FzbShaderVariant::createDescriptor(VkDescriptorPool sceneDescriptorPool) {
 	//创造描述符
 	uint32_t textureNum = this->properties.textureProperties.size();
 	uint32_t numberNum = this->properties.numberProperties.size() > 0 ? 1 : 0;	//所有数值属性用一个uniformBuffer即可
@@ -1085,7 +1085,7 @@ void FzbShaderVariant::createDescriptor(VkDescriptorPool sceneDescriptorPool, st
 	}
 	this->descriptorSetLayout = fzbCreateDescriptLayout(type.size(), type, stage);
 	for (int i = 0; i < materials.size(); i++) {
-		materials[i]->createMaterialDescriptor(sceneDescriptorPool, this->descriptorSetLayout, sceneImages);
+		materials[i]->createMaterialDescriptor(sceneDescriptorPool, this->descriptorSetLayout);
 	}
 }
 /*

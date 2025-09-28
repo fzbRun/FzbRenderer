@@ -62,8 +62,9 @@ void FzbRasterizationSourceManager::createShader(std::map<std::string, FzbShader
 		else uniqueMaterial.insert(material);
 		FzbShaderInfo shaderInfo;
 		if (material->id == "defaultMaterial") shaderInfo = shaderInfos.at("diffuse"); //创造默认shader，匹配默认material
-		else shaderInfo = shaderInfos.at(material->type);
-
+		else if (shaderInfos.count(material->type)) shaderInfo = shaderInfos[material->type];
+		else continue;
+			
 		if (!this->shaderSet.count(shaderInfo.shaderPath)) this->shaderSet.insert({ shaderInfo.shaderPath, FzbShader(fzbGetRootPath() + shaderInfo.shaderPath, shaderInfo.extensions, shaderInfo.staticCompile) });
 		this->shaderSet[shaderInfo.shaderPath].createShaderVariant(material);
 	}
@@ -100,7 +101,7 @@ void FzbRasterizationSourceManager::createBufferAndDescriptorOfMaterial() {
 
 	//创建shader的描述符集合布局和material的描述符集合，不会创造非独有的material的描述符集合
 	for (auto& shader : shaderSet) {
-		shader.second.createDescriptor(descriptorPool, this->images);
+		shader.second.createDescriptor(descriptorPool);
 	}
 }
 

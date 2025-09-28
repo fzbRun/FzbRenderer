@@ -6,8 +6,9 @@
 		<tangent available = "false"/>
 	</vertexFormat>
 	<attributes>
-		<attribute name = "albedo"  type = "rgba" value = "1, 1, 1, 1"/>
 		<attribute name = "albedoMap" type = "texture" />
 		<attribute name = "normalMap"  type = "texture" />
+		<attribute name = "albedo"  type = "rgba" value = "1, 1, 1, 1"/>
+		<attribute name = "bsdf"  type = "rgba" value = "0.1, 0, 0, 0"/>	<!--0: roughness-->
 	</attributes>
 </Material>

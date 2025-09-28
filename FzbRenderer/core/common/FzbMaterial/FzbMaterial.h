@@ -9,6 +9,10 @@
 #ifndef FZB_MATERIAL_H
 #define FZB_MATERIAL_H
 
+enum MaterialType {
+	diffuse = 0,
+	roughconductor = 1
+};
 struct FzbShaderVariant;
 struct FzbMaterial {
 public:
@@ -24,6 +28,7 @@ public:
 	FzbVertexFormat vertexFormat;
 
 	bool hasCreateSource = false;	//当前material是否已经创造过资源了，如buffer和image
+	std::vector<FzbImage*> textureProperties;
 	FzbBuffer numberPropertiesBuffer;
 	VkDescriptorSet descriptorSet = nullptr;
 
@@ -37,9 +42,11 @@ public:
 	void clean();
 
 	void getDescriptorNum(uint32_t& textureNum, uint32_t numberPropertyNum);
+	int getMaterialAttributeIndex(std::string attribute);
+	int getMaterialTextureNum();
 	void createSource(std::string scenePath, std::map<std::string, FzbImage>& sceneImages);
 	void createMaterialNumberPropertiesBuffer();
-	void createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool, VkDescriptorSetLayout descriptorSetLayout, std::map<std::string, FzbImage*>& sceneImages);
+	void createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool, VkDescriptorSetLayout descriptorSetLayout);
 	bool operator==(const FzbMaterial& other) const;
 };
 namespace std {

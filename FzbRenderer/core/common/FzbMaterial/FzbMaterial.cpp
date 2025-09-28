@@ -1,9 +1,11 @@
 #include "./FzbMaterial.h"
 #include "../FzbRenderer.h"
 #include "../../Materials/Diffuse/FzbDiffuseMaterial.h"
+#include "../../Materials/Roughconductor/FzbRoughconductorMaterial.h"
 
 std::map<std::string, std::string> materialPaths{
-	{ "diffuse", "/core/Materials/Diffuse" }
+	{ "diffuse", "/core/Materials/Diffuse" },
+	{ "roughconductor", "/core/Materials/Roughconductor" },
 };
 
 FzbMaterial::FzbMaterial() {};
@@ -46,9 +48,8 @@ void FzbMaterial::getMaterialXMLInfo() {
 	}
 }
 void FzbMaterial::getSceneXMLInfo(pugi::xml_node& materialNode) {
-	if (this->type == "diffuse") {
-		FzbDiffuseMaterial::getSceneXMLInfo(this, materialNode);
-	}
+	if (this->type == "diffuse") FzbDiffuseMaterial::getSceneXMLInfo(this, materialNode);
+	else if (this->type == "roughconductor") FzbRoughconductorMaterial::getSceneXMLInfo(this, materialNode);
 }
 
 void FzbMaterial::clean() {
@@ -60,9 +61,20 @@ void FzbMaterial::getDescriptorNum(uint32_t& textureNum, uint32_t numberProperty
 	numberPropertyNum += this->properties.numberProperties.size();
 	return;
 }
+int FzbMaterial::getMaterialAttributeIndex(std::string attribute) {
+	if (this->type == "diffuse") return FzbDiffuseMaterial::getAttributeIndex(attribute);
+	else if (this->type == "roughconductor") FzbRoughconductorMaterial::getAttributeIndex(attribute);
+}
+int FzbMaterial::getMaterialTextureNum() {
+	if (this->type == "diffuse") return FzbDiffuseMaterial::textureNum;
+	else if (this->type == "roughconductor") FzbRoughconductorMaterial::textureNum;
+}
 void FzbMaterial::createSource(std::string scenePath, std::map<std::string, FzbImage>& sceneImages) {
 	if (this->hasCreateSource) return;
 	if (this->properties.numberProperties.size() > 0) this->createMaterialNumberPropertiesBuffer();
+
+	this->textureProperties.resize(getMaterialTextureNum());
+	for (int i = 0; i < this->textureProperties.size(); ++i) this->textureProperties[i] = nullptr;
 	for (auto& texturePair : this->properties.textureProperties) {
 		std::string texturePath = texturePair.second.path;
 		if (sceneImages.count(texturePath)) {
@@ -77,6 +89,7 @@ void FzbMaterial::createSource(std::string scenePath, std::map<std::string, FzbI
 		image.initImage();
 		sceneImages.insert({ texturePath, image });
 		texturePair.second.image = &sceneImages[texturePath];
+		this->textureProperties[getMaterialAttributeIndex(texturePair.first)] = &sceneImages[texturePath];
 	}
 	this->hasCreateSource = true;
 }
@@ -84,15 +97,16 @@ void FzbMaterial::createMaterialNumberPropertiesBuffer() {
 	uint32_t numberNum = this->properties.numberProperties.size();
 	if (numberNum > 0) {
 		uint32_t bufferSize = numberNum * sizeof(glm::vec4);	//全部按floa4来存储，这个shader的布局方式很烦人的
-		std::vector<glm::vec4> numberProperties;
+		std::vector<glm::vec4> numberProperties; numberProperties.resize(numberNum);
 		for (auto& property : this->properties.numberProperties) {
-			numberProperties.push_back(property.second.value);
+			if(property.first == "emissive") numberProperties[numberNum - 1] = property.second.value;
+			else numberProperties[getMaterialAttributeIndex(property.first)] = property.second.value;
 		}
 		this->numberPropertiesBuffer = fzbCreateUniformBuffer(bufferSize);
 		memcpy(numberPropertiesBuffer.mapped, numberProperties.data(), numberProperties.size() * sizeof(glm::vec4));
 	}
 }
-void FzbMaterial::createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool, VkDescriptorSetLayout descriptorSetLayout, std::map<std::string, FzbImage*>& sceneImages) {
+void FzbMaterial::createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool, VkDescriptorSetLayout descriptorSetLayout) {
 	if (this->descriptorSet) return;	//如果已经创建过了，则直接返回
 	uint32_t textureNum = this->properties.textureProperties.size();
 	uint32_t numberNum = this->properties.numberProperties.size() > 0 ? 1 : 0;	//所有数值属性用一个storageBuffer即可
@@ -104,11 +118,12 @@ void FzbMaterial::createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool,
 	uint32_t descriptorNum = textureNum + numberNum;
 	std::vector<VkWriteDescriptorSet> voxelGridMapDescriptorWrites(descriptorNum);
 	uint32_t binding = 0;
-	for (auto& pair : this->properties.textureProperties) {
-		VkDescriptorImageInfo textureInfo{};
+	VkDescriptorImageInfo textureInfo{};
+	for (int i = 0; i < this->textureProperties.size(); ++i) {
+		if (this->textureProperties[i] == nullptr) continue;
 		textureInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		textureInfo.imageView = sceneImages[pair.second.path]->imageView;
-		textureInfo.sampler = sceneImages[pair.second.path]->textureSampler;
+		textureInfo.imageView = this->textureProperties[i]->imageView;
+		textureInfo.sampler = this->textureProperties[i]->textureSampler;
 		voxelGridMapDescriptorWrites[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 		voxelGridMapDescriptorWrites[binding].dstSet = descriptorSet;
 		voxelGridMapDescriptorWrites[binding].dstBinding = binding;
@@ -118,8 +133,21 @@ void FzbMaterial::createMaterialDescriptor(VkDescriptorPool sceneDescriptorPool,
 		voxelGridMapDescriptorWrites[binding].pImageInfo = &textureInfo;
 		binding++;
 	}
+	//for (auto& pair : this->properties.textureProperties) {
+	//	textureInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	//	textureInfo.imageView = sceneImages[pair.second.path]->imageView;
+	//	textureInfo.sampler = sceneImages[pair.second.path]->textureSampler;
+	//	voxelGridMapDescriptorWrites[binding].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	//	voxelGridMapDescriptorWrites[binding].dstSet = descriptorSet;
+	//	voxelGridMapDescriptorWrites[binding].dstBinding = binding;
+	//	voxelGridMapDescriptorWrites[binding].dstArrayElement = 0;
+	//	voxelGridMapDescriptorWrites[binding].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	//	voxelGridMapDescriptorWrites[binding].descriptorCount = 1;
+	//	voxelGridMapDescriptorWrites[binding].pImageInfo = &textureInfo;
+	//	binding++;
+	//}
+	VkDescriptorBufferInfo numberBufferInfo{};
 	if (numberNum) {
-		VkDescriptorBufferInfo numberBufferInfo{};
 		numberBufferInfo.buffer = this->numberPropertiesBuffer.buffer;
 		numberBufferInfo.offset = 0;
 		numberBufferInfo.range = this->properties.numberProperties.size() * sizeof(glm::vec4);

@@ -6,16 +6,20 @@ layout(location = 1) in vec3 vertexNormal;
 layout(location = 2) in vec2 vertexTexCoords;
 #endif
 
+#ifdef useNormalMap
+#define normalMapIndex 0
+#ifdef useAlbedoMap
+#define albedoMapIndex 1
+#endif
+#else
 #ifdef useAlbedoMap
 #define albedoMapIndex 0
 #endif
-#ifdef useNormalMap
-#define normalMapIndex albedoMapIndex + 1
 #endif
 
-#if defined(useAlbedoMap) && defined(useNormalMap)
+#if defined(useNormalMap) && defined(useAlbedoMap)
 #define textureNum 2
-#elif defined(useAlbedoMap) || defined(useNormalMap)
+#elif defined(useNormalMap) || defined(useAlbedoMap)
 #define textureNum 1
 #else
 #define textureNum 0
@@ -51,11 +55,11 @@ layout(set = 0, binding = 1) uniform lightsUniformBufferObject{
 	uint lightNum;
 } lubo;
 
-#ifdef useAlbedoMap
-layout(set = 1, binding = albedoMapIndex) uniform sampler2D albedoMap;
-#endif
 #ifdef useNormalMap
 layout(set = 1, binding = normalMapIndex) uniform sampler2D normalMap;
+#endif
+#ifdef useAlbedoMap
+layout(set = 1, binding = albedoMapIndex) uniform sampler2D albedoMap;
 #endif
 #ifdef useNumberProperty
 layout(set = 1, binding = textureNum) uniform MaterialBuffer{
@@ -79,5 +83,5 @@ void main() {
 	vec3 normal = getNormal();
 	vec3 vertexAlbedo = getAlbedo().rgb;
 
-	fragColor = getIllumination(o, normal, vertexAlbedo);
+	fragColor = getIllumination(o, normal, vertexAlbedo) * 0.01f;
 }

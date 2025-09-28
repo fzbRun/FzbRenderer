@@ -192,6 +192,12 @@ cudaMipmappedArray_t mapMipmappedArrayOntoExternalMemory(cudaExternalMemory_t ex
     desc.flags = flags;
     desc.numLevels = numLevels;
 
+    // 检查外部内存是否有效
+    if (extMem == NULL) {
+        printf("ERROR: extMem is NULL\n");
+        return NULL;
+    }
+
     // Note: 'mipmap' must eventually be freed using cudaFreeMipmappedArray()
     CHECK(cudaExternalMemoryGetMappedMipmappedArray(&mipmap, extMem, &desc));
 
@@ -227,7 +233,8 @@ cudaChannelFormatDesc getCudaChannelFormatDescForVulkanFormat(VkFormat format)
         case VK_FORMAT_R32G32B32A32_UINT:   d.x = 32; d.y = 32; d.z = 32; d.w = 32; d.f = cudaChannelFormatKindUnsigned; break;
         case VK_FORMAT_R32G32B32A32_SINT:   d.x = 32; d.y = 32; d.z = 32; d.w = 32; d.f = cudaChannelFormatKindSigned;   break;
         case VK_FORMAT_R32G32B32A32_SFLOAT: d.x = 32; d.y = 32; d.z = 32; d.w = 32; d.f = cudaChannelFormatKindFloat;    break;
-    default: assert(0);
+        case VK_FORMAT_R8G8B8A8_SRGB:       d.x = 8;  d.y = 8;  d.z = 8;  d.w = 8;  d.f = cudaChannelFormatKindUnsigned; break;
+        default: assert(0);
     }
 
     return d;
@@ -236,6 +243,9 @@ cudaChannelFormatDesc getCudaChannelFormatDescForVulkanFormat(VkFormat format)
 cudaExtent getCudaExtentForVulkanExtent(VkExtent3D vkExt, uint32_t arrayLayers, VkImageViewType vkImageViewType) {
 
     cudaExtent e = { 0, 0, 0 };
+    //srgb貌似必须是256的背书
+    vkExt.width -= vkExt.width & 255;
+    vkExt.height -= vkExt.height & 255;
 
     switch (vkImageViewType) {
     case VK_IMAGE_VIEW_TYPE_1D:         e.width = vkExt.width; e.height = 0;            e.depth = 0;           break;
@@ -302,12 +312,12 @@ void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, FzbImage& v
     texDesc.addressMode[0] = cudaAddressModeClamp;
     texDesc.addressMode[1] = cudaAddressModeClamp;
     texDesc.addressMode[2] = cudaAddressModeClamp;
-    texDesc.filterMode = cudaFilterModePoint;
-    texDesc.readMode = cudaReadModeElementType;
+    texDesc.filterMode = cudaFilterModeLinear;
+    texDesc.readMode = cudaReadModeNormalizedFloat;
     texDesc.normalizedCoords = sampleNormal;
+    //texDesc.sRGB = true;    //转回线性空间
 
     CHECK(cudaCreateTextureObject(&texObj, &resDesc, &texDesc, NULL));
-
 }
 
 void fromVulkanImageToCudaSurface(VkPhysicalDevice vkPhysicalDevice, FzbImage& vkImage, HANDLE handle, unsigned long long size,

@@ -254,7 +254,6 @@ __global__ void divideNode(FzbBvhNode* bvhNodeArray, FzbBvhNodeTempInfo* bvhNode
     uint32_t triangleIndex = triangleIndices[threadIndex];
     FzbTriangleTempInfo_nr triangleTempInfo = triangleTempInfoArray[triangleIndex];
     uint32_t nodeIndex = triangleTempInfo.nodeIndex;
-    if (nodeIndex >= 38547) printf("%d\n", nodeIndex);
     FzbBvhNodeTempInfo nodeTempInfo = bvhNodeTempInfoArray[nodeIndex];
 
     float sahCost_X;

@@ -41,15 +41,17 @@ __device__ bool AABBCollisionDetection(FzbAABB AABB, FzbRay ray) {
 	return true;
 }
 __device__ bool meshCollisionDetection(const float* __restrict__ vertices, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, const cudaTextureObject_t* __restrict__ materialTextures,
-	FzbRay& ray, FzbBvhNode node, FzbBvhNodeTriangleInfo& hitTriangle, FzbTriangleAttribute& triangleAttribute) {
+	FzbRay& ray, const FzbBvhNode& node, FzbBvhNodeTriangleInfo& hitTriangle, FzbTrianglePos& hitTrianglePos) {
 	bool hit = false;
+	FzbBvhNodeTriangleInfo triangle;
+	FzbTrianglePos trianglePos;
 	for (int i = 0; i < node.triangleCount; ++i) {	//对于划分不开的node或maxDepth的node，可能包含多个三角形
-		FzbBvhNodeTriangleInfo triangle = bvhTriangleInfoArray[node.rightNodeIndex + i];
-		getTriangleVertexAttribute(vertices, triangle, triangleAttribute);
+		triangle = bvhTriangleInfoArray[node.rightNodeIndex + i];
+		getTriangleVertexPos(vertices, triangle, trianglePos);
 		//if (glm::dot(triangleAttribute.normal, -ray.direction) <= 0) continue;	//打到了背面，不算撞到
-		glm::vec3 E1 = triangleAttribute.pos1 - triangleAttribute.pos0;
-		glm::vec3 E2 = triangleAttribute.pos2 - triangleAttribute.pos0;
-		glm::vec3 S = ray.startPos - triangleAttribute.pos0;
+		glm::vec3 E1 = trianglePos.pos1 - trianglePos.pos0;
+		glm::vec3 E2 = trianglePos.pos2 - trianglePos.pos0;
+		glm::vec3 S = ray.startPos - trianglePos.pos0;
 		glm::vec3 S1 = glm::cross(ray.direction, E2);
 		glm::vec3 S2 = glm::cross(S, E1);
 		glm::vec3 tbb = 1 / glm::dot(S1, E1) * glm::vec3(glm::dot(S2, E2), glm::dot(S1, S), glm::dot(S2, ray.direction));
@@ -58,6 +60,7 @@ __device__ bool meshCollisionDetection(const float* __restrict__ vertices, const
 			ray.depth = tbb.x;
 			hit = true;
 			hitTriangle = triangle;
+			hitTrianglePos = trianglePos;
 		}
 	}
 	return hit;
@@ -68,21 +71,21 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 	volatile uint32_t nodeIndices[BVH_MAX_DEPTH];	//妈的，不加volatile，编译会优化IO，导致不知道什么错误，击中叶节点回退后nodeIndex有时候拿到0
 	int stackTop = 0;
 	FzbBvhNodeTriangleInfo bestHitTriangle;
+	FzbBvhNodeTriangleInfo hitTriangle;
+	FzbTrianglePos hitTrianglePos;
 	bool anyHit = false;
 	nodeIndices[stackTop] = 0;
 	while (stackTop > -1) {
-		uint32_t nodeIndex = nodeIndices[stackTop];
+		const volatile uint32_t& nodeIndex = nodeIndices[stackTop];
 		const FzbBvhNode& node = bvhNodeArray[nodeIndex];
 		if (!AABBCollisionDetection(node.AABB, ray)) {
 			--stackTop;
 			continue;
 		}
 		if (node.leftNodeIndex == 0) {	//如果撞到叶节点了，则进行mesh碰撞检测
-			FzbBvhNodeTriangleInfo hitTriangle;
-			FzbTriangleAttribute hitTriangleAttribute;
-			if (meshCollisionDetection(vertices, bvhTriangleInfoArray, materialTextures, ray, node, hitTriangle, hitTriangleAttribute)) {
+			if (meshCollisionDetection(vertices, bvhTriangleInfoArray, materialTextures, ray, node, hitTriangle, hitTrianglePos)) {
 				bestHitTriangle = hitTriangle;
-				triangleAttribute = hitTriangleAttribute;
+				triangleAttribute.pos = hitTrianglePos;
 				anyHit = true;
 			}
 			--stackTop;;
@@ -92,6 +95,9 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 			nodeIndices[++stackTop] = node.leftNodeIndex;
 		}
 	}
-	if (anyHit && notOnlyDetection) getTriangleMaterialAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute);
+	if (anyHit && notOnlyDetection) {
+		ray.hitPos = ray.direction * ray.depth + ray.startPos;
+		getTriangleMaterialAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute, ray.hitPos);
+	}
 	return anyHit;
 }

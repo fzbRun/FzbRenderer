@@ -35,7 +35,7 @@ public:
 	FzbShaderVariant();
 	FzbShaderVariant(FzbShader* publicShader, FzbMaterial* material);
 
-	void createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages);
+	void createDescriptor(VkDescriptorPool sceneDescriptorPool);
 
 	//void changeVertexFormat(FzbVertexFormat newFzbVertexFormat);
 
@@ -90,7 +90,7 @@ struct FzbShader {
 
 	void createShaderVariant(FzbMaterial* material);
 	void createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMaterialPairs);
-	void createDescriptor(VkDescriptorPool sceneDescriptorPool, std::map<std::string, FzbImage*>& sceneImages);
+	void createDescriptor(VkDescriptorPool sceneDescriptorPool);
 	void createPipeline(VkRenderPass renderPass, uint32_t subPassIndex, std::vector<VkDescriptorSetLayout> descriptorSetLayouts);
 	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets);
 	bool operator==(const FzbShader& other) const;

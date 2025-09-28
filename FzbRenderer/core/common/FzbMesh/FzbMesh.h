@@ -211,16 +211,22 @@ struct FzbVertex_PosNormalTexCoord {
 };
 */
 
+enum MeshType {
+	obj,
+	triangle,
+	rectangle,
+	cube
+};
 struct FzbMeshUniformBufferObject {
 	glm::mat4 transforms;
 };
-
 struct FzbMaterial;
 
 struct FzbMesh {
 public:
 	std::string id;
 	std::string path;
+	MeshType type;
 	std::vector<float> vertices;	//压缩前的顶点数据
 	std::vector<uint32_t> indices;	//压缩前的顶点索引数据
 	uint32_t indexArraySize;
@@ -355,9 +361,9 @@ public:
 	glm::mat4 projMatrix;
 
 	FzbLight();
-	FzbLight(glm::vec3 position, glm::vec3 strength, glm::mat4 viewMatrix = glm::mat4());
-	FzbLight(std::string dataPath, glm::mat4 modelMatrix = glm::mat4(1.0f), glm::vec3 strength = glm::vec3(1.0f));		//根据path，从.obj和.mtl中读取light的数据，只支持矩形面光源（目前）
-	FzbLight(glm::mat4 modelMatrix, glm::vec3 strength);	//根据modelMatrix创建面光源
+	FzbLight(glm::vec3 position, glm::mat4 viewMatrix = glm::mat4());
+	FzbLight(std::string dataPath, glm::mat4 modelMatrix = glm::mat4(1.0f));		//根据path，从.obj和.mtl中读取light的数据，只支持矩形面光源（目前）
+	FzbLight(glm::mat4 modelMatrix);	//根据modelMatrix创建面光源
 };
 
 #endif
