@@ -221,9 +221,17 @@ FzbMaterial getMaterialFromMTL(aiMaterial* materialData) {
 	}
 	else if (illumModel == 1) {	//roughconductor
 		material.type = "roughconductor";
-		float opacity = 1.0f;
-		materialData->Get(AI_MATKEY_OPACITY, opacity);
-		material.properties.numberProperties.insert({ "bsdfPara", { glm::vec4(opacity, 0.0f, 0.0f, 0.0f) } });
+		float alpha = 1.0f;
+		materialData->Get(AI_MATKEY_OPACITY, alpha);
+		material.properties.numberProperties.insert({ "bsdfPara", { glm::vec4(alpha, 0.0f, 0.0f, 0.0f) } });
+	}
+	else if (illumModel == 2) {
+		material.type = "roughdielectric";
+		float alpha = 1.0f;
+		materialData->Get(AI_MATKEY_OPACITY, alpha);
+		float eta = 1.5f;
+		materialData->Get(AI_MATKEY_REFRACTI, eta);
+		material.properties.numberProperties.insert({ "bsdfPara", { glm::vec4(alpha, eta, 0.0f, 0.0f) } });
 	}
 	
 	return material;

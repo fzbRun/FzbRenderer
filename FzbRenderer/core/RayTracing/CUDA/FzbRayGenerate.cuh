@@ -19,6 +19,8 @@ struct FzbRay {
 	glm::vec3 direction;
 	float depth;
 	glm::vec3 hitPos;
+	bool refraction;
+	bool ext;	//光线从外部进入mesh内部还是反之
 };
 
 extern __constant__ FzbPathTracingCameraInfo systemCameraInfo;

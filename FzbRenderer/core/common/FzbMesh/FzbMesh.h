@@ -225,7 +225,7 @@ struct FzbMaterial;
 struct FzbMesh {
 public:
 	std::string id;
-	std::string path;
+	std::string path = "";
 	MeshType type;
 	std::vector<float> vertices;	//压缩前的顶点数据
 	std::vector<uint32_t> indices;	//压缩前的顶点索引数据

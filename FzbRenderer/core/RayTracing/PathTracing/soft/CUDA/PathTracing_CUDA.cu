@@ -72,9 +72,6 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 	FzbTriangleAttribute lastHitTriangleAttribute;
 
 	glm::vec2 texelXY = glm::vec2(resultIndex % groupCameraInfo.screenWidth, resultIndex / groupCameraInfo.screenWidth);
-	//uint32_t texelX = resultIndex % (groupCameraInfo.screenWidth);
-	//uint32_t texelY = resultIndex / (groupCameraInfo.screenWidth);
-	//FzbRay ray = generateFirstRay(&groupCameraInfo, glm::vec2(texelX, texelY), spp, sppLane);
 	glm::vec4 screenPos = glm::vec4(((texelXY + Hammersley(sppLane, spp)) / glm::vec2(groupCameraInfo.screenWidth, groupCameraInfo.screenHeight)) * 2.0f - 1.0f, 0.0f, 1.0f);	//vulkan中近平面ndcDepth在[0,1]
 	screenPos = groupCameraInfo.inversePVMatrix * screenPos;
 	screenPos /= screenPos.w;
@@ -82,26 +79,32 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 	ray.startPos = groupCameraInfo.cameraWorldPos;
 	ray.direction = glm::normalize(glm::vec3(screenPos) - ray.startPos);
 	ray.depth = FLT_MAX;
+	ray.refraction = false;
+	ray.ext = true;
 	glm::vec3 lastDirection = -ray.direction;
 
 	hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, ray, hitTriangleAttribute);
 	if (!hit) return;
 	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed);
 	
-	uint32_t maxBonceDepth = 2;
+	uint32_t maxBonceDepth = 1;
 	#pragma nounroll
 	while (maxBonceDepth > 0) {
 		float randomNumber = rand(randomNumberSeed);
 		if (randomNumber > RR) break;
 		pdf *= randomNumber;
-		lastHitTriangleAttribute = hitTriangleAttribute;
-	
+		
 		lastDirection = -ray.direction;
-		generateRay(lastHitTriangleAttribute, pdf, ray, randomNumberSeed);
+		generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
+
+		lastHitTriangleAttribute = hitTriangleAttribute;
 		hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, ray, hitTriangleAttribute);
 		if (!hit) break;
-		bsdf *= getBSDF(lastHitTriangleAttribute, ray.direction, lastDirection) * glm::clamp(glm::dot(ray.direction, lastHitTriangleAttribute.normal), 0.0f, 1.0f);
 		ray.hitPos = ray.direction * ray.depth + ray.startPos;
+
+		bsdf *= getBSDF(lastHitTriangleAttribute, ray.direction, lastDirection, ray) * glm::abs(glm::dot(ray.direction, lastHitTriangleAttribute.normal));
+		//radiance = hitTriangleAttribute.albedo;
+		//break;
 		radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed) * bsdf / pdf;
 		--maxBonceDepth;
 	}

@@ -71,8 +71,7 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 	volatile uint32_t nodeIndices[BVH_MAX_DEPTH];	//妈的，不加volatile，编译会优化IO，导致不知道什么错误，击中叶节点回退后nodeIndex有时候拿到0
 	int stackTop = 0;
 	FzbBvhNodeTriangleInfo bestHitTriangle;
-	FzbBvhNodeTriangleInfo hitTriangle;
-	FzbTrianglePos hitTrianglePos;
+	FzbTrianglePos bestHitTrianglePos;
 	bool anyHit = false;
 	nodeIndices[stackTop] = 0;
 	while (stackTop > -1) {
@@ -83,9 +82,11 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 			continue;
 		}
 		if (node.leftNodeIndex == 0) {	//如果撞到叶节点了，则进行mesh碰撞检测
+			FzbBvhNodeTriangleInfo hitTriangle;
+			FzbTrianglePos hitTrianglePos;
 			if (meshCollisionDetection(vertices, bvhTriangleInfoArray, materialTextures, ray, node, hitTriangle, hitTrianglePos)) {
 				bestHitTriangle = hitTriangle;
-				triangleAttribute.pos = hitTrianglePos;
+				bestHitTrianglePos = hitTrianglePos;
 				anyHit = true;
 			}
 			--stackTop;;
@@ -97,7 +98,7 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 	}
 	if (anyHit && notOnlyDetection) {
 		ray.hitPos = ray.direction * ray.depth + ray.startPos;
-		getTriangleMaterialAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute, ray.hitPos);
+		getTriangleMaterialAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute, bestHitTrianglePos, ray.hitPos);
 	}
 	return anyHit;
 }

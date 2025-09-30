@@ -3,6 +3,7 @@
 MaterialType fzbGetPathTracingMaterialType(std::string materialTypeString) {
 	if (materialTypeString == "diffuse") return diffuse;
 	else if (materialTypeString == "roughconductor") return roughconductor;
+	else if (materialTypeString == "roughdielectric") return roughdielectric;
 }
 void fzbSetPathTracingNumberAttributeIndex(uint32_t materialType, glm::vec4* numberAttributeIndices, glm::vec4 numberAttribute, std::string numberAttributeType) {
 	uint32_t numberAttributeIndexInArray = 0;

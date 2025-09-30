@@ -38,8 +38,10 @@ const uint32_t maxAreaLightCount = 8;
 extern __constant__ FzbRayTracingAreaLight systemAreaLightInfoArray[maxAreaLightCount];
 
 //-------------------------------------------------------º¯Êý-----------------------------------------
-__device__ float DistributionGGX(const glm::vec3& N, const glm::vec3& H, float roughness);
-__device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, const glm::vec3& incidence, const glm::vec3& outgoing);
+__device__ float DistributionGGX(const glm::vec3& N, const glm::vec3& H, float roughness);	//Trowbridge-Reitz GGX
+__device__ glm::vec3 fresnelSchlick(float cosTheta, const glm::vec3& F0);
+//refraction.y = eta
+__device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, const glm::vec3& incidence, const glm::vec3& outgoing, const FzbRay& ray);
 
 __device__ glm::vec3 getRadiance(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, const FzbRayTracingLightSet* lightSet,
 	const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,

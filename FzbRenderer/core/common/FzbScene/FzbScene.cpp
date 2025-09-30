@@ -315,7 +315,7 @@ FzbMainScene::FzbMainScene(std::string path) {
 	this->sceneMaterials.insert({ "defaultMaterial", defaultMaterial });
 
 	pugi::xml_document doc;
-	std::string sceneXMLPath = this->scenePath + "/scene_onlyDiff.xml";
+	std::string sceneXMLPath = this->scenePath + "/scene.xml";
 	auto result = doc.load_file(sceneXMLPath.c_str());
 	if (!result) {
 		throw std::runtime_error("pugixml打开文件失败");
@@ -346,8 +346,7 @@ FzbMainScene::FzbMainScene(std::string path) {
 			std::cout << "重复material读取" << materialID << std::endl;
 			continue;
 		}
-		pugi::xml_node bsdf = bsdfNode.child("bsdf");
-		std::string materialType = bsdf.attribute("type").value();
+		std::string materialType = bsdfNode.attribute("type").value();
 		FzbMaterial material = FzbMaterial(materialID, materialType);
 		material.getMaterialXMLInfo();
 		material.getSceneXMLInfo(bsdfNode);
@@ -445,7 +444,9 @@ FzbMainScene::FzbMainScene(std::string path) {
 			}
 			else throw std::runtime_error("obj文件没有路径");
 		}
-		else if (meshType == "rectangle") continue;
+		else if (meshType == "rectangle") {
+			mesh.type = rectangle;
+		}else continue;
 		mesh.transformMatrix = transformMatrix;
 		mesh.material = &sceneMaterials[materialID];
 		mesh.id = meshID;

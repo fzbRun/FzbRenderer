@@ -5,6 +5,13 @@
 			<matrix value="-1 0 0 0 0 1 0 1 0 0 -1 5 0 0 0 1"/>
 		</transform>
 	</sensor>
+	<bsdfs>
+		<bsdf type="roughdielectric" id="lensBSDF">
+			<float name="alpha" value="0.1" />
+			<float name="int_ior" value="1.5" />
+			<float name="ext_ior" value="1" />
+		</bsdf>
+	</bsdfs>
 	<lights>
 		<light type="rectangle" id="Light">
 			<shape>
@@ -19,5 +26,15 @@
 				<matrix value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1" />
 			</transform>
 		</shape>
+		<shape type = "rectangle" id = "lens">
+			<ref id="lensBSDF" />
+			<transform name="to_world">
+				<matrix value="1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 1" />
+			</transform>
+		</shape>
 	</shapes>
 </scene>
+
+<!--
+
+-->
