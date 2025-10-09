@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../../CUDA/commonCudaFunction.cuh"
-#include "../PathTracing/soft/FzbPathTracingMaterial.h"
+#include "../common/FzbRayTracingMaterial.h"
 #include "../../SceneDivision/BVH/CUDA/createBVH.cuh"
 
 
@@ -25,7 +25,7 @@ struct FzbTriangleAttribute {
 };
 
 const uint32_t maxMaterialCount = 128;
-extern __constant__ FzbPathTracingMaterialUniformObject materialInfoArray[maxMaterialCount];
+extern __constant__ FzbRayTracingMaterialUniformObject materialInfoArray[maxMaterialCount];
 
 __device__ void getTriangleVertexPos(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTrianglePos& trianglePos);
 __device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,

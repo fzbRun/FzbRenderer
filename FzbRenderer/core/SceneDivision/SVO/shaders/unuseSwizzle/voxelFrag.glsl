@@ -57,25 +57,7 @@ void imageAtomicRGBA8Avg(ivec3 coords, vec4 val) {
 //}
 
 void main() {
-
-	//FragColor = vec4(abs(normalize(worldPos)), 1.0f);
-	//FragColor = vec4(normalize(worldPos), 1.0f);
-	//return;
-
-	//vec4 ndcPos = cubo.proj * cubo.view * vec4(worldPos, 1.0f);
-	//ndcPos /= ndcPos.w;
-	//if (ndcPos.z < 0.0f || ndcPos.z > 1.0f) {
-	//	discard;
-	//}
-
-	//float depth = ndcPos.z;
-	//ivec2 texCoords = ivec2((ndcPos.xy * 0.5f + 0.5f) * cubo.swapChainExtent.xy);
-	//imageAtomicDepthTest(texCoords, depth);
-	//vec3 offset = worldPos - vubo.voxelStartPos.xyz;
-	//ivec3 voxelIndex = ivec3(offset.x / vubo.voxelSize_Num.x, offset.y / vubo.voxelSize_Num.y, offset.z / vubo.voxelSize_Num.z);
-
 	ivec3 voxelIndex = ivec3((worldPos - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.xyz);
 	imageAtomicRGBA8Avg(voxelIndex, vec4(normalize(abs(worldPos)), 1.0f));
-
 }
 

@@ -79,11 +79,13 @@
 			<float name="ext_ior" value="1" />
 		</bsdf>
 		-->
+		<!--
 		<bsdf type="roughdielectric" id="MaterialBSDF">
 			<float name="alpha" value="0.25" />
 			<float name="int_ior" value="1.5" />
 			<float name="ext_ior" value="1" />
 		</bsdf>
+		-->
 		<bsdf type="diffuse" id="Pot3BSDF">
 			<rgb name="reflectance" value="0.8, 0.8, 0.8" />
 		</bsdf>

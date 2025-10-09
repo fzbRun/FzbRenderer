@@ -423,8 +423,9 @@ struct FzbLightDate {
 	glm::vec4 strength;
 };
 
+const uint32_t LIGHT_MAX_COUNT = 16;
 struct FzbLightsUniformBufferObject {
-	FzbLightDate lightData[16];
+	FzbLightDate lightData[LIGHT_MAX_COUNT];
 	uint32_t lightNum;
 
 	FzbLightsUniformBufferObject();

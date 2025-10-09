@@ -584,7 +584,7 @@ void FzbMainScene::createCameraAndLightBuffer() {
 	if (useLights) {
 		this->lightsBuffer = fzbCreateUniformBuffer(sizeof(FzbLightsUniformBufferObject));
 		FzbLightsUniformBufferObject lightsData(sceneLights.size());
-		for (int i = 0; i < sceneLights.size(); i++) {
+		for (int i = 0; i < sceneLights.size() && i < LIGHT_MAX_COUNT; i++) {
 			FzbLight& light = sceneLights[i];
 			lightsData.lightData[i].pos = glm::vec4(light.position, 1.0f);
 			lightsData.lightData[i].strength = glm::vec4(light.strength, 1.0f);

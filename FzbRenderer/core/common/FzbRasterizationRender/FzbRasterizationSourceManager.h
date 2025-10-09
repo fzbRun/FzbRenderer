@@ -21,6 +21,7 @@ struct FzbRasterizationSourceManager {
 	FzbRasterizationSourceManager();
 	void createCanvas(FzbMaterial material);
 	void addMeshMaterial(std::vector<FzbMesh>& meshes, FzbMaterial material = FzbMaterial(), bool loopRender = true);
+	void addMeshMaterial(FzbMesh* mesh, FzbMaterial material, bool loopRender = true);
 	void addSource(std::map<std::string, FzbShaderInfo> shaderInfos);
 
 	void clean();

@@ -181,7 +181,7 @@ void FzbBuffer::fzbCreateBuffer() {
 		GetMemoryWin32HandleKHR(&handleInfo, &handle);
 	}
 }
-void FzbBuffer::fzbFillBuffer(void* bufferData) {
+void FzbBuffer::fillBuffer(void* bufferData) {
 	void* data;	//得到一个指针
 	vkMapMemory(logicalDevice, memory, 0, size, 0, &data);	//该指针指向暂存（CPU和GPU均可访问）buffer
 	memcpy(data, bufferData, (size_t)size);	//将数据传入该暂存buffer
@@ -192,6 +192,28 @@ void FzbBuffer::fzbGetBufferDeviceAddress() {
 	addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
 	addressInfo.buffer = buffer;
 	deviceAddress = getBufferDeviceAddressKHR(&addressInfo);
+}
+void FzbBuffer::clearBuffer(VkCommandBuffer commandBuffer, VkPipelineStageFlagBits waitStage) {
+	vkCmdFillBuffer(commandBuffer, this->buffer, 0, this->size, 0);
+	VkBufferMemoryBarrier barrier = {};
+	barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrier.buffer = this->buffer;
+	barrier.offset = 0;
+	barrier.size = VK_WHOLE_SIZE;
+
+	vkCmdPipelineBarrier(
+		commandBuffer,
+		VK_PIPELINE_STAGE_TRANSFER_BIT,
+		waitStage,
+		0,
+		0, nullptr,
+		1, &barrier,
+		0, nullptr
+	);
 }
 void FzbBuffer::clean() {
 	if (buffer != VK_NULL_HANDLE) {
@@ -213,7 +235,7 @@ void FzbBuffer::closeHandle() {
 FzbBuffer fzbCreateStorageBuffer(void* bufferData, uint32_t bufferSize, bool UseExternal) {
 	FzbBuffer stagingBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingBuffer.fzbCreateBuffer();
-	stagingBuffer.fzbFillBuffer(bufferData);
+	stagingBuffer.fillBuffer(bufferData);
 
 	FzbBuffer fzbBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, UseExternal);
 	fzbBuffer.fzbCreateBuffer();
@@ -237,7 +259,7 @@ FzbBuffer fzbCreateUniformBuffer(uint32_t bufferSize) {
 FzbBuffer fzbCreateIndirectCommandBuffer(void* bufferData, uint32_t bufferSize) {
 	FzbBuffer stagingBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	stagingBuffer.fzbCreateBuffer();
-	stagingBuffer.fzbFillBuffer(bufferData);
+	stagingBuffer.fillBuffer(bufferData);
 
 	FzbBuffer fzbBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, false);
 	fzbBuffer.fzbCreateBuffer();

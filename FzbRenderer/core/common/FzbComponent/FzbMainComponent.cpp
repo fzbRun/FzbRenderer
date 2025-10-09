@@ -441,16 +441,6 @@ VkSampleCountFlagBits FzbMainComponent::getMaxUsableSampleCount() {
 
 	return VK_SAMPLE_COUNT_1_BIT;
 }
-VkPhysicalDeviceFeatures2 FzbMainComponent::createPhysicalDeviceFeatures(VkPhysicalDeviceFeatures deviceFeatures, VkPhysicalDeviceVulkan11Features* vk11Features, VkPhysicalDeviceVulkan12Features* vk12Features) {
-	if (vk12Features)
-		vk12Features->pNext = vk11Features;
-
-	VkPhysicalDeviceFeatures2 features2{};
-	features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	features2.features = deviceFeatures;       // 这里放核心功能
-	features2.pNext = vk12Features ? (void*)vk12Features : (void*)vk11Features;
-	return features2;
-}
 void FzbMainComponent::createLogicalDevice(VkPhysicalDeviceFeatures* deviceFeatures, std::vector<const char*> deviceExtensions, const void* pNextFeatures, std::vector<const char*> validationLayers) {
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 	std::set<uint32_t> uniqueQueueFamilies = { queueFamilyIndices.graphicsAndComputeFamily.value(), queueFamilyIndices.presentFamily.value() };
@@ -500,18 +490,28 @@ void FzbMainComponent::createLogicalDevice(VkPhysicalDeviceFeatures* deviceFeatu
 	vkGetDeviceQueue(this->logicalDevice, queueFamilyIndices.graphicsAndComputeFamily.value(), 0, &this->computeQueue);
 	vkGetDeviceQueue(this->logicalDevice, queueFamilyIndices.presentFamily.value(), 0, &this->presentQueue);
 }
+/*
+VkPhysicalDeviceFeatures2 FzbMainComponent::createPhysicalDeviceFeatures(VkPhysicalDeviceFeatures deviceFeatures, VkPhysicalDeviceVulkan11Features* vk11Features, VkPhysicalDeviceVulkan12Features* vk12Features) {
+	if (vk12Features)
+		vk12Features->pNext = vk11Features;
+
+	VkPhysicalDeviceFeatures2 features2{};
+	features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	features2.features = deviceFeatures;       // 这里放核心功能
+	features2.pNext = vk12Features ? (void*)vk12Features : (void*)vk11Features;
+	return features2;
+}
+*/
 void FzbMainComponent::createDevice() {
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceFeatures.geometryShader = VK_TRUE;
 	deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
 	deviceFeatures.multiDrawIndirect = VK_TRUE;
 
-	VkPhysicalDeviceVulkan11Features vk11Features{};
 	vk11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
 	vk11Features.shaderDrawParameters = VK_TRUE;
 	vk11Features.storageBuffer16BitAccess = VK_TRUE;
 
-	VkPhysicalDeviceVulkan12Features vk12Features{};
 	vk12Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 	vk12Features.drawIndirectCount = VK_TRUE;
 	vk12Features.descriptorIndexing = VK_TRUE;
@@ -520,11 +520,15 @@ void FzbMainComponent::createDevice() {
 	vk12Features.shaderFloat16 = VK_TRUE;
 	vk12Features.scalarBlockLayout = VK_TRUE;
 
-	VkPhysicalDeviceFeatures2 feature2 = createPhysicalDeviceFeatures(deviceFeatures, &vk11Features, &vk12Features);
+	vk11Features.pNext = this->extensionFeatureList.featureList;
+	vk12Features.pNext = &vk11Features;
+	VkPhysicalDeviceFeatures2 features2{};
+	features2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	features2.features = deviceFeatures;       // 这里放核心功能
+	features2.pNext = &vk12Features;
 
 	pickPhysicalDevice(deviceExtensions);
-	createLogicalDevice(nullptr, deviceExtensions, &feature2, validationLayers_default);
-	//createDevice(nullptr, deviceExtensions, &feature2);
+	createLogicalDevice(nullptr, deviceExtensions, &features2, validationLayers_default);
 }
 
 void FzbMainComponent::createSwapChain() {

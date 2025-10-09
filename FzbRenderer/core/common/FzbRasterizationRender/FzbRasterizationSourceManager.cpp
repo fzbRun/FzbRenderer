@@ -40,6 +40,17 @@ void FzbRasterizationSourceManager::addMeshMaterial(std::vector<FzbMesh>& meshes
 		this->meshMaterialPairs.insert({ &mesh, meshMaterial_ptr });
 	}
 }
+void FzbRasterizationSourceManager::addMeshMaterial(FzbMesh* mesh, FzbMaterial material, bool loopRender) {
+	material.vertexFormat = loopRender ? mesh->vertexFormat : FzbRenderer::globalData.mainScene.vertexFormat_allMesh_prepocess;
+	if (!this->componentScene.sceneMaterials.count(material.id)) {
+		this->componentScene.sceneMaterials.insert({ material.id, material });
+		for (auto& texturePair : material.properties.textureProperties) {
+			if (!this->images.count(texturePair.second.path)) this->images.insert({ texturePair.second.path, texturePair.second.image });
+		}
+	}
+	FzbMaterial* meshMaterial_ptr = &componentScene.sceneMaterials[material.id];
+	this->meshMaterialPairs.insert({ mesh, meshMaterial_ptr});
+}
 
 void FzbRasterizationSourceManager::addSource(std::map<std::string, FzbShaderInfo> shaderInfos) {
 	createShader(shaderInfos);

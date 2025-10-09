@@ -1,6 +1,6 @@
 #include "./FzbPathTracing_soft.h"
 #include "../../../common/FzbRenderer.h"
-#include "FzbPathTracingMaterial.h"
+#include "../../common/FzbRayTracingMaterial.h"
 #include "../../CUDA/FzbCollisionDetection.cuh"
 
 #include <unordered_map>
@@ -23,8 +23,8 @@ FzbPathTracing_soft::FzbPathTracing_soft(pugi::xml_node& PathTracingNode) {
 	//得到bvh组件
 	if (pugi::xml_node childComponentsNode = PathTracingNode.child("childComponents")) {
 		getChildComponent(childComponentsNode);
-		this->bvh = std::dynamic_pointer_cast<FzbBVH>(childComponents["BVH"]);
-		bvh->setting = FzbBVHSetting{ BVH_MAX_DEPTH, true, true };
+		this->rayTracingSourceManager.bvh = std::dynamic_pointer_cast<FzbBVH>(childComponents["BVH"]);
+		this->rayTracingSourceManager.bvh->setting = FzbBVHSetting{ BVH_MAX_DEPTH, true, true };
 	}
 }
 
@@ -56,7 +56,7 @@ FzbSemaphore FzbPathTracing_soft::render(uint32_t imageIndex, FzbSemaphore start
 	//);
 	//vkCmdFillBuffer(commandBuffer, pathTracingResultBuffer.buffer, 0, pathTracingResultBuffer.size, 0);
 
-	std::vector<VkSemaphore> waitSemaphores = { pathTracingFinishedSemphore.semaphore };
+	std::vector<VkSemaphore> waitSemaphores = { rayTracingSourceManager.rayTracingFinishedSemphore.semaphore };
 	std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
 	fzbSubmitCommandBuffer(commandBuffer, waitSemaphores, waitStages, { renderFinishedSemaphore.semaphore }, fence);
 
@@ -65,11 +65,9 @@ FzbSemaphore FzbPathTracing_soft::render(uint32_t imageIndex, FzbSemaphore start
 void FzbPathTracing_soft::clean() {
 	FzbFeatureComponent_LoopRender::clean();
 	settingBuffer.clean();
-	pathTracingResultBuffer.clean();
+	rayTracingSourceManager.clean();
 	presentSourceManager.clean();
-	pathTracingFinishedSemphore.clean();
 	pathTracingCUDA->clean();
-	for (int i = 0; i < this->sceneTextures.size(); ++i) this->sceneTextures[i].clean();
 	if (descriptorSetLayout) vkDestroyDescriptorSetLayout(FzbRenderer::globalData.logicalDevice, this->descriptorSetLayout, nullptr);
 };
 
@@ -82,85 +80,18 @@ void FzbPathTracing_soft::addExtensions() {};
 
 void FzbPathTracing_soft::presentPrepare() {
 	fzbCreateCommandBuffers(1);
-	FzbPathTracingCudaSourceSet sourceSet = createSource();
-	pathTracingCUDA = std::make_unique<FzbPathTracingCuda>(sourceSet);
+	rayTracingSourceManager.createSource();
+	pathTracingCUDA = std::make_unique<FzbPathTracingCuda>(rayTracingSourceManager.sourceManagerCuda, this->setting);
+	createBuffer();
 	createDescriptor();
 	createRenderPass();
 };
 
-FzbPathTracingCudaSourceSet FzbPathTracing_soft::createSource() {
-	std::unordered_map<std::string, int> sceneImagePaths;
-	for (auto& materialPair : this->mainScene->sceneMaterials) {
-		FzbMaterial& material = materialPair.second;
-		FzbPathTracingMaterialUniformObject materialUniformObject = createInitialMaterialUniformObject();
-		materialUniformObject.materialType = fzbGetPathTracingMaterialType(material.type);
-
-		for (auto& texturePair : material.properties.textureProperties) {
-			FzbTexture& texture = texturePair.second;
-			if (!sceneImagePaths.count(texture.path)) {
-				FzbImage image;
-				std::string texturePathFromModel = this->mainScene->scenePath + "/" + texture.path;
-				image.texturePath = texturePathFromModel.c_str();
-				image.filter = texturePair.second.filter;
-				image.layout = VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL_KHR;
-				image.UseExternal = true;
-				image.initImage();
-				this->sceneTextures.push_back(image);
-				sceneImagePaths.insert({ texture.path,this->sceneTextures.size() - 1 });
-			}
-			texture.image = &this->sceneTextures[sceneImagePaths[texture.path]];
-			materialUniformObject.textureIndex[material.getMaterialAttributeIndex(texturePair.first)] = sceneImagePaths[texture.path];
-		}
-
-		for (auto& numberPropertyPair : material.properties.numberProperties) {
-			FzbNumberProperty& numberProperty = numberPropertyPair.second;
-			if (numberPropertyPair.first == "emissive") materialUniformObject.emissive = numberProperty.value;
-			else materialUniformObject.numberAttribute[material.getMaterialAttributeIndex(numberPropertyPair.first)] = numberProperty.value;
-		}
-		this->sceneMaterialInfoArray.push_back(materialUniformObject);
-	}
-	//将mainScene中的mesh与material进行绑定
-
+void FzbPathTracing_soft::createBuffer() {
 	VkExtent2D resolution = FzbRenderer::globalData.getResolution();
 	FzbPathTracingSettingUniformObject settingUniformObject = { resolution.width, resolution.height };
 	settingBuffer = fzbCreateUniformBuffer(sizeof(FzbPathTracingSettingUniformObject));
 	memcpy(settingBuffer.mapped, &settingUniformObject, sizeof(FzbPathTracingSettingUniformObject));
-
-	this->pathTracingResultBuffer = fzbCreateStorageBuffer(resolution.width * resolution.height * sizeof(float4), true);
-
-	pathTracingFinishedSemphore = FzbSemaphore(true);
-
-	FzbPathTracingCudaSourceSet sourceSet;
-	sourceSet.setting = this->setting;
-	sourceSet.pathTracingResultBuffer = this->pathTracingResultBuffer;
-	sourceSet.pathTracingFinishedSemphore = this->pathTracingFinishedSemphore;
-	sourceSet.sceneVertices = FzbRenderer::globalData.mainScene.vertexBuffer;
-	sourceSet.sceneTextures = this->sceneTextures;
-	sourceSet.sceneMaterialInfoArray = this->sceneMaterialInfoArray;
-	//sourceSet.bvhSemaphoreHandle = this->bvh->bvhCudaSemaphore.handle;
-	sourceSet.bvhNodeCount = this->bvh->bvhCuda->triangleNum * 2 - 1;
-	sourceSet.bvhNodeArray = this->bvh->bvhCuda->bvhNodeArray;
-	sourceSet.bvhTriangleInfoArray = this->bvh->bvhCuda->bvhTriangleInfoArray;
-
-	for (int i = 0; i < mainScene->sceneLights.size(); ++i) {
-		FzbLight& light = mainScene->sceneLights[i];
-		if (light.type == FZB_POINT) {
-			++sourceSet.pointLightCount;
-			sourceSet.pointLightInfoArray.push_back({ glm::vec4(light.position, 0.0f), glm::vec4(light.strength, 0.0f) });
-		}
-		else if (light.type == FZB_AREA) {
-			++sourceSet.areaLightCount;
-			FzbRayTracingAreaLight areaLight;
-			areaLight.worldPos = glm::vec4(light.position, 0.0f);
-			areaLight.normal = glm::vec4(light.normal, 0.0f);
-			areaLight.radiance = glm::vec4(light.strength, 0.0f);
-			areaLight.edge0 = glm::vec4(light.edge0, 0.0f);
-			areaLight.edge1 = glm::vec4(light.edge1, 0.0f);
-			areaLight.area = light.area;
-			sourceSet.areaLightInfoArray.push_back(areaLight);
-		}
-	}
-	return sourceSet;
 }
 void FzbPathTracing_soft::createImages() {
 	//VkExtent2D resolution = FzbRenderer::globalData.getResolution();
@@ -178,7 +109,6 @@ void FzbPathTracing_soft::createImages() {
 	//
 	//frameBufferImages.push_back(&pathTracingResultMap);
 }
-
 void FzbPathTracing_soft::createDescriptor() {
 	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
@@ -204,9 +134,9 @@ void FzbPathTracing_soft::createDescriptor() {
 	pathTracingDescriptorWrites[0].pBufferInfo = &pathTracingSettingBufferInfo;
 
 	VkDescriptorBufferInfo pathTracingResultBufferInfo{};
-	pathTracingResultBufferInfo.buffer = pathTracingResultBuffer.buffer;
+	pathTracingResultBufferInfo.buffer = rayTracingSourceManager.rayTracingResultBuffer.buffer;
 	pathTracingResultBufferInfo.offset = 0;
-	pathTracingResultBufferInfo.range = pathTracingResultBuffer.size;
+	pathTracingResultBufferInfo.range = rayTracingSourceManager.rayTracingResultBuffer.size;
 	pathTracingDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	pathTracingDescriptorWrites[1].dstSet = descriptorSet;
 	pathTracingDescriptorWrites[1].dstBinding = 1;
@@ -216,9 +146,9 @@ void FzbPathTracing_soft::createDescriptor() {
 	pathTracingDescriptorWrites[1].pBufferInfo = &pathTracingResultBufferInfo;
 
 	VkDescriptorBufferInfo bvhNodeBufferInfo{};
-	bvhNodeBufferInfo.buffer = bvh->bvhNodeArray.buffer;
+	bvhNodeBufferInfo.buffer = rayTracingSourceManager.bvh->bvhNodeArray.buffer;
 	bvhNodeBufferInfo.offset = 0;
-	bvhNodeBufferInfo.range = bvh->bvhNodeArray.size;
+	bvhNodeBufferInfo.range = rayTracingSourceManager.bvh->bvhNodeArray.size;
 	pathTracingDescriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	pathTracingDescriptorWrites[2].dstSet = descriptorSet;
 	pathTracingDescriptorWrites[2].dstBinding = 2;
@@ -228,9 +158,9 @@ void FzbPathTracing_soft::createDescriptor() {
 	pathTracingDescriptorWrites[2].pBufferInfo = &bvhNodeBufferInfo;
 
 	VkDescriptorBufferInfo bvhTriangleBufferInfo{};
-	bvhTriangleBufferInfo.buffer = bvh->bvhTriangleInfoArray.buffer;
+	bvhTriangleBufferInfo.buffer = rayTracingSourceManager.bvh->bvhTriangleInfoArray.buffer;
 	bvhTriangleBufferInfo.offset = 0;
-	bvhTriangleBufferInfo.range = bvh->bvhTriangleInfoArray.size;
+	bvhTriangleBufferInfo.range = rayTracingSourceManager.bvh->bvhTriangleInfoArray.size;
 	pathTracingDescriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	pathTracingDescriptorWrites[3].dstSet = descriptorSet;
 	pathTracingDescriptorWrites[3].dstBinding = 3;

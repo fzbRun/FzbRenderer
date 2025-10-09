@@ -1,5 +1,6 @@
 #include "./FzbShader.h"
 #include "../FzbComponent/FzbComponent.h"
+#include "../FzbRenderer.h"
 
 #include <pugixml/src/pugixml.hpp>
 #include <glslang/Public/ShaderLang.h>
@@ -9,7 +10,7 @@
 #include <sstream>
 #include <iostream>
 #include <filesystem>>
-#include "../FzbRenderer.h"
+#include <cstdint>
 
 std::vector<uint32_t> readSPIRVFile(const std::string& filename) {
 	// 以二进制模式从文件末尾开始读取
@@ -471,133 +472,6 @@ public:
 		}
 	}
 };
-std::vector<uint32_t> compileGLSL(
-	const std::string& filePath,
-	VkShaderStageFlagBits stage,
-	std::string shaderVersion,
-	const std::map<std::string, bool>& macros)
-{
-	int shaderVersion_I = std::stoi(shaderVersion);
-
-	// 读取主文件
-	std::ifstream mainFile(filePath);
-	if (!mainFile.is_open()) throw std::runtime_error("Failed to open shader file: " + filePath);
-	std::string source( (std::istreambuf_iterator<char>(mainFile)), std::istreambuf_iterator<char>());
-
-	//添加版本和宏
-	std::string preamble = "#version " + shaderVersion + "\n";
-	preamble += "#extension GL_GOOGLE_include_directive : require\n";
-	for (const auto& macro : macros) {
-		if (macro.second) preamble += "#define " + macro.first + "\n";
-	}
-	source = preamble + source;
-	const char* sourcePtr = source.c_str();
-	int shaderLength = source.length();
-	
-	// 设置着色器阶段
-	EShLanguage lang = EShLangVertex;
-	auto spirv_target = glslang::EShTargetSpv_1_3;
-	std::string stageString = "顶点着色器";
-	switch (stage) {
-	case VK_SHADER_STAGE_COMPUTE_BIT:
-		lang = EShLangCompute;
-		stageString = "计算着色器";
-		break;
-	case VK_SHADER_STAGE_VERTEX_BIT:
-		lang = EShLangVertex;
-		stageString = "顶点着色器";
-		break;
-	case VK_SHADER_STAGE_FRAGMENT_BIT:
-		lang = EShLangFragment;
-		stageString = "片元着色器";
-		break;
-	case VK_SHADER_STAGE_GEOMETRY_BIT:
-		lang = EShLangGeometry;
-		stageString = "几何着色器";
-		break;
-	case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
-		lang = EShLangRayGen;
-		spirv_target = glslang::EShTargetSpv_1_4;
-		stageString = "RayGen着色器";
-		break;
-	case VK_SHADER_STAGE_MISS_BIT_KHR:
-		lang = EShLangMiss;
-		spirv_target = glslang::EShTargetSpv_1_4;
-		stageString = "RayMiss着色器";
-		break;
-	case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
-		lang = EShLangClosestHit;
-		spirv_target = glslang::EShTargetSpv_1_4;
-		stageString = "ClosesHit着色器";
-		break;
-	case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
-		lang = EShLangAnyHit;
-		spirv_target = glslang::EShTargetSpv_1_4;
-		stageString = "AnyHit着色器";
-		break;
-	case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
-		lang = EShLangIntersect;
-		spirv_target = glslang::EShTargetSpv_1_4;
-		stageString = "Intersect着色器";
-		break;
-	}
-	glslang::EshTargetClientVersion vulkan_version = glslang::EShTargetVulkan_1_0;
-	switch (FzbRenderer::globalData.apiVersion) {
-	case VK_API_VERSION_1_0:
-		vulkan_version = glslang::EShTargetVulkan_1_0;
-		break;
-	case VK_API_VERSION_1_1:
-		vulkan_version = glslang::EShTargetVulkan_1_1;
-		break;
-	case VK_API_VERSION_1_2:
-		vulkan_version = glslang::EShTargetVulkan_1_2;
-		break;
-	case VK_API_VERSION_1_3:
-		vulkan_version = glslang::EShTargetVulkan_1_3;
-		break;
-	}
-
-	// 创建着色器对象
-	glslang::TShader shader(lang);
-	shader.setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientVulkan, shaderVersion_I);
-	shader.setEnvClient(glslang::EShClient::EShClientVulkan, vulkan_version);
-	shader.setEnvTarget(glslang::EShTargetSpv, spirv_target);
-	//shader.setPreamble(preamble.c_str());
-	shader.setStringsWithLengths(&sourcePtr, &shaderLength, 1);
-	//shader.setStrings(&sourcePtr, 1);
-
-	// 设置编译选项
-	EShMessages messages = (EShMessages)(EShMsgSpvRules | EShMsgVulkanRules);	//EShMsgSpvRules表示生成spv，EShMsgVulkanRules为使用vulkan规范
-	TBuiltInResource resources = DefaultTBuiltInResource;
-	FileIncluder includer(std::filesystem::path(filePath).parent_path().string());
-	if (!shader.parse(&resources, shaderVersion_I, ENoProfile, false, false, messages, includer)) {
-		std::cout << stageString + " GLSL compilation failed:\n" + std::string(shader.getInfoLog()) << std::endl;
-		throw std::runtime_error(stageString + " GLSL compilation failed:\n" + std::string(shader.getInfoLog()));
-	}
-
-	// 链接程序
-	glslang::TProgram program;
-	program.addShader(&shader);
-	if (!program.link(messages)) {
-		throw std::runtime_error("GLSL linking failed:\n" + std::string(program.getInfoLog()));
-	}
-
-	// 生成 SPIR-V
-	std::vector<uint32_t> spirv;
-	glslang::SpvOptions options{};
-#ifdef NDEBUG
-	options.generateDebugInfo = true;
-	options.stripDebugInfo = false;
-	options.disableOptimizer = true;
-#else
-	options.generateDebugInfo = false;
-	options.stripDebugInfo = true;
-	options.disableOptimizer = false;
-#endif
-	glslang::GlslangToSpv(*program.getIntermediate(lang), spirv, &options);
-
-	return spirv;
-}
 
 //--------------------------------------------shader-----------------------------------
 FzbShader::FzbShader() {}
@@ -623,58 +497,11 @@ FzbShader::FzbShader(std::string path, FzbShaderExtensionsSetting extensionsSett
 				throw std::runtime_error("有新的shader属性类型，快些");
 			}
 		}
-		/*
-		for (pugi::xml_node texture : properties.children("texture")) {
-			if (texture.attribute("usability").value() == "false") {
-				continue;
-			}
-			FzbTexture texturePorperty;
-
-			std::string type = texture.attribute("filter").value();
-			if (type == "linear") {
-				texturePorperty.filter = VK_FILTER_LINEAR;
-			}
-			else {
-				texturePorperty.filter = VK_FILTER_NEAREST;
-				throw std::runtime_error("不是linear的texture");
-			}
-
-			std::string stage = texture.attribute("stage").value();
-			if (stage == "fragmentShader") {
-				texturePorperty.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-			}
-			else {
-				texturePorperty.stage = VK_SHADER_STAGE_ALL;
-				throw std::runtime_error("不是片元阶段的texture");
-			}
-
-			this->properties.textureProperties[texture.attribute("name").value()] = texturePorperty;
-		}
-		for (pugi::xml_node number : properties.children("rgba")) {
-			if (number.attribute("usability").value() == "false") {
-				continue;
-			}
-			FzbNumberProperty numberPorperty;
-
-			std::string stage = number.attribute("stage").value();
-			if (stage == "fragmentShader") {
-				numberPorperty.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-			}
-			else {
-				numberPorperty.stage = VK_SHADER_STAGE_ALL;
-				std::cout << "不是片元阶段的texture" << std::endl;
-			}
-
-			this->properties.numberProperties[number.attribute("name").value()] = numberPorperty;
-		}
-		*/
 	}
-	if (pugi::xml_node macros = shaderInfos.child("Macros")) {
-		for (pugi::xml_node macro : macros.children("macro")) {
+	if (pugi::xml_node macros = shaderInfos.child("Macros")) {		//将xml中定义的宏全部添加进来
+		for (pugi::xml_node macro : macros.children("macro"))
 			this->macros.insert({ macro.attribute("name").value(),  std::string(macro.attribute("usability").value()) == "true" });
-		}
 	}
-	//initVertexFormat();
 
 	if (pugi::xml_node shaders = shaderInfos.child("Shaders")) {
 		if (pugi::xml_node shaderVersion = shaders.child("shaderVersion")) {
@@ -1012,59 +839,86 @@ bool FzbShader::operator==(const FzbShader& other) const {
 }
 
 //--------------------------------------------编译shader变体-----------------------------------
-void FzbShaderVariant::changeVertexFormatAndMacros(FzbVertexFormat vertexFormat) {
-	this->vertexFormat.mergeUpward(vertexFormat);	//比如说一定要有texCoords，但是由于material和shader变体没有纹理，所以可以不开启宏
-
-	//如果material带有texture，那么mesh的vertexFormat自然带有texCoords，那么material自然带有texCoords
-	//那么由于我使用一个大的vertexBuffer，那么无论新的material是否有texture，都需要带有texCoords
-	//只不过shader中不使用纹理而已，所以只需要修改宏，而不去修改具体的vertexFormat
-	if (this->properties.textureProperties.size() > 0) {
-		//this->vertexFormat.useTexCoord = true;
-		this->macros["useTextureProperty"] = true;
-		this->macros["useVertexTexCoords"] = true;
-	}
-	else {
-		//this->vertexFormat.useTexCoord = false;		
-		this->macros["useTextureProperty"] = false;
-		this->macros["useVertexTexCoords"] = false;
-	}
-	this->macros["useNumberProperty"] = this->properties.numberProperties.size() == 0 ? false : true;
-	if (macros["useVertexNormal"]) this->vertexFormat.useNormal = true;
-	if (macros["useVertexTexCoords"]) this->vertexFormat.useTexCoord = true;
-	if (macros["useVertexTangent"]) this->vertexFormat.useTangent = true;
-}
 FzbShaderVariant::FzbShaderVariant() {};
+void FzbShaderVariant::addVertexFormatAndMacros(FzbVertexFormat vertexFormat) {
+	this->vertexFormat.mergeUpward(vertexFormat);	//比如说一定要有texCoords，但是由于material和shader变体没有纹理，所以可以不开启宏
+	//this->macros["VERTEX_TEXCOORDS"] = this->properties.textureProperties.size() > 0;
+	//if (this->properties.textureProperties.size() > 0) {
+	//	//this->vertexFormat.useTexCoord = true;
+	//	this->macros["useTextureProperty"] = true;
+	//	this->macros["useVertexTexCoords"] = true;
+	//}
+	//else {
+	//	//this->vertexFormat.useTexCoord = false;		
+	//	this->macros["useTextureProperty"] = false;
+	//	this->macros["useVertexTexCoords"] = false;
+	//}
+	//this->macros["useNumberProperty"] = this->properties.numberProperties.size() == 0 ? false : true;
+	uint32_t vertexDataChannel = 1;
+	if (this->vertexFormat.useNormal) {
+		this->macros["VERTEX_NORMAL"] = true;
+		this->macros["VERTEX_NORMAL_CHANNEL " + std::to_string(vertexDataChannel++)] = true;
+	}
+	else this->macros["VERTEX_NORMAL"] = false;
+	if (this->vertexFormat.useTexCoord) {
+		this->macros["VERTEX_TEXCOORDS"] = true;
+		this->macros["VERTEX_TEXCOORDS_CHANNEL " + std::to_string(vertexDataChannel++)] = true;
+	}else this->macros["VERTEX_TEXCOORDS"] = false;
+	if (this->vertexFormat.useTangent) {
+		this->macros["VERTEX_TANGENT"] = true;
+		this->macros["VERTEX_TANGENT_CHANNEL " + std::to_string(vertexDataChannel++)] = true;
+	}else this->macros["VERTEX_TANGENT"] = false;
+}
+
+std::string to_upper_ascii(std::string s) {
+	std::transform(s.begin(), s.end(), s.begin(),
+		[](unsigned char c) { return static_cast<char>(std::toupper(c)); }
+	);
+	return s;
+}
+void FzbShaderVariant::addMaterialAttributeMacros(FzbMaterial* material) {
+	//如果shader开启了某个资源类型，但是material没有传入相应的资源，则关闭shader的相应的资源类（宏）
+	uint32_t materialTextureAvailable = 0;
+	for (auto& shaderPair : publicShader->properties.textureProperties) {
+		std::string textureType = shaderPair.first;
+		std::string macro = textureType;
+		macro = to_upper_ascii(macro);
+		if (material->properties.textureProperties.count(textureType)) {
+			this->macros[macro] = true;
+			this->properties.textureProperties.insert({ textureType, material->properties.textureProperties[textureType] });
+			materialTextureAvailable |= 1u << material->getMaterialAttributeIndex(textureType);
+		}
+		else this->macros[macro] = false;
+	}
+	//为shader所使用的materialAttribute添加channel信息
+	for (auto& shaderPair : publicShader->properties.textureProperties) {
+		std::string textureType = shaderPair.first;
+		if (!material->properties.textureProperties.count(textureType)) continue;
+		std::string macro = to_upper_ascii(textureType) + "_CHANNEL ";
+		macro[0] = std::toupper(static_cast<unsigned char>(macro[0]));
+		uint32_t channel = materialTextureAvailable << (32 - material->getMaterialAttributeIndex(textureType));
+		channel = __popcnt(channel);
+		this->macros[macro + std::to_string(channel)] = true;
+	}
+
+	//number有点不同，如果material没有传入，而shader开启了，则使用默认值
+	for (auto& shaderPair : publicShader->properties.numberProperties) {
+		std::string numberType = shaderPair.first;
+		if (material->properties.numberProperties.count(numberType))
+			this->properties.numberProperties.insert({ numberType, material->properties.numberProperties[numberType] });
+		else this->properties.numberProperties.insert(shaderPair);
+	}
+	if (publicShader->properties.numberProperties.size() > 0)
+		this->macros["NUMBERPROPERTIES_CHANNEL " + std::to_string(this->properties.textureProperties.size())] = true;
+}
 FzbShaderVariant::FzbShaderVariant(FzbShader* publicShader, FzbMaterial* material) {
 	this->publicShader = publicShader;
 	this->macros = publicShader->macros;
 	this->materials.push_back(material);
 	this->vertexFormat = FzbVertexFormat();
 
-	//如果shader开启了某个资源类型，但是material没有传入相应的资源，则关闭shader的相应的资源类（宏）
-	for (auto& shaderPair : publicShader->properties.textureProperties) {
-		std::string textureType = shaderPair.first;
-		std::string macro = textureType;
-		macro[0] = std::toupper(static_cast<unsigned char>(macro[0]));
-		macro = "use" + macro;
-		if (material->properties.textureProperties.count(textureType)) {
-			this->macros[macro] = true;
-			this->properties.textureProperties.insert({ textureType, material->properties.textureProperties[textureType] });
-		}
-		else this->macros[macro] = false;
-	}
-	//number有点不同，如果material没有传入，而shader开启了，则使用默认值
-	for (auto& shaderPair : publicShader->properties.numberProperties) {
-		std::string numberType = shaderPair.first;
-		std::string macro = numberType;
-		macro[0] = std::toupper(static_cast<unsigned char>(macro[0]));
-		macro = "use" + macro;
-		if (material->properties.numberProperties.count(numberType)) {
-			this->macros[macro] = true;
-			this->properties.numberProperties.insert({ numberType, material->properties.numberProperties[numberType] });
-		}
-		else if (this->macros[macro]) this->properties.numberProperties.insert(shaderPair);
-	}
-	changeVertexFormatAndMacros(material->vertexFormat);
+	addVertexFormatAndMacros(material->vertexFormat);
+	addMaterialAttributeMacros(material);
 }
 void FzbShaderVariant::createDescriptor(VkDescriptorPool sceneDescriptorPool) {
 	//创造描述符
@@ -1130,6 +984,132 @@ void FzbShaderVariant::createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMat
 	}
 	else this->meshBatch.materials = meshBatchMaterials;
 }
+
+std::vector<uint32_t> FzbShaderVariant::compileGLSL(const std::string& filePath, VkShaderStageFlagBits stage)
+{
+	std::string shaderVersion = this->publicShader->shaderVersion;
+	int shaderVersion_I = std::stoi(shaderVersion);
+
+	// 读取主文件
+	std::ifstream mainFile(filePath);
+	if (!mainFile.is_open()) throw std::runtime_error("Failed to open shader file: " + filePath);
+	std::string source((std::istreambuf_iterator<char>(mainFile)), std::istreambuf_iterator<char>());
+
+	//添加版本和宏
+	std::string preamble = "#version " + shaderVersion + "\n";
+	preamble += "#extension GL_GOOGLE_include_directive : require\n";
+	for (const auto& macro : macros) {
+		if (macro.second) preamble += "#define " + macro.first + "\n";
+	}
+	source = preamble + source;
+	//std::cout << source << std::endl;
+	const char* sourcePtr = source.c_str();
+	int shaderLength = source.length();
+
+	// 设置着色器阶段
+	EShLanguage lang = EShLangVertex;
+	auto spirv_target = glslang::EShTargetSpv_1_3;
+	std::string stageString = "顶点着色器";
+	switch (stage) {
+	case VK_SHADER_STAGE_COMPUTE_BIT:
+		lang = EShLangCompute;
+		stageString = "计算着色器";
+		break;
+	case VK_SHADER_STAGE_VERTEX_BIT:
+		lang = EShLangVertex;
+		stageString = "顶点着色器";
+		break;
+	case VK_SHADER_STAGE_FRAGMENT_BIT:
+		lang = EShLangFragment;
+		stageString = "片元着色器";
+		break;
+	case VK_SHADER_STAGE_GEOMETRY_BIT:
+		lang = EShLangGeometry;
+		stageString = "几何着色器";
+		break;
+	case VK_SHADER_STAGE_RAYGEN_BIT_KHR:
+		lang = EShLangRayGen;
+		spirv_target = glslang::EShTargetSpv_1_4;
+		stageString = "RayGen着色器";
+		break;
+	case VK_SHADER_STAGE_MISS_BIT_KHR:
+		lang = EShLangMiss;
+		spirv_target = glslang::EShTargetSpv_1_4;
+		stageString = "RayMiss着色器";
+		break;
+	case VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR:
+		lang = EShLangClosestHit;
+		spirv_target = glslang::EShTargetSpv_1_4;
+		stageString = "ClosesHit着色器";
+		break;
+	case VK_SHADER_STAGE_ANY_HIT_BIT_KHR:
+		lang = EShLangAnyHit;
+		spirv_target = glslang::EShTargetSpv_1_4;
+		stageString = "AnyHit着色器";
+		break;
+	case VK_SHADER_STAGE_INTERSECTION_BIT_KHR:
+		lang = EShLangIntersect;
+		spirv_target = glslang::EShTargetSpv_1_4;
+		stageString = "Intersect着色器";
+		break;
+	}
+	glslang::EshTargetClientVersion vulkan_version = glslang::EShTargetVulkan_1_0;
+	switch (FzbRenderer::globalData.apiVersion) {
+	case VK_API_VERSION_1_0:
+		vulkan_version = glslang::EShTargetVulkan_1_0;
+		break;
+	case VK_API_VERSION_1_1:
+		vulkan_version = glslang::EShTargetVulkan_1_1;
+		break;
+	case VK_API_VERSION_1_2:
+		vulkan_version = glslang::EShTargetVulkan_1_2;
+		break;
+	case VK_API_VERSION_1_3:
+		vulkan_version = glslang::EShTargetVulkan_1_3;
+		break;
+	}
+
+	// 创建着色器对象
+	glslang::TShader shader(lang);
+	shader.setEnvInput(glslang::EShSourceGlsl, lang, glslang::EShClientVulkan, shaderVersion_I);
+	shader.setEnvClient(glslang::EShClient::EShClientVulkan, vulkan_version);
+	shader.setEnvTarget(glslang::EShTargetSpv, spirv_target);
+	//shader.setPreamble(preamble.c_str());
+	shader.setStringsWithLengths(&sourcePtr, &shaderLength, 1);
+	//shader.setStrings(&sourcePtr, 1);
+
+	// 设置编译选项
+	EShMessages messages = (EShMessages)(EShMsgSpvRules | EShMsgVulkanRules);	//EShMsgSpvRules表示生成spv，EShMsgVulkanRules为使用vulkan规范
+	TBuiltInResource resources = DefaultTBuiltInResource;
+	FileIncluder includer(std::filesystem::path(filePath).parent_path().string());
+	if (!shader.parse(&resources, shaderVersion_I, ENoProfile, false, false, messages, includer)) {
+		std::cout << stageString + " GLSL compilation failed:\n" + std::string(shader.getInfoLog()) << std::endl;
+		throw std::runtime_error(stageString + " GLSL compilation failed:\n" + std::string(shader.getInfoLog()));
+	}
+
+	// 链接程序
+	glslang::TProgram program;
+	program.addShader(&shader);
+	if (!program.link(messages)) {
+		throw std::runtime_error("GLSL linking failed:\n" + std::string(program.getInfoLog()));
+	}
+
+	// 生成 SPIR-V
+	std::vector<uint32_t> spirv;
+	glslang::SpvOptions options{};
+#ifdef NDEBUG
+	options.generateDebugInfo = true;
+	options.stripDebugInfo = false;
+	options.disableOptimizer = true;
+#else
+	options.generateDebugInfo = false;
+	options.stripDebugInfo = true;
+	options.disableOptimizer = false;
+#endif
+	glslang::GlslangToSpv(*program.getIntermediate(lang), spirv, &options);
+
+	return spirv;
+}
 std::vector<VkPipelineShaderStageCreateInfo> FzbShaderVariant::createShaderStates() {
 
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStates;
@@ -1138,7 +1118,7 @@ std::vector<VkPipelineShaderStageCreateInfo> FzbShaderVariant::createShaderState
 		std::string shaderPath = publicShader->path + "/" + shader.second;
 		std::vector<uint32_t> shaderSpvCode;
 		if (this->publicShader->useStaticCompile) shaderSpvCode = this->publicShader->shaderSpvs[shader.first];
-		else shaderSpvCode = compileGLSL(shaderPath, shaderStage, this->publicShader->shaderVersion, this->macros);
+		else shaderSpvCode = compileGLSL(shaderPath, shaderStage);
 
 		VkShaderModuleCreateInfo createInfo{};
 		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

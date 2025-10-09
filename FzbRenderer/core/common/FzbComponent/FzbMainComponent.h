@@ -25,6 +25,9 @@ const std::vector<const char*> validationLayers_default = { "VK_LAYER_KHRONOS_va
 const std::vector<const char*> deviceExtensions_default = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME };
 const uint32_t apiVersion_default = VK_API_VERSION_1_2;
 
+struct FzbDeviceExtensionFeatureList {
+	void* featureList;
+};
 struct FzbMainComponent : public FzbComponent {
 public:
 	float lastTime = 0.0f;
@@ -57,7 +60,9 @@ public:
 	std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
 	std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME };
 	VkPhysicalDeviceFeatures deviceFeatures;
-	void* pNextFeatures = nullptr;
+	VkPhysicalDeviceVulkan11Features vk11Features;
+	VkPhysicalDeviceVulkan12Features vk12Features;
+	FzbDeviceExtensionFeatureList extensionFeatureList;
 
 	FzbSwapChainSupportDetails swapChainSupportDetails;
 	FzbQueueFamilyIndices queueFamilyIndices;
@@ -90,7 +95,7 @@ public:
 	FzbQueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 	bool checkDeviceExtensionSupport(std::vector<const char*> deviceExtensions, VkPhysicalDevice device);
 	VkSampleCountFlagBits getMaxUsableSampleCount();
-	VkPhysicalDeviceFeatures2 createPhysicalDeviceFeatures(VkPhysicalDeviceFeatures deviceFeatures, VkPhysicalDeviceVulkan11Features* vk11Features = nullptr, VkPhysicalDeviceVulkan12Features* vk12Features = nullptr);
+	//VkPhysicalDeviceFeatures2 createPhysicalDeviceFeatures(VkPhysicalDeviceFeatures deviceFeatures, VkPhysicalDeviceVulkan11Features* vk11Features = nullptr, VkPhysicalDeviceVulkan12Features* vk12Features = nullptr);
 	void createLogicalDevice(VkPhysicalDeviceFeatures* deviceFeatures = nullptr, std::vector<const char*> deviceExtensions = deviceExtensions_default, const void* pNextFeatures = nullptr, std::vector<const char*> validationLayers = validationLayers_default);
 	//void createDevice(VkPhysicalDeviceFeatures* deviceFeatures = nullptr, std::vector<const char*> deviceExtensions = deviceExtensions_default, const void* pNextFeatures = nullptr, std::vector<const char*> validationLayers = validationLayers_default);
 	void createDevice();

@@ -3,10 +3,10 @@ layout(location = 0) in vec3 vertexWorldPos;
 layout(location = VERTEX_NORMAL_CHANNEL) in vec3 vertexNormal;
 #endif
 #ifdef VERTEX_TEXCOORDS
-layout(location = VERTEX_TEXCOORDS_CHANNEL) in vec2 vertexTexCoords;
+layout(location = VertexTexCoordsChannel) in vec2 vertexTexCoords;
 #endif
 #ifdef VERTEX_TANGENT
-layout(location = VERTEX_TANGENT_CHANNEL) in vec3 vertexTangent;
+layout(location = VertexTangentChannel) in vec3 vertexTangent;
 #endif
 
 //主组件描述符，相机信息
@@ -34,8 +34,10 @@ layout(set = 1, binding = NORMALMAP_CHANNEL) uniform sampler2D normalMap;
 #ifdef ALBEDOMAP
 layout(set = 1, binding = ALBEDOMAP_CHANNEL) uniform sampler2D albedoMap;
 #endif
+
 layout(set = 1, binding = NUMBERPROPERTIES_CHANNEL) uniform MaterialBuffer{
 	vec4 albedo;
+	vec4 bsdfPara;
 	vec4 emissive;
 };
 
@@ -46,9 +48,9 @@ layout(location = 0) out vec4 fragColor;
 
 void main() {
 	vec3 cameraPos = cubo.cameraPos.xyz;
-	vec3 o = normalize(cameraPos.xyz - vertexWorldPos);
+	vec3 o = normalize(cameraPos - vertexWorldPos);
 	vec3 normal = getNormal();
 	vec3 vertexAlbedo = getAlbedo().rgb;
 
-	fragColor = getIllumination(o, normal, vertexAlbedo) * 0.1f;
+	fragColor = getIllumination(o, normal, vertexAlbedo) * 0.01f;
 }

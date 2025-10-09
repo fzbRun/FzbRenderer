@@ -17,19 +17,18 @@
 			</featureComponent>
 		</childComponents>
 	</rendererType>
-	-->
-	<rendererType value = "PathTracing_soft">
+	<rendererType value = "SVO_PG_Debug">
 		<available value = "true" />
 		<rendererComponentSetting>
-			<spp value = "1" />
+			<voxelAABBDebugInfo value = "true" />
 		</rendererComponentSetting>
 		<childComponents>
-			<featureComponent name = "BVH">
+			<featureComponent name = "SVO_PG">
 				<available value = "true" />
 			</featureComponent>
 		</childComponents>
 	</rendererType>
-	<featureComponents>
+		<featureComponents>
 		<featureComponent name = "BVH_Debug">
 			<available value = "false" />
 		</featureComponent>
@@ -45,4 +44,45 @@
 			</featureComponentSetting>
 		</featureComponent>
 	</featureComponents> 
+	
+		<rendererType value = "SVO_PG_Debug">
+		<available value = "true" />
+		<rendererComponentSetting>
+			<voxelAABBDebugInfo value = "true" />
+		</rendererComponentSetting>
+		<childComponents>
+			<featureComponent name = "SVO_PG">
+				<available value = "true" />
+				<featureComponentSetting>
+					<voxelNum value = "64" />
+					<useCube value = "true" />
+					<useOBB value = "true" />
+				</featureComponentSetting>
+			</featureComponent>
+		</childComponents>
+	</rendererType>
+	-->
+	<rendererType value = "SVO_PG_Debug">
+		<available value = "true" />
+		<rendererComponentSetting>
+			<voxelAABBDebugInfo value = "false" />
+			<voxelIrradianceDebugInfo value = "false" />
+			<SVONodeClusterDebugInfo value = "true" level = "1" />
+		</rendererComponentSetting>
+		<childComponents>
+			<featureComponent name = "SVO_PG">
+				<available value = "true" />
+				<featureComponentSetting>
+					<voxelNum value = "64" />
+					<useCube value = "true" />
+					<useOBB value = "true" />
+				</featureComponentSetting>
+				<childComponents>
+					<featureComponent name = "BVH">
+						<available value = "true" />
+					</featureComponent>
+				</childComponents>
+			</featureComponent>
+		</childComponents>
+	</rendererType>
 </renderer>

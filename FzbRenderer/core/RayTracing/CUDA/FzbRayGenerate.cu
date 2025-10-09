@@ -80,11 +80,6 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 				//glm::vec3 o = -ray.direction;
 				ray.direction = glm::normalize((eta * cosTheta_OH - (glm::sqrt(1.0f + eta * eta * (cosTheta_OH * cosTheta_OH - 1.0f)))) * h + eta * ray.direction);
 				float weight = (eta * eta) / ((1.0f + eta * eta + 2.0f * eta) * cosTheta_OH);
-				//uint32_t threadIndx = threadIdx.x + blockDim.x * blockIdx.x;
-				//printf("rayGenerate:%d  %f %f %f\n", threadIdx.x + blockDim.x * blockIdx.x, h.x, h.y, h.z);
-				//printf("%f\n", glm::length(glm::abs(h) - glm::abs(glm::normalize(ray.direction + eta * o))));
-				//printf("%f\n", glm::dot(glm::normalize(ray.direction + eta * o), triangleAttribute.normal));
-				//printf("rayGenerate:%d %f %f %f %f\n", threadIdx.x + blockDim.x * blockIdx.x, h.x, ray.direction.x, ray.direction.y, ray.direction.z);
 				pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * weight;
 			}
 		}

@@ -9,7 +9,7 @@ FzbBVH::FzbBVH() {
 FzbBVH::FzbBVH(pugi::xml_node& BVHNode) {
 	addMainSceneInfo();
 	addExtensions();
-	if (pugi::xml_node childComponents = BVHNode.child("featureComponents")) getChildComponent(childComponents);
+	if (pugi::xml_node childComponents = BVHNode.child("childComponents")) getChildComponent(childComponents);
 }
 void FzbBVH::init() {
 	FzbFeatureComponent_PreProcess::init();

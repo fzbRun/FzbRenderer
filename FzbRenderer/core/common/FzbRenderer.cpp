@@ -7,6 +7,7 @@
 #include <glslang/Public/ShaderLang.h>
 #include <chrono>
 #include <random>
+#include "../SceneDivision/SVO_PG/FzbSVO_PG.h"
 
 std::map<std::string, FzbFeatureComponentName> featureComponentMap{
 	{ "Forward", FZB_RENDERER_FORWARD },
@@ -15,6 +16,8 @@ std::map<std::string, FzbFeatureComponentName> featureComponentMap{
 	{ "BVH_Debug", FZB_FEATURE_COMPONENT_BVH_DEBUG },
 	{ "SVO", FZB_FEATURE_COMPONENT_SVO },
 	{ "SVO_Debug", FZB_FEATURE_COMPONENT_SVO_DEBUG },
+	{ "SVO_PG", FZB_FEATURE_COMPONENT_SVO_PG },
+	{ "SVO_PG_Debug", FZB_FEATURE_COMPONENT_SVO_PG_DEBUG },
 };
 std::shared_ptr<FzbFeatureComponent> createFzbComponent(std::string componentName, pugi::xml_node& node) {
 	FzbFeatureComponentName name;
@@ -27,6 +30,8 @@ std::shared_ptr<FzbFeatureComponent> createFzbComponent(std::string componentNam
 			case FZB_FEATURE_COMPONENT_BVH_DEBUG: return std::make_unique<FzbBVH_Debug>(node);
 			//case FZB_FEATURE_COMPONENT_SVO: return std::make_unique<FzbSVO>(node);
 			case FZB_FEATURE_COMPONENT_SVO_DEBUG: return std::make_unique<FzbSVO_Debug>(node);
+			case FZB_FEATURE_COMPONENT_SVO_PG: return std::make_unique<FzbSVO_PG>(node);
+			case FZB_FEATURE_COMPONENT_SVO_PG_DEBUG: return std::make_unique<FzbSVO_PG_Debug>(node);
 		}
 		return nullptr;
 	}

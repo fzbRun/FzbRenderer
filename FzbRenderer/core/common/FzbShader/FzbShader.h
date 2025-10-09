@@ -19,6 +19,7 @@ public:
 	FzbVertexFormat vertexFormat;
 	FzbShaderProperty properties;
 	std::map<std::string, bool> macros;
+	//std::vector<std::string> shaderDefines;
 
 	VkDescriptorSetLayout descriptorSetLayout = nullptr;
 	std::vector<FzbMaterial*> materials;
@@ -28,25 +29,21 @@ public:
 
 	VkPipelineLayout pipelineLayout = nullptr;
 	VkPipeline pipeline = nullptr;
-	//FzbSubPass* subPass;
-
-	void changeVertexFormatAndMacros(FzbVertexFormat vertexFormat = FzbVertexFormat());
 
 	FzbShaderVariant();
+
+	void addVertexFormatAndMacros(FzbVertexFormat vertexFormat = FzbVertexFormat());
+	void addMaterialAttributeMacros(FzbMaterial* material);
 	FzbShaderVariant(FzbShader* publicShader, FzbMaterial* material);
 
 	void createDescriptor(VkDescriptorPool sceneDescriptorPool);
-
-	//void changeVertexFormat(FzbVertexFormat newFzbVertexFormat);
-
-	void clean();
-
 	void createMeshBatch(std::map<FzbMesh*, FzbMaterial*>& meshMaterialPairs);
-
+	std::vector<uint32_t> compileGLSL(const std::string& filePath, VkShaderStageFlagBits stage);
 	std::vector<VkPipelineShaderStageCreateInfo> createShaderStates();
 	void createPipeline(VkRenderPass renderPass, uint32_t subPassIndex, std::vector<VkDescriptorSetLayout> descriptorSetLayouts);
 
 	void render(VkCommandBuffer commandBuffer, std::vector<VkDescriptorSet> componentDescriptorSets);
+	void clean();
 
 	bool operator==(const FzbShaderVariant& other) const;
 	bool operator==(const FzbMaterial& other) const;

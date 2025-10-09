@@ -1,0 +1,21 @@
+<ShaderInfo>
+	<Properties>
+		<property name = "normalMap" type = "texture"/>
+		<property name = "albedoMap" type = "texture"/>
+		<property name = "albedo" type = "rgba" value = "1.0, 1.0, 1.0, 1.0"/>
+		<property name = "bsdfPara" type = "rgba" value = "0.1, 1.0, 1.0, 1.0"/>	<!--第一位是粗糙度-->
+		<property name = "emissive" type = "rgba" value = "0.0, 0.0, 0.0, 0.0"/>
+	</Properties>
+	<Macros>
+	</Macros>
+	<Shaders>
+		<shaderVersion value = "460" />
+		<shader name = "vertexShader" path = "vertex.glsl" />
+		<shader name = "fragmentShader" path = "fragment.glsl" />
+	</Shaders>
+	<Pipeline>
+		<dynamicStateInfo>
+			<dynamicView />
+		</dynamicStateInfo>
+	</Pipeline>
+</ShaderInfo>

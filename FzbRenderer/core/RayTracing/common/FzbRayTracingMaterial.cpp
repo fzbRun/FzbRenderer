@@ -1,11 +1,11 @@
-#include "./FzbPathTracingMaterial.h"
+#include "./FzbRayTracingMaterial.h"
 
-MaterialType fzbGetPathTracingMaterialType(std::string materialTypeString) {
+MaterialType fzbGetRayTracingMaterialType(std::string materialTypeString) {
 	if (materialTypeString == "diffuse") return diffuse;
 	else if (materialTypeString == "roughconductor") return roughconductor;
 	else if (materialTypeString == "roughdielectric") return roughdielectric;
 }
-void fzbSetPathTracingNumberAttributeIndex(uint32_t materialType, glm::vec4* numberAttributeIndices, glm::vec4 numberAttribute, std::string numberAttributeType) {
+void fzbSetRayTracingNumberAttributeIndex(uint32_t materialType, glm::vec4* numberAttributeIndices, glm::vec4 numberAttribute, std::string numberAttributeType) {
 	uint32_t numberAttributeIndexInArray = 0;
 	if (materialType == diffuse) numberAttributeIndexInArray = 0;
 	else if (materialType == roughconductor) {
@@ -17,7 +17,7 @@ void fzbSetPathTracingNumberAttributeIndex(uint32_t materialType, glm::vec4* num
 	}
 	numberAttributeIndices[numberAttributeIndexInArray] = numberAttribute;
 }
-void fzbSetPathTracingTextureIndex(uint32_t materialType, int* textureIndices, int textureIndex, std::string textureType) {
+void fzbSetRayTracingTextureIndex(uint32_t materialType, int* textureIndices, int textureIndex, std::string textureType) {
 	uint32_t textureIndexInArray = 0;
 	if (textureType == "normalMap") textureIndexInArray = 0;
 	else if (textureType == "albedoMap") textureIndexInArray = 1;
@@ -27,8 +27,8 @@ void fzbSetPathTracingTextureIndex(uint32_t materialType, int* textureIndices, i
 	textureIndices[textureIndexInArray] = textureIndex;
 }
 
-FzbPathTracingMaterialUniformObject createInitialMaterialUniformObject() {
-	FzbPathTracingMaterialUniformObject material;
+FzbRayTracingMaterialUniformObject createInitialMaterialUniformObject() {
+	FzbRayTracingMaterialUniformObject material;
 	material.materialType = 0;
 	for (int i = 0; i < 3; ++i) material.textureIndex[i] = -1;
 	for (int i = 0; i < 8; ++i) material.numberAttribute[i] = glm::vec4(1.0f);

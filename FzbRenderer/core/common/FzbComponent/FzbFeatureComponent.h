@@ -13,7 +13,9 @@ enum FzbFeatureComponentName {
 	FZB_FEATURE_COMPONENT_BVH,
 	FZB_FEATURE_COMPONENT_BVH_DEBUG,
 	FZB_FEATURE_COMPONENT_SVO,
-	FZB_FEATURE_COMPONENT_SVO_DEBUG
+	FZB_FEATURE_COMPONENT_SVO_DEBUG,
+	FZB_FEATURE_COMPONENT_SVO_PG,
+	FZB_FEATURE_COMPONENT_SVO_PG_DEBUG,
 };
 enum FzbFeatureComponentType {
 	FZB_RENDER_COMPONENT,
@@ -57,10 +59,10 @@ struct FzbRendererComponent : public FzbFeatureComponent {
 	FzbSemaphore renderFinishedSemaphore;
 
 	FzbRendererComponent();
+	virtual void createImages() = 0;
 	void init() override;
 	virtual void presentPrepare() = 0;	//创建各种渲染的变量，如缓冲区、renderPass
 
-	virtual void createImages() = 0;
 	void destroyFrameBuffer();
 	void createFrameBuffer();
 

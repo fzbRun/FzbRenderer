@@ -1,0 +1,26 @@
+<ShaderInfo>
+	<Properties>
+	</Properties>
+	<Macros>
+	</Macros>
+	<Shaders>
+		<shaderVersion value = "460" />
+		<shader name = "vertexShader" path = "createVGB_vert.glsl" />
+		<shader name = "geometryShader" path = "createVGB_gemo.glsl" />
+		<shader name = "fragmentShader" path = "createVGB_frag.glsl" />
+	</Shaders>
+	<Pipeline>
+		<rasterizerInfo>
+			<cullMode value = "VK_CULL_MODE_NONE" />
+		</rasterizerInfo>
+		<depthStencilInfo>
+			<depthTestEnable value="false" />
+			<depthWriteEnable value="false" />
+		</depthStencilInfo>
+		<viewportStateInfo>
+			<resolution width = "2048" height = "2048" />
+			<viewport x = "0" y = "0" width = "2048" height = "2048"/>
+			<scissor offset = "0, 0" extent = "2048, 2048" />
+		</viewportStateInfo>
+	</Pipeline>
+</ShaderInfo>

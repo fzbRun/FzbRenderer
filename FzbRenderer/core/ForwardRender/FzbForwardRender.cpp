@@ -42,8 +42,9 @@ void FzbForwardRender::presentPrepare() {
 	FzbRenderer::globalData.mainScene.createCameraAndLightDescriptor();
 
 	this->sourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet);
-	FzbShaderInfo shaderInfo = { "/core/Materials/Diffuse/shaders/forwardRender" };
-	this->sourceManager.addSource({ {"diffuse", shaderInfo } });
+	FzbShaderInfo diffuseShaderInfo = { "/core/Materials/Diffuse/shaders/forwardRender" };
+	FzbShaderInfo roughconductorShaderInfo = { "/core/Materials/roughconductor/shaders/forwardRender" };
+	this->sourceManager.addSource({ {"diffuse", diffuseShaderInfo }, { "roughconductor", roughconductorShaderInfo } });
 
 	VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
 	VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);

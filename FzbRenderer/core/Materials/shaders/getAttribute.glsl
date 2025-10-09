@@ -11,10 +11,11 @@ vec3 getNormal() {
 	vec3 tangent = normalize(ddx(vertexWorldPos));
 	vec3 bitangent = normalize(ddy(vertexWorldPos));
 	return normalize(cross(tangent, bitangent));
-#elif defined(useVertexNormal)
-	#if defined(useNormalMap)
+	return normalize(cross(tangent, bitangent));
+#elif defined(VERTEX_NORMAL)
+	#if defined(NORMALMAP)
 	vec3 normal = (texture(normalMap, vertexTexCoords).xyz) * 2.0f - 1.0f;
-		#if defined(useVertexTangent)
+		#if defined(VERTEX_TEXCOORDS)
 	vec3 vertexBitangent = normalize(cross(vertexNormal, vertexTangent));
 		#else
 	vec3 tangent = normalize(ddx(vertexWorldPos));
@@ -26,7 +27,7 @@ vec3 getNormal() {
 	#else
 	return vertexNormal;
 	#endif
-#elif defined(useNormalMap)
+#elif defined(NORMALMAP)
 	vec3 normal_map = (texture(normalMap, vertexTexCoords).xyz) * 2.0f - 1.0f;
 	vec3 tangent = normalize(ddx(vertexWorldPos));
 	vec3 bitangent = normalize(ddy(vertexWorldPos));
@@ -39,12 +40,8 @@ vec3 getNormal() {
 }
 
 vec4 getAlbedo() {
-	vec4 vertexAlbedo = vec4(1.0f);
-#ifdef useAlbedo
-	vertexAlbedo = albedo;
-#endif
-
-#ifdef useAlbedoMap
+	vec4 vertexAlbedo = albedo;
+#ifdef ALBEDOMAP
 	vertexAlbedo *= texture(albedoMap, vertexTexCoords);
 #endif
 	return vertexAlbedo;

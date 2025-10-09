@@ -4,6 +4,7 @@
 #include "../../../common/FzbComponent/FzbFeatureComponent.h"
 #include "../../../SceneDivision/BVH/FzbBVH.h"
 #include "CUDA/PathTracing_CUDA.cuh"
+#include "../../common/FzbRayTracingSourceManager.h"
 
 #ifndef FZB_PATH_TRACING_H
 #define FZB_PATH_TRACING_H
@@ -25,17 +26,9 @@ public:
 private:
 	FzbPathTracingSetting setting;
 	FzbBuffer settingBuffer;
+	FzbRayTracingSourceManager rayTracingSourceManager;
 	FzbRasterizationSourceManager presentSourceManager;
-	//FzbImage pathTracingResultMap;
-	FzbBuffer pathTracingResultBuffer;
-	FzbSemaphore pathTracingFinishedSemphore;
 	std::unique_ptr<FzbPathTracingCuda> pathTracingCUDA;
-
-	//我们不让mainScene去创建materialSource，而是我们自己创造，自己维护
-	std::vector<FzbImage> sceneTextures;
-	std::vector<FzbPathTracingMaterialUniformObject> sceneMaterialInfoArray;
-
-	std::shared_ptr<FzbBVH> bvh;
 
 	VkDescriptorSetLayout descriptorSetLayout = nullptr;
 	VkDescriptorSet descriptorSet;
@@ -44,9 +37,7 @@ private:
 	void addExtensions() override;
 
 	void presentPrepare() override;
-
-	//与raserizationSourceManager的功能相同，这里需要创建各种后续渲染所用资源
-	FzbPathTracingCudaSourceSet createSource();
+	void createBuffer();
 	void createImages() override;
 
 	void createDescriptor();
