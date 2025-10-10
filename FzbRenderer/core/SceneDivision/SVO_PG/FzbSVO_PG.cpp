@@ -33,8 +33,8 @@ void FzbSVO_PG::init() {
 	createSemaphore();
 
 	FzbVGBUniformData VGBUniformData = { setting.voxelNum, glm::vec3(uniformBufferObject.voxelSize_Num), uniformBufferObject.voxelStartPos };
-	FzbSVOUnformData SVOUniformData = { 0.6f, 0.6f };
-	svoCuda_pg = std::make_unique<FzbSVOCuda_PG>(rayTracingSourceManager.sourceManagerCuda, setting, VGBUniformData, VGB, SVOFinishedSemaphore.handle, SVOUniformData);
+	//FzbSVOUnformData SVOUniformData = { 0.6f, 0.6f };
+	svoCuda_pg = std::make_unique<FzbSVOCuda_PG>(rayTracingSourceManager.sourceManagerCuda, setting, VGBUniformData, VGB, SVOFinishedSemaphore.handle, FzbSVOUnformData());
 	
 	createVGB();
 	createSVO_PG();
@@ -473,6 +473,14 @@ void FzbSVO_PG_Debug::createVGBRenderPass_SVONodeClusterInfo() {
 	subpasses.push_back(fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef));
 	subpasses.push_back(fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef));
 
+	//VkSubpassDependency dependency = {};
+	//dependency.srcSubpass = 0;
+	//dependency.dstSubpass = 1;
+	//dependency.srcStageMask = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+	//dependency.dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+	//dependency.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	//dependency.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	//dependency.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 	VkSubpassDependency dependency = fzbCreateSubpassDependency(0, 1,
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT);
@@ -482,17 +490,17 @@ void FzbSVO_PG_Debug::createVGBRenderPass_SVONodeClusterInfo() {
 	renderRenderPass.createRenderPass(&attachments, subpasses, { dependency });
 	renderRenderPass.createFramebuffers(true);
 
-	FzbSubPass CubeWireframeSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
-		{ mainScene->cameraAndLightsDescriptorSetLayout, this->descriptorSetLayout },
-		{ mainScene->cameraAndLightsDescriptorSet, this->descriptorSet },
-		this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer,
-		{ &this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath] });
-	renderRenderPass.addSubPass(CubeWireframeSubPass);
-
-	FzbSubPass CubeSubPass = FzbSubPass(renderRenderPass.renderPass, 1,
+	FzbSubPass CubeSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
 		{ mainScene->cameraAndLightsDescriptorSetLayout, this->descriptorSetLayout },
 		{ mainScene->cameraAndLightsDescriptorSet, this->descriptorSet },
 		this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer,
 		{ &this->presentSourceManager.shaderSet[svoNodeClusterCubeShaderInfo.shaderPath] });
 	renderRenderPass.addSubPass(CubeSubPass);
+
+	FzbSubPass CubeWireframeSubPass = FzbSubPass(renderRenderPass.renderPass, 1,
+		{ mainScene->cameraAndLightsDescriptorSetLayout, this->descriptorSetLayout },
+		{ mainScene->cameraAndLightsDescriptorSet, this->descriptorSet },
+		this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer,
+		{ &this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath] });
+	renderRenderPass.addSubPass(CubeWireframeSubPass);
 }

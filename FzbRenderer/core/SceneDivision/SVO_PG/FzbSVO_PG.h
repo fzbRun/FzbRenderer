@@ -80,8 +80,8 @@ public:
 	FzbRasterizationSourceManager presentSourceManager;
 	FzbImage depthMap;
 
-	VkDescriptorSetLayout descriptorSetLayout;
-	VkDescriptorSet descriptorSet;
+	VkDescriptorSetLayout descriptorSetLayout = nullptr;
+	VkDescriptorSet descriptorSet = nullptr;
 
 	FzbBuffer SVONodeClusterUniformBuffer;
 

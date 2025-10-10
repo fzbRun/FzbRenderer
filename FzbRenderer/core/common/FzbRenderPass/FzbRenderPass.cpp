@@ -138,6 +138,18 @@ VkAttachmentDescription fzbCreateDepthAttachment() {
 	depthMapAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
 	return depthMapAttachment;
 }
+VkAttachmentDescription fzbCreateNextRenderPassDepthAttachment() {
+	VkAttachmentDescription depthMapAttachment{};
+	depthMapAttachment.format = fzbFindDepthFormat();
+	depthMapAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	depthMapAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	depthMapAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depthMapAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	depthMapAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+	depthMapAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	depthMapAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+	return depthMapAttachment;
+}
 VkAttachmentDescription fzbCreateColorAttachment(VkFormat format, VkImageLayout layout) {
 	VkAttachmentDescription colorAttachmentResolve{};
 	colorAttachmentResolve.format = format;
@@ -150,6 +162,19 @@ VkAttachmentDescription fzbCreateColorAttachment(VkFormat format, VkImageLayout 
 	colorAttachmentResolve.finalLayout = layout;
 	return colorAttachmentResolve;
 }
+VkAttachmentDescription fzbCreateNextRenderPassColorAttachment(VkFormat format, VkImageLayout layout) {
+	VkAttachmentDescription colorAttachmentResolve{};
+	colorAttachmentResolve.format = format;
+	colorAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
+	colorAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	colorAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+	colorAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	colorAttachmentResolve.finalLayout = layout;
+	return colorAttachmentResolve;
+}
+
 VkAttachmentReference fzbCreateAttachmentReference(uint32_t attachmentIndex, VkImageLayout layout) {
 	VkAttachmentReference depthMapAttachmentResolveRef{};
 	depthMapAttachmentResolveRef.attachment = attachmentIndex;

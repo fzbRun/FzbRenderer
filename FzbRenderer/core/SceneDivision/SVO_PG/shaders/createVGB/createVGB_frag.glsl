@@ -68,7 +68,27 @@ void atomicFloatMax(inout uint target, float value) {
 
 void main() {
 	ivec3 voxelIndex = ivec3((worldPos - vubo.voxelStartPos.xyz) / vubo.voxelSize_Num.xyz);
-	uint voxelIndexU = voxelIndex.z * uint(vubo.voxelSize_Num.w * vubo.voxelSize_Num.w) + voxelIndex.y * uint(vubo.voxelSize_Num.w) + voxelIndex.x;
+	//uint voxelIndexU = voxelIndex.z * uint(vubo.voxelSize_Num.w * vubo.voxelSize_Num.w) + voxelIndex.y * uint(vubo.voxelSize_Num.w) + voxelIndex.x;
+
+	int voxelCount = int(vubo.voxelSize_Num.w);
+	int voxelTotalCount = voxelCount * voxelCount * voxelCount;
+	int voxelIndexU = 0;
+	while (voxelTotalCount > 1) {
+		voxelCount = voxelCount / 2;
+		voxelTotalCount = voxelTotalCount / 8;
+		if (voxelIndex.z / voxelCount == 1) {
+			voxelIndexU += 4 * voxelTotalCount;
+			voxelIndex.z -= voxelCount;
+		}
+		if (voxelIndex.y / voxelCount == 1) {
+			voxelIndexU += 2 * voxelTotalCount;
+			voxelIndex.y -= voxelCount;
+		}
+		if (voxelIndex.x / voxelCount == 1) {
+			voxelIndexU += voxelTotalCount;
+			voxelIndex.x -= voxelCount;
+		}
+	}
 
 	FzbAABBUint AABB = vgb[voxelIndexU].AABB;
 	atomicExchange(vgb[voxelIndexU].hasData, 1);

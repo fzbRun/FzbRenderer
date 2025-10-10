@@ -67,7 +67,7 @@
 		<rendererComponentSetting>
 			<voxelAABBDebugInfo value = "false" />
 			<voxelIrradianceDebugInfo value = "false" />
-			<SVONodeClusterDebugInfo value = "true" level = "1" />
+			<SVONodeClusterDebugInfo value = "true" level = "0" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "SVO_PG">
@@ -75,7 +75,7 @@
 				<featureComponentSetting>
 					<voxelNum value = "64" />
 					<useCube value = "true" />
-					<useOBB value = "true" />
+					<useOBB value = "false" />
 				</featureComponentSetting>
 				<childComponents>
 					<featureComponent name = "BVH">

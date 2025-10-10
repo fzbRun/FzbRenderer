@@ -133,8 +133,10 @@ struct FzbRenderPass {
 //----------------------------------------------------------------------------------------------
 
 VkAttachmentDescription fzbCreateDepthAttachment();
+VkAttachmentDescription fzbCreateNextRenderPassDepthAttachment();
 
 VkAttachmentDescription fzbCreateColorAttachment(VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, VkImageLayout layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
+VkAttachmentDescription fzbCreateNextRenderPassColorAttachment(VkFormat format = VK_FORMAT_R8G8B8A8_SRGB, VkImageLayout layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
 
 VkAttachmentReference fzbCreateAttachmentReference(uint32_t attachmentIndex, VkImageLayout layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 

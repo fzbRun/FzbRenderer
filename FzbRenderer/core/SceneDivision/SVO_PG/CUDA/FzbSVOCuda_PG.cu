@@ -6,6 +6,7 @@
 __constant__ FzbVGBUniformData systemVGBUniformData;
 __constant__ FzbSVOUnformData systemSVOUniformData;
 
+const uint32_t createSVOKernelBlockSize = 512;
 //----------------------------------------------核函数--------------------------------------
 __global__ void lightInject_cuda(FzbVoxelData_PG* VGB, const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, const uint32_t rayCount);
@@ -17,7 +18,8 @@ __global__ void initSVO(FzbSVONodeData_PG* SVO, uint32_t svoCount) {
 	if (threadIndex >= svoCount) return;
 
 	FzbSVONodeData_PG data;
-	data.indivisible = false;
+	data.indivisible = 1;
+	data.pdf = 1.0f;
 	data.shuffleKey = 0;
 	data.label = 0;
 	data.AABB.leftX = FLT_MAX;
@@ -50,15 +52,22 @@ FzbSVOCuda_PG::FzbSVOCuda_PG(std::shared_ptr<FzbRayTracingSourceManager_Cuda> so
 		svoDepth++;
 		vgmSize <<= 1;
 	}
-	this->SVONodeCount.resize(svoDepth - 2);	 //不存储根节点和叶节点
 	this->SVOs_PG.resize(svoDepth - 2);	 //不存储根节点和叶节点
 	for (int i = 0; i < svoDepth - 2; ++i) {
-		CHECK(cudaMalloc((void**)&this->SVONodeCount[i], sizeof(uint32_t)));
 		uint32_t nodeCount = std::pow(8, i + 1);
 		CHECK(cudaMalloc((void**)&this->SVOs_PG[i], nodeCount * sizeof(FzbSVONodeData_PG)));
 		uint32_t blockSize = nodeCount > 1024 ? 1024 : nodeCount;
 		uint32_t gridSize = (nodeCount + blockSize - 1) / blockSize;
 		initSVO << <gridSize, blockSize >> > (this->SVOs_PG[i], nodeCount);
+	}
+	this->SVONodeBlockInfos.resize(0);
+	for (int i = svoDepth - 1; i >= 0; --i) {
+		uint32_t nodeCount = std::pow(8, i);
+		if (nodeCount <= createSVOKernelBlockSize) break;
+		uint32_t blockCount = nodeCount / createSVOKernelBlockSize;
+		FzbSVONodeBlock* blockInfo;
+		CHECK(cudaMalloc((void**)&blockInfo, blockCount * sizeof(FzbSVONodeBlock)));
+		this->SVONodeBlockInfos.push_back(blockInfo);
 	}
 
 	this->extSvoSemaphore_PG = importVulkanSemaphoreObjectFromNTHandle(SVOFinishedSemaphore_PG);
@@ -89,6 +98,27 @@ void FzbSVOCuda_PG::initVGB() {
 	CHECK(cudaDeviceSynchronize());
 }
 //--------------------------------------------------------------------光照注入-------------------------------------------------------------------------
+__device__ int getVGBVoxelIndex(int voxelCount, glm::ivec3& voxelIndex) {
+	int voxelTotalCount = voxelCount * voxelCount * voxelCount;
+	int voxelIndexU = 0;
+	while (voxelTotalCount > 1) {
+		voxelCount = voxelCount / 2;
+		voxelTotalCount = voxelTotalCount / 8;
+		if (voxelIndex.z / voxelCount == 1) {
+			voxelIndexU += 4 * voxelTotalCount;
+			voxelIndex.z -= voxelCount;
+		}
+		if (voxelIndex.y / voxelCount == 1) {
+			voxelIndexU += 2 * voxelTotalCount;
+			voxelIndex.y -= voxelCount;
+		}
+		if (voxelIndex.x / voxelCount == 1) {
+			voxelIndexU += voxelTotalCount;
+			voxelIndex.x -= voxelCount;
+		}
+	}
+	return voxelIndexU;
+}
 __device__ void lightInject_getRadiance(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, const FzbRayTracingLightSet* lightSet,
 	const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, uint32_t& randomNumberSeed,
@@ -191,7 +221,7 @@ __global__ void lightInject_cuda(FzbVoxelData_PG* VGB, const float* __restrict__
 	hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, ray, hitTriangleAttribute);
 	if (!hit) return;
 	glm::ivec3 voxelIndex = glm::ivec3((ray.hitPos - groupVGBUniformData.voxelStartPos) / groupVGBUniformData.voxelSize);
-	voxelIndices[0] = voxelIndex.z * groupVGBUniformData.voxelCount * groupVGBUniformData.voxelCount + voxelIndex.y * groupVGBUniformData.voxelCount + voxelIndex.x;
+	voxelIndices[0] = getVGBVoxelIndex(groupVGBUniformData.voxelCount, voxelIndex);
 	lightInject_getRadiance(hitTriangleAttribute, ray, &lightSet,
 		vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed,
 		voxelIrradiances[0], voxelRadiance[0]);
@@ -214,7 +244,7 @@ __global__ void lightInject_cuda(FzbVoxelData_PG* VGB, const float* __restrict__
 		voxelCosTheta[pathLength - 1] = glm::abs(glm::dot(ray.direction, lastHitTriangleAttribute.normal));
 
 		voxelIndex = glm::ivec3((ray.hitPos - groupVGBUniformData.voxelStartPos) / groupVGBUniformData.voxelSize);
-		voxelIndices[pathLength] = voxelIndex.z * groupVGBUniformData.voxelCount * groupVGBUniformData.voxelCount + voxelIndex.y * groupVGBUniformData.voxelCount + voxelIndex.x;
+		voxelIndices[pathLength] = getVGBVoxelIndex(groupVGBUniformData.voxelCount, voxelIndex);
 		lightInject_getRadiance(hitTriangleAttribute, ray, &lightSet,
 			vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed,
 			voxelIrradiances[pathLength], voxelRadiance[pathLength]);
@@ -249,9 +279,11 @@ void FzbSVOCuda_PG::lightInject() {
 	lightInject_cuda<<< gridSize, blockSize, 0, sourceManager->stream>>> (VGB, sourceManager->vertices, sourceManager->materialTextures, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray, rayCount);
 }
 //--------------------------------------------------------------------创造SVO_PG-------------------------------------------------------------------------
-__global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VGB, FzbSVONodeData_PG* SVONodes, uint32_t voxelCount) {
+template<bool multipleBlock>
+__global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VGB, FzbSVONodeData_PG* SVONodes, FzbSVONodeBlock* blockInfos, uint32_t voxelCount) {
 	__shared__ FzbVGBUniformData groupVGBUniformData;
 	__shared__ FzbSVOUnformData groupSVOUniformData;
+	__shared__ uint64_t groupHasDataNodeCount;		//每一位表示一个node是否有值，512个线程就有64个node
 
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	uint32_t warpIndex = threadIdx.x / 32;
@@ -260,6 +292,7 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	if (threadIdx.x == 0) {
 		groupVGBUniformData = systemVGBUniformData;
 		groupSVOUniformData = systemSVOUniformData;
+		if(multipleBlock) groupHasDataNodeCount = 0;
 	}
 	__syncthreads();
 
@@ -267,23 +300,26 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	uint32_t indexInBlock = threadIndex & 7;	//在8个兄弟node中的索引
 	uint32_t blockIndex = threadIndex / 8;		//block在全局的索引
 	uint32_t blockIndexInWarpBit = (blockIndex & 3) * 8;	//当前block在warp中的位索引
-	uint32_t blockCount = groupVGBUniformData.voxelCount / 2;	//每个轴有几个block
+	uint32_t blockIndexInGroup = threadIdx.x / 8;
 
-	uint32_t voxelIndexZ = (blockIndex / (blockCount * blockCount));
-	uint32_t voxelIndexY = (blockIndex - voxelIndexZ * (blockCount * blockCount)) / blockCount;
-	uint32_t voxelIndexX = blockIndex % blockCount;
-	voxelIndexX = voxelIndexX * 2 + (indexInBlock & 1);
-	voxelIndexY = voxelIndexY * 2 + ((indexInBlock >> 1) & 1);
-	voxelIndexZ = voxelIndexZ * 2 + ((indexInBlock >> 2) & 1);
-	uint32_t voxelIndexU = voxelIndexZ * (groupVGBUniformData.voxelCount * groupVGBUniformData.voxelCount) +
-		voxelIndexY * groupVGBUniformData.voxelCount + voxelIndexX;
-	FzbVoxelData_PG voxelData = VGB[voxelIndexU];
-	bool hasData = voxelData.hasData && glm::length(voxelData.irradiance) > 0.01f;
+	FzbVoxelData_PG voxelData = VGB[threadIndex];
+	bool hasData = voxelData.hasData && voxelData.irradiance != glm::vec3(0.0f);
 	uint32_t activeMask = __ballot_sync(0xFFFFFFFF, hasData);
 	int firstActiveLaneInBlock = __ffs(activeMask & (0xff << blockIndexInWarpBit)) - 1;
 	if (firstActiveLaneInBlock == -1) return;	//当前block中node全部没有数据
+	if (multipleBlock && firstActiveLaneInBlock > -1) {
+		if (warpLane == blockIndexInWarpBit) {
+			atomicOr(&groupHasDataNodeCount, 1u << blockIndexInGroup);
+		}
+		__syncthreads();
+		if (firstActiveLaneInBlock > -1 && warpLane == blockIndexInWarpBit) {
+			SVONodes[blockIndex].label = __popcll(groupHasDataNodeCount << (64 - blockIndexInGroup)) + 1;
+		}
+		if (threadIdx.x == 0) {
+			blockInfos[blockIdx.x].nodeCount = __popcll(groupHasDataNodeCount);
+		}
+	}
 
-	bool indivisible = true;
 	FzbAABB AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	if (hasData) {
 		AABB = {
@@ -297,13 +333,47 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	}
 	if (__popc(activeMask) == 1) {	//只有一个有值的node，则直接赋值即可
 		if (hasData) {
-			SVONodes[blockIndex].indivisible = true;
+			SVONodes[blockIndex].indivisible = 1;
 			SVONodes[blockIndex].AABB = AABB;
 			SVONodes[blockIndex].irradiance = voxelData.irradiance;
 		}
 		return;
 	}
+	//------------------------------------------------irradiance判断-------------------------------------------------
+	uint indivisible = 1;
+	float irrdianceValue = glm::length(voxelData.irradiance);
+	uint32_t ignore = 0;
+	for (int i = 0; i < 8; ++i) {
+		float other_val = __shfl_sync(0xFFFFFFFF, irrdianceValue, blockIndexInWarpBit + i);
+		float minIrradiance = min(irrdianceValue, other_val);
+		float maxIrradiance = max(irrdianceValue, other_val);
+		if (minIrradiance == 0.0f) continue;
+		if (maxIrradiance / minIrradiance > groupSVOUniformData.irradianceThreshold) {
+			if (irrdianceValue == minIrradiance) {
+				if (irrdianceValue < groupSVOUniformData.ignoreIrradianceValueThreshold) ignore = 1;
+				else indivisible = 0;
+			}
+		}
+	}
+	for (int offset = 4; offset > 0; offset /= 2) {
+		uint32_t other_val = __shfl_down_sync(0xFFFFFFFF, indivisible, offset);
+		indivisible = indivisible & other_val;
+	}
+	//------------------------------------------------计算irradiance-------------------------------------------------
+	glm::vec3 mergeIrradianceTotal = voxelData.irradiance;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradianceTotal.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.x, offset);
+		mergeIrradianceTotal.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.y, offset);
+		mergeIrradianceTotal.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.z, offset);
+	}
+	glm::vec3 mergeIrradiance = ignore ? glm::vec3(0.0f) : voxelData.irradiance;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradiance.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.x, offset);
+		mergeIrradiance.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.y, offset);
+		mergeIrradiance.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.z, offset);
+	}
 	//------------------------------------------得到整合后的AABB---------------------------------------------------------
+	if (ignore == 1) AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	FzbAABB mergeAABB = AABB;
 	//得到整合后的AABB的left
 	for (int offset = 4; offset > 0; offset /= 2) {
@@ -342,9 +412,9 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 		mergeAABB.rightZ = fmaxf(mergeAABB.rightZ, other_val);
 	}
 	mergeAABB.rightZ = __shfl_sync(0xFFFFFFFF, mergeAABB.rightZ, blockIndexInWarpBit);
-	//计算原来的AABB表面积
+	//------------------------------------------------计算表面积-------------------------------------------------
 	float surfaceArea = 0.0f;
-	if (hasData) {
+	if (hasData && ignore == 0) {
 		float lengthX = AABB.rightX - AABB.leftX;
 		float lengthY = AABB.rightY - AABB.leftY;
 		float lengthZ = AABB.rightZ - AABB.leftZ;
@@ -353,68 +423,24 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	for (int offset = 4; offset > 0; offset /= 2) {
 		surfaceArea += __shfl_down_sync(0xFFFFFFFF, surfaceArea, offset);
 	}
+	//--------------------------------------------------对父节点赋值-------------------------------------------------
 	if (warpLane == blockIndexInWarpBit) {
 		float lengthX = mergeAABB.rightX - mergeAABB.leftX;
 		float lengthY = mergeAABB.rightY - mergeAABB.leftY;
 		float lengthZ = mergeAABB.rightZ - mergeAABB.leftZ;
 		float mergeSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
-		if (mergeSurfaceArea / surfaceArea > groupSVOUniformData.surfaceAreaThreshold) indivisible = false;
-	}
-	//------------------------------------------------irradiance判断-------------------------------------------------
-	float irrdianceValue = glm::length(voxelData.irradiance);
-	if (hasData) {
-		for (int i = 0; i < 8; ++i) {
-			float other_val = __shfl_sync(0xFFFFFFFF, irrdianceValue, blockIndexInWarpBit + i);
-			if (other_val <= 0.001f) continue;
-			if (max(irrdianceValue, other_val) / min(irrdianceValue, other_val) > groupSVOUniformData.irradianceThreshold) indivisible = false;
-		}
-	}
-	//--------------------------------------------------对父节点赋值-------------------------------------------------
-	if (warpLane == blockIndexInWarpBit) {
-		for (int i = 0; i < 8; ++i) {
-			indivisible = indivisible && __shfl_sync(0xFFFFFFFF, indivisible, blockIndexInWarpBit + i);
-		}
-		SVONodes[blockIndex].indivisible = indivisible;
-		SVONodes[blockIndex].AABB = mergeAABB;
-
-		glm::vec3 mergeIrradiance = glm::vec3(0.0f);
-		for (int i = 0; i < 8; ++i) {
-			mergeIrradiance.x += __shfl_sync(0xFFFFFFFF, voxelData.irradiance.x, blockIndexInWarpBit + i);
-			mergeIrradiance.y += __shfl_sync(0xFFFFFFFF, voxelData.irradiance.y, blockIndexInWarpBit + i);
-			mergeIrradiance.z += __shfl_sync(0xFFFFFFFF, voxelData.irradiance.z, blockIndexInWarpBit + i);
-		}
-		SVONodes[blockIndex].irradiance = mergeIrradiance;
-	}
+		if (surfaceArea != 0.0f && mergeSurfaceArea / surfaceArea > groupSVOUniformData.surfaceAreaThreshold) indivisible = 0;
 	
-	//for (int i = 0; i < 8; ++i) {
-	//	bool brotherNodeHasData = __shfl_sync(0xFFFFFFFF, hasData, blockIndexInWarpBit + i);	//return的会返回0
-	//	glm::vec3 brotherAABBCenterPos;
-	//	brotherAABBCenterPos.x = __shfl_sync(0xFFFFFFFF, AABBCenterPos.x, blockIndexInWarpBit + i);
-	//	brotherAABBCenterPos.y = __shfl_sync(0xFFFFFFFF, AABBCenterPos.y, blockIndexInWarpBit + i);
-	//	brotherAABBCenterPos.z = __shfl_sync(0xFFFFFFFF, AABBCenterPos.z, blockIndexInWarpBit + i);
-	//	glm::vec3 brotherIrradiance;
-	//	brotherIrradiance.x = __shfl_sync(0xFFFFFFFF, voxelData.irradiance.x, blockIndexInWarpBit + i);
-	//	brotherIrradiance.y = __shfl_sync(0xFFFFFFFF, voxelData.irradiance.y, blockIndexInWarpBit + i);
-	//	brotherIrradiance.z = __shfl_sync(0xFFFFFFFF, voxelData.irradiance.z, blockIndexInWarpBit + i);
-	//	if (!brotherNodeHasData || !hasData) continue;
-	//	float distance = glm::length(brotherAABBCenterPos - AABBCenterPos) + glm::length(brotherIrradiance - voxelData.irradiance);
-	//	if (distance > groupSVOUniformData.divideThreshold) indivisible = false;
-	//}
-	//if (indexInBlock == firstActiveLaneInBlock) SVONodes[blockIndex].indivisible = indivisible;
-	//if (hasData) {
-	//	atomicMinFloat(&SVONodes[blockIndex].AABB.leftX, AABB.leftX);
-	//	atomicMaxFloat(&SVONodes[blockIndex].AABB.rightX, AABB.rightX);
-	//	atomicMinFloat(&SVONodes[blockIndex].AABB.leftY, AABB.leftY);
-	//	atomicMaxFloat(&SVONodes[blockIndex].AABB.rightY, AABB.rightY);
-	//	atomicMinFloat(&SVONodes[blockIndex].AABB.leftZ, AABB.leftZ);
-	//	atomicMaxFloat(&SVONodes[blockIndex].AABB.rightZ, AABB.rightZ);
-	//	atomicAdd(&SVONodes[blockIndex].irradiance.x, voxelData.irradiance.x);
-	//	atomicAdd(&SVONodes[blockIndex].irradiance.y, voxelData.irradiance.y);
-	//	atomicAdd(&SVONodes[blockIndex].irradiance.z, voxelData.irradiance.z);
-	//}
+		SVONodes[blockIndex].indivisible = indivisible;
+		if (indivisible) SVONodes[blockIndex].pdf = glm::length(mergeIrradiance) / glm::length(mergeIrradianceTotal);
+		SVONodes[blockIndex].irradiance = mergeIrradianceTotal;
+		SVONodes[blockIndex].AABB = mergeAABB;
+	}
 }
-__global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVONodeData_PG* SVONodes, uint32_t nodeCount) {
+template<bool multipleBlock>
+__global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVONodeData_PG* SVONodes, FzbSVONodeBlock* blockInfos, uint32_t nodeCount) {
 	__shared__ FzbSVOUnformData groupSVOUniformData;
+	__shared__ uint64_t groupHasDataNodeCount;
 
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	uint32_t warpIndex = threadIdx.x / 32;
@@ -422,6 +448,7 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVO
 	if (threadIndex >= nodeCount * nodeCount * nodeCount) return;
 	if (threadIdx.x == 0) {
 		groupSVOUniformData = systemSVOUniformData;
+		if(multipleBlock) groupHasDataNodeCount = 0;
 	}
 	__syncthreads();
 
@@ -429,32 +456,77 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVO
 	uint32_t indexInBlock = threadIndex & 7;	//在8个兄弟node中的索引
 	uint32_t blockIndex = threadIndex / 8;		//block在全局的索引
 	uint32_t blockIndexInWarpBit = (blockIndex & 3) * 8;	//当前block在warp中的位索引
-	uint32_t blockCount = nodeCount / 2;	//每个轴有几个block
-
-	uint32_t nodeIndexZ = (blockIndex / (blockCount * blockCount));
-	uint32_t nodeIndexY = (blockIndex - nodeIndexZ * (blockCount * blockCount)) / blockCount;
-	uint32_t nodeIndexX = blockIndex % blockCount;
-	nodeIndexX = nodeIndexX * 2 + (indexInBlock & 1);
-	nodeIndexY = nodeIndexY * 2 + ((indexInBlock >> 1) & 1);
-	nodeIndexZ = nodeIndexZ * 2 + ((indexInBlock >> 2) & 1);
-	uint32_t voxelIndexU = nodeIndexZ * (nodeCount * nodeCount) +
-		nodeIndexY * nodeCount + nodeIndexX;
-	FzbSVONodeData_PG nodeData = SVONodes_children[voxelIndexU];
+	uint32_t blockIndexInGroup = threadIdx.x / 8;
+	//uint32_t blockCount = nodeCount / 2;	//每个轴有几个block
+	//uint32_t nodeIndexZ = (blockIndex / (blockCount * blockCount));
+	//uint32_t nodeIndexY = (blockIndex - nodeIndexZ * (blockCount * blockCount)) / blockCount;
+	//uint32_t nodeIndexX = blockIndex % blockCount;
+	//nodeIndexX = nodeIndexX * 2 + (indexInBlock & 1);
+	//nodeIndexY = nodeIndexY * 2 + ((indexInBlock >> 1) & 1);
+	//nodeIndexZ = nodeIndexZ * 2 + ((indexInBlock >> 2) & 1);
+	//uint32_t voxelIndexU = nodeIndexZ * (nodeCount * nodeCount) +
+	//	nodeIndexY * nodeCount + nodeIndexX;
+	FzbSVONodeData_PG nodeData = SVONodes_children[threadIndex];
 	bool hasData = glm::length(nodeData.irradiance) > 0.01f;
 	uint32_t activeMask = __ballot_sync(0xFFFFFFFF, hasData);
 	int firstActiveLaneInBlock = __ffs(activeMask & (0xff << blockIndexInWarpBit)) - 1;
 	if (firstActiveLaneInBlock == -1) return;	//当前block中node全部没有数据
+	if (multipleBlock && firstActiveLaneInBlock > -1) {
+		if (warpLane == blockIndexInWarpBit) {
+			atomicOr(&groupHasDataNodeCount, 1u << blockIndexInGroup);
+		}
+		__syncthreads();
+		if (firstActiveLaneInBlock > -1 && warpLane == blockIndexInWarpBit) {
+			SVONodes[blockIndex].label = __popcll(groupHasDataNodeCount << (64 - blockIndexInGroup)) + 1;
+		}
+		if (threadIdx.x == 0) {
+			blockInfos[blockIdx.x].nodeCount = __popcll(groupHasDataNodeCount);
+		}
+	}
 
-	bool indivisible = true;
 	if (__popc(activeMask) == 1) {	//只有一个有值的node，则直接赋值即可
 		if (hasData) {
-			SVONodes[blockIndex].indivisible = true;
+			SVONodes[blockIndex].indivisible = 1;
 			SVONodes[blockIndex].AABB = nodeData.AABB;
 			SVONodes[blockIndex].irradiance = nodeData.irradiance;
 		}
 		return;
 	}
+	//------------------------------------------------irradiance判断-------------------------------------------------
+	uint indivisible = 1;
+	float irrdianceValue = glm::length(nodeData.irradiance);
+	uint32_t ignore = 0;
+	for (int i = 0; i < 8; ++i) {
+		float other_val = __shfl_sync(0xFFFFFFFF, irrdianceValue, blockIndexInWarpBit + i);
+		float minIrradiance = min(irrdianceValue, other_val);
+		float maxIrradiance = max(irrdianceValue, other_val);
+		if (minIrradiance == 0.0f) continue;
+		if (maxIrradiance / minIrradiance > groupSVOUniformData.irradianceThreshold) {
+			if (irrdianceValue == minIrradiance) {
+				if (irrdianceValue < groupSVOUniformData.ignoreIrradianceValueThreshold) ignore = 1;
+				else indivisible = 0;
+			}
+		}
+	}
+	for (int offset = 4; offset > 0; offset /= 2) {
+		uint32_t other_val = __shfl_down_sync(0xFFFFFFFF, indivisible, offset);
+		indivisible = indivisible & other_val;
+	}
+	//------------------------------------------------计算irradiance-------------------------------------------------
+	glm::vec3 mergeIrradianceTotal = nodeData.irradiance;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradianceTotal.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.x, offset);
+		mergeIrradianceTotal.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.y, offset);
+		mergeIrradianceTotal.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.z, offset);
+	}
+	glm::vec3 mergeIrradiance = ignore ? glm::vec3(0.0f) : nodeData.irradiance;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradiance.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.x, offset) * __shfl_down_sync(0xFFFFFFFF, nodeData.pdf, offset);
+		mergeIrradiance.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.y, offset) * __shfl_down_sync(0xFFFFFFFF, nodeData.pdf, offset);
+		mergeIrradiance.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.z, offset) * __shfl_down_sync(0xFFFFFFFF, nodeData.pdf, offset);
+	}
 	//------------------------------------------得到整合后的AABB---------------------------------------------------------
+	if (ignore == 1) nodeData.AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	FzbAABB mergeAABB = nodeData.AABB;
 	//得到整合后的AABB的left
 	for (int offset = 4; offset > 0; offset /= 2) {
@@ -493,7 +565,7 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVO
 		mergeAABB.rightZ = fmaxf(mergeAABB.rightZ, other_val);
 	}
 	mergeAABB.rightZ = __shfl_sync(0xFFFFFFFF, mergeAABB.rightZ, blockIndexInWarpBit);
-	//计算原来的AABB表面积
+	//------------------------------------------------计算表面积-------------------------------------------------
 	float surfaceArea = 0.0f;
 	if (hasData) {
 		float lengthX = nodeData.AABB.rightX - nodeData.AABB.leftX;
@@ -504,60 +576,56 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVO
 	for (int offset = 4; offset > 0; offset /= 2) {
 		surfaceArea += __shfl_down_sync(0xFFFFFFFF, surfaceArea, offset);
 	}
+	//--------------------------------------------------对父节点赋值-------------------------------------------------
 	if (warpLane == blockIndexInWarpBit) {
 		float lengthX = mergeAABB.rightX - mergeAABB.leftX;
 		float lengthY = mergeAABB.rightY - mergeAABB.leftY;
 		float lengthZ = mergeAABB.rightZ - mergeAABB.leftZ;
 		float mergeSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
-		if (mergeSurfaceArea / surfaceArea > groupSVOUniformData.surfaceAreaThreshold) indivisible = false;
-	}
-	//------------------------------------------------irradiance判断-------------------------------------------------
-	float irrdianceValue = glm::length(nodeData.irradiance);
-	if (hasData) {
-		for (int i = 0; i < 8; ++i) {
-			float other_val = __shfl_sync(0xFFFFFFFF, irrdianceValue, blockIndexInWarpBit + i);
-			if (other_val <= 0.001f) continue;
-			if (max(irrdianceValue, other_val) / min(irrdianceValue, other_val) > groupSVOUniformData.irradianceThreshold) indivisible = false;
-		}
-	}
-	//--------------------------------------------------对父节点赋值-------------------------------------------------
-	if (warpLane == blockIndexInWarpBit) {
-		for (int i = 0; i < 8; ++i) {
-			indivisible = indivisible && __shfl_sync(0xFFFFFFFF, indivisible, blockIndexInWarpBit + i);
-		}
-		SVONodes[blockIndex].indivisible = indivisible;
-		SVONodes[blockIndex].AABB = mergeAABB;
+		if (surfaceArea != 0.0f && mergeSurfaceArea / surfaceArea > groupSVOUniformData.surfaceAreaThreshold) indivisible = 0;
 
-		glm::vec3 mergeIrradiance = glm::vec3(0.0f);
-		for (int i = 0; i < 8; ++i) {
-			mergeIrradiance.x += __shfl_sync(0xFFFFFFFF, nodeData.irradiance.x, blockIndexInWarpBit + i);
-			mergeIrradiance.y += __shfl_sync(0xFFFFFFFF, nodeData.irradiance.y, blockIndexInWarpBit + i);
-			mergeIrradiance.z += __shfl_sync(0xFFFFFFFF, nodeData.irradiance.z, blockIndexInWarpBit + i);
-		}
-		SVONodes[blockIndex].irradiance = mergeIrradiance;
+		SVONodes[blockIndex].indivisible = indivisible;
+		if (indivisible) SVONodes[blockIndex].pdf = glm::length(mergeIrradiance) / glm::length(mergeIrradianceTotal);
+		SVONodes[blockIndex].irradiance = mergeIrradianceTotal;
+		SVONodes[blockIndex].AABB = mergeAABB;
 	}
 }
 void FzbSVOCuda_PG::createSVOCuda_PG() {
 	uint32_t voxelCount = std::pow(setting.voxelNum, 3);
-	uint32_t blockSize = 512;
+	uint32_t blockSize = createSVOKernelBlockSize;
 	uint32_t gridSize = (voxelCount + blockSize - 1) / blockSize;
-	createSVO_PG_device_first<<<gridSize, blockSize, 0, sourceManager->stream>>>(VGB, SVOs_PG[SVOs_PG.size() - 1], voxelCount);
+	if (gridSize > 1)
+		createSVO_PG_device_first<true> << <gridSize, blockSize, 0, sourceManager->stream >> > (VGB, SVOs_PG[SVOs_PG.size() - 1], SVONodeBlockInfos[SVONodeBlockInfos.size() - 1], voxelCount);
+	else
+		createSVO_PG_device_first<false> << <gridSize, blockSize, 0, sourceManager->stream >> > (VGB, SVOs_PG[SVOs_PG.size() - 1], nullptr, voxelCount);
+	checkKernelFunction();
+	int blockInfoIndex = SVONodeBlockInfos.size() - 2;
 	for (int i = SVOs_PG.size() - 1; i > 0; --i) {
 		FzbSVONodeData_PG* SVONodes_children = SVOs_PG[i];
 		FzbSVONodeData_PG* SVONodes = SVOs_PG[i - 1];
 		uint32_t nodeCount = setting.voxelNum / pow(2, SVOs_PG.size() - i);
 		uint32_t nodeTotalCount = nodeCount * nodeCount * nodeCount;
-		blockSize = nodeTotalCount > 512 ? 512 : nodeTotalCount;
+		blockSize = nodeTotalCount > createSVOKernelBlockSize ? createSVOKernelBlockSize : nodeTotalCount;
 		gridSize = (nodeTotalCount + blockSize - 1) / blockSize;
-		createSVO_PG_device<<<gridSize, blockSize, 0, sourceManager->stream>>>(SVONodes_children, SVONodes, nodeCount);
+		if (gridSize > 1)
+			createSVO_PG_device<true> << <gridSize, blockSize, 0, sourceManager->stream >> > (SVONodes_children, SVONodes, SVONodeBlockInfos[blockInfoIndex--], nodeCount);
+		else
+			createSVO_PG_device<false> << <gridSize, blockSize, 0, sourceManager->stream >> > (SVONodes_children, SVONodes, nullptr, nodeCount);
 	}
-	CHECK(cudaDeviceSynchronize());
+	
+	//CHECK(cudaDeviceSynchronize());
+	//uint32_t nodeSize = pow(8, SVOs_PG.size());
+	//std::vector<FzbSVONodeData_PG> svoNodeData_host(nodeSize);
+	//CHECK(cudaMemcpy(svoNodeData_host.data(), SVOs_PG[SVOs_PG.size() - 1], sizeof(FzbSVONodeData_PG) * nodeSize, cudaMemcpyDeviceToHost));
+	//for (int i = 0; i < nodeSize; ++i) {
+	//	std::cout << svoNodeData_host[i].indivisible << std::endl;
+	//}
 }
 //----------------------------------------------------------------------------------------------------------------------------------------------------
 void FzbSVOCuda_PG::clean() {
 	CHECK(cudaDestroyExternalMemory(VGBExtMem));
 	CHECK(cudaFree(VGB));
-	for (int i = 0; i < this->SVONodeCount.size(); ++i) CHECK(cudaFree(this->SVONodeCount[i]));
+	for (int i = 0; i < this->SVONodeBlockInfos.size(); ++i) CHECK(cudaFree(this->SVONodeBlockInfos[i]));
 	for (int i = 0; i < this->SVOs_PG.size(); ++i) CHECK(cudaFree(this->SVOs_PG[i]));
 	CHECK(cudaDestroyExternalSemaphore(extSvoSemaphore_PG));
 }
