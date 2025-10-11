@@ -39,6 +39,11 @@ struct FzbSVONodeData_PG_OBB {
 
 struct FzbSVONodeBlock {
 	uint32_t nodeCount;	//有值的node数量
+	uint32_t blockCount;
+};
+struct FzbSVONodeTempInfo {
+	FzbSVONodeData_PG nodeData;
+	uint32_t nodeIndexInThreadBlock;
 };
 
 struct FzbVGBUniformData {
@@ -60,6 +65,8 @@ public:
 	FzbVGBUniformData VGBUniformData;
 	FzbSVOUnformData SVOUniformData;
 	std::vector<FzbSVONodeBlock*> SVONodeBlockInfos;
+	std::vector<FzbSVONodeTempInfo*> SVONodeTempInfos;
+	std::vector<uint32_t*> SVONodeCount;
 	std::vector<FzbSVONodeData_PG*> SVOs_PG;	//每级的node
 	cudaExternalSemaphore_t extSvoSemaphore_PG;
 	std::shared_ptr<FzbRayTracingSourceManager_Cuda> sourceManager;

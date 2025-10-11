@@ -52,6 +52,10 @@ FzbSVOCuda_PG::FzbSVOCuda_PG(std::shared_ptr<FzbRayTracingSourceManager_Cuda> so
 		svoDepth++;
 		vgmSize <<= 1;
 	}
+
+	this->SVONodeBlockInfos.resize(0);
+	this->SVONodeTempInfos.resize(0);
+	this->SVONodeCount.resize(svoDepth - 2);
 	this->SVOs_PG.resize(svoDepth - 2);	 //不存储根节点和叶节点
 	for (int i = 0; i < svoDepth - 2; ++i) {
 		uint32_t nodeCount = std::pow(8, i + 1);
@@ -59,15 +63,21 @@ FzbSVOCuda_PG::FzbSVOCuda_PG(std::shared_ptr<FzbRayTracingSourceManager_Cuda> so
 		uint32_t blockSize = nodeCount > 1024 ? 1024 : nodeCount;
 		uint32_t gridSize = (nodeCount + blockSize - 1) / blockSize;
 		initSVO << <gridSize, blockSize >> > (this->SVOs_PG[i], nodeCount);
-	}
-	this->SVONodeBlockInfos.resize(0);
-	for (int i = svoDepth - 1; i >= 0; --i) {
-		uint32_t nodeCount = std::pow(8, i);
-		if (nodeCount <= createSVOKernelBlockSize) break;
+
+		CHECK(cudaMalloc((void**)&SVONodeCount[i], sizeof(uint32_t)));
+		CHECK(cudaMemset(SVONodeCount[i], 0, sizeof(uint32_t)));
+
+		if (nodeCount <= createSVOKernelBlockSize) continue;
 		uint32_t blockCount = nodeCount / createSVOKernelBlockSize;
 		FzbSVONodeBlock* blockInfo;
 		CHECK(cudaMalloc((void**)&blockInfo, blockCount * sizeof(FzbSVONodeBlock)));
+		CHECK(cudaMemset(blockInfo, 0, blockCount * sizeof(FzbSVONodeBlock)));
 		this->SVONodeBlockInfos.push_back(blockInfo);
+
+		FzbSVONodeTempInfo* nodeTempInfo;
+		CHECK(cudaMalloc((void**)&nodeTempInfo, nodeCount * sizeof(FzbSVONodeTempInfo)));
+		CHECK(cudaMemset(nodeTempInfo, 0, nodeCount * sizeof(FzbSVONodeTempInfo)));
+		this->SVONodeTempInfos.push_back(nodeTempInfo);
 	}
 
 	this->extSvoSemaphore_PG = importVulkanSemaphoreObjectFromNTHandle(SVOFinishedSemaphore_PG);
@@ -279,11 +289,9 @@ void FzbSVOCuda_PG::lightInject() {
 	lightInject_cuda<<< gridSize, blockSize, 0, sourceManager->stream>>> (VGB, sourceManager->vertices, sourceManager->materialTextures, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray, rayCount);
 }
 //--------------------------------------------------------------------创造SVO_PG-------------------------------------------------------------------------
-template<bool multipleBlock>
-__global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VGB, FzbSVONodeData_PG* SVONodes, FzbSVONodeBlock* blockInfos, uint32_t voxelCount) {
+__global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VGB, FzbSVONodeData_PG* SVONodes, uint32_t voxelCount) {
 	__shared__ FzbVGBUniformData groupVGBUniformData;
 	__shared__ FzbSVOUnformData groupSVOUniformData;
-	__shared__ uint64_t groupHasDataNodeCount;		//每一位表示一个node是否有值，512个线程就有64个node
 
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	uint32_t warpIndex = threadIdx.x / 32;
@@ -292,7 +300,6 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	if (threadIdx.x == 0) {
 		groupVGBUniformData = systemVGBUniformData;
 		groupSVOUniformData = systemSVOUniformData;
-		if(multipleBlock) groupHasDataNodeCount = 0;
 	}
 	__syncthreads();
 
@@ -307,18 +314,6 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	uint32_t activeMask = __ballot_sync(0xFFFFFFFF, hasData);
 	int firstActiveLaneInBlock = __ffs(activeMask & (0xff << blockIndexInWarpBit)) - 1;
 	if (firstActiveLaneInBlock == -1) return;	//当前block中node全部没有数据
-	if (multipleBlock && firstActiveLaneInBlock > -1) {
-		if (warpLane == blockIndexInWarpBit) {
-			atomicOr(&groupHasDataNodeCount, 1u << blockIndexInGroup);
-		}
-		__syncthreads();
-		if (firstActiveLaneInBlock > -1 && warpLane == blockIndexInWarpBit) {
-			SVONodes[blockIndex].label = __popcll(groupHasDataNodeCount << (64 - blockIndexInGroup)) + 1;
-		}
-		if (threadIdx.x == 0) {
-			blockInfos[blockIdx.x].nodeCount = __popcll(groupHasDataNodeCount);
-		}
-	}
 
 	FzbAABB AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	if (hasData) {
@@ -437,10 +432,8 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 		SVONodes[blockIndex].AABB = mergeAABB;
 	}
 }
-template<bool multipleBlock>
-__global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVONodeData_PG* SVONodes, FzbSVONodeBlock* blockInfos, uint32_t nodeCount) {
+__global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVONodeData_PG* SVONodes, uint32_t nodeCount) {
 	__shared__ FzbSVOUnformData groupSVOUniformData;
-	__shared__ uint64_t groupHasDataNodeCount;
 
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	uint32_t warpIndex = threadIdx.x / 32;
@@ -448,7 +441,6 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVO
 	if (threadIndex >= nodeCount * nodeCount * nodeCount) return;
 	if (threadIdx.x == 0) {
 		groupSVOUniformData = systemSVOUniformData;
-		if(multipleBlock) groupHasDataNodeCount = 0;
 	}
 	__syncthreads();
 
@@ -471,18 +463,6 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVO
 	uint32_t activeMask = __ballot_sync(0xFFFFFFFF, hasData);
 	int firstActiveLaneInBlock = __ffs(activeMask & (0xff << blockIndexInWarpBit)) - 1;
 	if (firstActiveLaneInBlock == -1) return;	//当前block中node全部没有数据
-	if (multipleBlock && firstActiveLaneInBlock > -1) {
-		if (warpLane == blockIndexInWarpBit) {
-			atomicOr(&groupHasDataNodeCount, 1u << blockIndexInGroup);
-		}
-		__syncthreads();
-		if (firstActiveLaneInBlock > -1 && warpLane == blockIndexInWarpBit) {
-			SVONodes[blockIndex].label = __popcll(groupHasDataNodeCount << (64 - blockIndexInGroup)) + 1;
-		}
-		if (threadIdx.x == 0) {
-			blockInfos[blockIdx.x].nodeCount = __popcll(groupHasDataNodeCount);
-		}
-	}
 
 	if (__popc(activeMask) == 1) {	//只有一个有值的node，则直接赋值即可
 		if (hasData) {
@@ -590,16 +570,121 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* SVONodes_children, FzbSVO
 		SVONodes[blockIndex].AABB = mergeAABB;
 	}
 }
+
+template<bool notOnlyOneBlock>
+__global__ void compressSVO_PG_firstStep(FzbSVONodeData_PG* SVONodes, FzbSVONodeBlock* blockInfo,
+	FzbSVONodeTempInfo* SVONodeTempInfos, uint32_t* SVONodeCount, uint32_t nodeCount) {
+	__shared__ uint64_t groupHasDataNodeBlockMask;	//一个线程组512个node，每个8个node为一组，共有64组，groupHasDataNodeBlock每一位表示一组有无值
+	__shared__ uint32_t groupHasDataNodeCountInWarp[16];	//每个warp中有值node的数量
+	uint32_t threadIndex = blockDim.x * blockIdx.x + threadIdx.x;
+	if (threadIndex >= nodeCount) return;
+	uint32_t blockIndexInGroup = threadIdx.x / 8;
+	uint32_t laneInBlock = threadIdx.x & 7;
+	uint32_t warpIndex = threadIdx.x / 32;
+	uint32_t warpLane = threadIdx.x & 31;
+	uint32_t firstBlockLaneInWarp = (blockIndexInGroup & 3) * 8;
+	if (threadIdx.x == 0) groupHasDataNodeBlockMask = 0;
+	if (threadIdx.x < 16) groupHasDataNodeCountInWarp[threadIdx.x] = 0;
+	__syncthreads();
+
+	bool hasData = glm::length(SVONodes[threadIndex].irradiance) != 0.0f;
+	bool blockHasData = hasData;
+	for (int offset = 4; offset > 0; offset /= 2) 	//只要一个node有值，这个nodeBlock就有值
+		blockHasData |= __shfl_down_sync(0xFFFFFFFF, blockHasData, offset);
+
+	uint32_t warpNodeMask = hasData << warpLane;	//这个warp中有值node的mask
+	for (int offset = 16; offset > 0; offset /= 2)
+		warpNodeMask |= __shfl_down_sync(0xFFFFFFFF, warpNodeMask, offset);
+
+	uint8_t warpHasDataBlockMask = blockHasData;	//这个warp中有值nodeBlock的mask
+	warpHasDataBlockMask |= __shfl_sync(0xFFFFFFFF, blockHasData, 8) << 1;
+	warpHasDataBlockMask |= __shfl_sync(0xFFFFFFFF, blockHasData, 16) << 2;
+	warpHasDataBlockMask |= __shfl_sync(0xFFFFFFFF, blockHasData, 24) << 3;
+	if (warpLane == 0) {
+		atomicOr(&groupHasDataNodeBlockMask, warpHasDataBlockMask << (warpIndex * 4));
+		groupHasDataNodeCountInWarp[warpIndex] = __popc(warpNodeMask);
+	}
+	warpNodeMask = __shfl_sync(0xFFFFFFFF, warpNodeMask, 0);
+	__syncthreads();
+
+	uint32_t label = 0;
+	if (warpLane == 0) {
+		for (int i = 0; i < warpIndex; ++i) label += groupHasDataNodeCountInWarp[i];	//知道当前线程组中前面warp的有值node数量
+	}
+	label = __shfl_sync(0xFFFFFFFF, label, 0);
+	label += __popc(warpNodeMask << (32 - warpLane));	//加上warp中前面有几个有值node，得到最后自身在线程组中是第几个有值node
+
+	uint32_t nodeIndex = __popcll(groupHasDataNodeBlockMask << blockIndexInGroup) * 8;
+	nodeIndex += laneInBlock;
+	if (threadIdx.x == 0) atomicAdd(SVONodeCount, __popcll(groupHasDataNodeBlockMask) * 8);
+
+	if constexpr (notOnlyOneBlock) {
+		FzbSVONodeTempInfo tempInfo;
+		tempInfo.nodeData = SVONodes[threadIndex];;
+		tempInfo.nodeIndexInThreadBlock = nodeIndex;
+		SVONodeTempInfos[threadIndex] = tempInfo;
+		if (hasData) SVONodeTempInfos[threadIndex].nodeData.label = label;
+
+		if (warpIndex == 0) {
+			uint32_t blockHasDataNodeTotalCount = threadIdx.x < 16 ? groupHasDataNodeCountInWarp[threadIdx.x] : 0;
+			for (int offset = 16; offset > 0; offset /= 2)
+				blockHasDataNodeTotalCount += __shfl_down_sync(0xFFFFFFFF, blockHasDataNodeTotalCount, offset);
+			if (threadIdx.x == 0) {
+				blockInfo[blockIdx.x].nodeCount = blockHasDataNodeTotalCount;
+				blockInfo[blockIdx.x].blockCount = __popcll(groupHasDataNodeBlockMask);
+			}
+		}
+	}
+	if constexpr (!notOnlyOneBlock) {
+		if (hasData) {
+			FzbSVONodeData_PG nodeData = SVONodes[threadIndex];
+			nodeData.label = label;
+			SVONodes[nodeIndex] = nodeData;
+		}
+	}
+}
+__global__ void compressSVO_PG_secondStep(FzbSVONodeData_PG* SVONodes, FzbSVONodeBlock* blockInfo,
+	FzbSVONodeTempInfo* SVONodeTempInfos, uint32_t nodeCount) {
+	__shared__ uint32_t groupLabel;
+	__shared__ uint32_t groupBlockStartIndex;
+	
+	uint32_t threadIndex = blockDim.x * blockIdx.x + threadIdx.x;
+	if (threadIndex >= nodeCount) return;
+	if (threadIdx.x == 0) groupLabel = 0;
+	__syncthreads();
+	uint32_t warpIndex = threadIdx.x / 32;
+	uint32_t warpLane = threadIdx.x & 31;
+
+	bool hasData = glm::length(SVONodeTempInfos[threadIndex].nodeData.irradiance) != 0.0f;
+	uint32_t label = 0;
+	if (warpIndex == 0) {
+		label = threadIdx.x < blockIdx.x ? blockInfo[threadIdx.x].nodeCount : 0;
+		uint32_t blockStartIndex = threadIdx.x < blockIdx.x ? blockInfo[threadIdx.x].blockCount : 0;
+		for (int offset = 16; offset > 0; offset /= 2) {
+			label += __shfl_down_sync(0xFFFFFFFF, label, offset);
+			blockStartIndex += __shfl_down_sync(0xFFFFFFFF, blockStartIndex, offset);
+		}
+		if (threadIdx.x == 0) {
+			groupLabel = label;
+			groupBlockStartIndex = blockStartIndex;
+		}
+	}
+	__syncthreads();
+	label = groupLabel;
+	uint32_t nodeIndex = groupBlockStartIndex + SVONodeTempInfos[threadIndex].nodeIndexInThreadBlock;
+
+	if (hasData) {
+		FzbSVONodeData_PG nodeData = SVONodeTempInfos[threadIndex].nodeData;
+		nodeData.label += label;
+		SVONodes[nodeIndex] = nodeData;
+	}
+}
+
 void FzbSVOCuda_PG::createSVOCuda_PG() {
 	uint32_t voxelCount = std::pow(setting.voxelNum, 3);
 	uint32_t blockSize = createSVOKernelBlockSize;
 	uint32_t gridSize = (voxelCount + blockSize - 1) / blockSize;
-	if (gridSize > 1)
-		createSVO_PG_device_first<true> << <gridSize, blockSize, 0, sourceManager->stream >> > (VGB, SVOs_PG[SVOs_PG.size() - 1], SVONodeBlockInfos[SVONodeBlockInfos.size() - 1], voxelCount);
-	else
-		createSVO_PG_device_first<false> << <gridSize, blockSize, 0, sourceManager->stream >> > (VGB, SVOs_PG[SVOs_PG.size() - 1], nullptr, voxelCount);
-	checkKernelFunction();
-	int blockInfoIndex = SVONodeBlockInfos.size() - 2;
+	createSVO_PG_device_first << <gridSize, blockSize, 0, sourceManager->stream >> > (VGB, SVOs_PG[SVOs_PG.size() - 1], voxelCount);
 	for (int i = SVOs_PG.size() - 1; i > 0; --i) {
 		FzbSVONodeData_PG* SVONodes_children = SVOs_PG[i];
 		FzbSVONodeData_PG* SVONodes = SVOs_PG[i - 1];
@@ -607,25 +692,41 @@ void FzbSVOCuda_PG::createSVOCuda_PG() {
 		uint32_t nodeTotalCount = nodeCount * nodeCount * nodeCount;
 		blockSize = nodeTotalCount > createSVOKernelBlockSize ? createSVOKernelBlockSize : nodeTotalCount;
 		gridSize = (nodeTotalCount + blockSize - 1) / blockSize;
-		if (gridSize > 1)
-			createSVO_PG_device<true> << <gridSize, blockSize, 0, sourceManager->stream >> > (SVONodes_children, SVONodes, SVONodeBlockInfos[blockInfoIndex--], nodeCount);
-		else
-			createSVO_PG_device<false> << <gridSize, blockSize, 0, sourceManager->stream >> > (SVONodes_children, SVONodes, nullptr, nodeCount);
+		createSVO_PG_device << <gridSize, blockSize, 0, sourceManager->stream >> > (SVONodes_children, SVONodes, nodeCount);
 	}
 	
-	//CHECK(cudaDeviceSynchronize());
-	//uint32_t nodeSize = pow(8, SVOs_PG.size());
-	//std::vector<FzbSVONodeData_PG> svoNodeData_host(nodeSize);
-	//CHECK(cudaMemcpy(svoNodeData_host.data(), SVOs_PG[SVOs_PG.size() - 1], sizeof(FzbSVONodeData_PG) * nodeSize, cudaMemcpyDeviceToHost));
-	//for (int i = 0; i < nodeSize; ++i) {
-	//	std::cout << svoNodeData_host[i].indivisible << std::endl;
-	//}
+	//压缩数组
+	if (setting.voxelNum > 128) {
+		std::cout << "voxelNum超过128，就需要两次压缩，目前无法实现，SVO未压缩" << std::endl;
+		return;
+	}
+	uint32_t blockInfoIndex = 0;
+	for (int i = 0; i < SVOs_PG.size(); ++i) {
+		uint32_t nodeTotalCount = pow(8, i + 1);
+		blockSize = nodeTotalCount > createSVOKernelBlockSize ? createSVOKernelBlockSize : nodeTotalCount;
+		gridSize = (nodeTotalCount + blockSize - 1) / blockSize;
+
+		FzbSVONodeData_PG* SVONodes = SVOs_PG[i];
+		uint32_t* svoNodeCount = SVONodeCount[i];
+		if (nodeTotalCount <= 512) compressSVO_PG_firstStep<false><<<gridSize, blockSize, 0, sourceManager->stream>>>
+			(SVONodes, nullptr, nullptr, svoNodeCount, nodeTotalCount);
+		else {
+			FzbSVONodeBlock* blockInfo = SVONodeBlockInfos[blockInfoIndex];
+			FzbSVONodeTempInfo* tempNodeInfo = SVONodeTempInfos[blockInfoIndex++];
+			compressSVO_PG_firstStep<true> <<<gridSize, blockSize, 0, sourceManager->stream >>> 
+				(SVONodes, blockInfo, tempNodeInfo, svoNodeCount, nodeTotalCount);
+			compressSVO_PG_secondStep <<<gridSize, blockSize, 0, sourceManager->stream >>>
+				(SVONodes, blockInfo, tempNodeInfo, nodeTotalCount);
+		}
+	}
 }
 //----------------------------------------------------------------------------------------------------------------------------------------------------
 void FzbSVOCuda_PG::clean() {
 	CHECK(cudaDestroyExternalMemory(VGBExtMem));
 	CHECK(cudaFree(VGB));
 	for (int i = 0; i < this->SVONodeBlockInfos.size(); ++i) CHECK(cudaFree(this->SVONodeBlockInfos[i]));
+	for (int i = 0; i < this->SVONodeTempInfos.size(); ++i) CHECK(cudaFree(this->SVONodeTempInfos[i]));
+	for (int i = 0; i < this->SVONodeCount.size(); ++i) CHECK(cudaFree(this->SVONodeCount[i]));
 	for (int i = 0; i < this->SVOs_PG.size(); ++i) CHECK(cudaFree(this->SVOs_PG[i]));
 	CHECK(cudaDestroyExternalSemaphore(extSvoSemaphore_PG));
 }
