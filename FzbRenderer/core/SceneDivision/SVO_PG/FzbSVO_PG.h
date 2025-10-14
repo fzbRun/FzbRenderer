@@ -14,6 +14,10 @@ struct FzbSVOUniformBufferObject {
 	glm::vec4 voxelSize_Num;
 	glm::vec4 voxelStartPos;
 };
+struct FzbSVOUniformBufferObject2 {
+	uint32_t SVONodeCount[6];	//最多128x128x128，那么去掉根节点和叶节点就是6层
+
+};
 struct FzbSVO_PG : public FzbFeatureComponent_PreProcess {
 public:
 	FzbSVOSetting_PG setting;
@@ -92,6 +96,7 @@ public:
 	FzbSemaphore render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) override;
 	void clean() override;
 private:
+	uint32_t SVO_PG_MaxDepth = 0;
 	void addExtensions();
 	void createImages() override;
 	void presentPrepare() override;

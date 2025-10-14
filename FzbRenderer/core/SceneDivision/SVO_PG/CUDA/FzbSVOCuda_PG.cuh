@@ -21,8 +21,8 @@ __host__ __device__ struct FzbVoxelData_PG {
 struct FzbSVONodeData_PG {
 	uint32_t indivisible;
 	float pdf;	//去掉影响小的子node后需要弥补的pdf
-	uint32_t shuffleKey;
-	uint32_t label;
+	//uint32_t shuffleKey;
+	uint32_t label;		//该node是当前层中第几个可分的node
 	FzbAABB AABB;
 	glm::vec3 irradiance;
 };
@@ -43,6 +43,8 @@ struct FzbSVONodeBlock {
 };
 struct FzbSVONodeTempInfo {
 	FzbSVONodeData_PG nodeData;
+	uint32_t hasData;
+	uint32_t nodeIndex;
 	uint32_t nodeIndexInThreadBlock;
 };
 
@@ -52,8 +54,8 @@ struct FzbVGBUniformData {
 	glm::vec3 voxelStartPos;
 };
 struct FzbSVOUnformData {
-	float surfaceAreaThreshold = 10.5f;	//如何合并后的AABB的表面超过原有子node的表面积之和的surfaceAreaThreshold倍，则认为不能合并
-	float irradianceThreshold = 10.5f;	//如果某个两个兄弟node的irradiance之比超过irradianceThreshold，则认为不能合并
+	float surfaceAreaThreshold = 10.0f;	//如何合并后的AABB的表面超过原有子node的表面积之和的surfaceAreaThreshold倍，则认为不能合并
+	float irradianceThreshold = 10.0f;	//如果某个两个兄弟node的irradiance之比超过irradianceThreshold，则认为不能合并
 	float ignoreIrradianceValueThreshold = 1.0f;
 };
 
@@ -66,7 +68,9 @@ public:
 	FzbSVOUnformData SVOUniformData;
 	std::vector<FzbSVONodeBlock*> SVONodeBlockInfos;
 	std::vector<FzbSVONodeTempInfo*> SVONodeTempInfos;
-	std::vector<uint32_t*> SVONodeCount;
+	std::vector<uint32_t*> SVONodeCount;	//每层中hasDataAndDivisibleNodeCount
+	std::vector<uint32_t> SVONodeCount_host;
+	std::vector<uint32_t*> SVONodeIndices;	//每层中hasDataAndDivisibleNodeIndex
 	std::vector<FzbSVONodeData_PG*> SVOs_PG;	//每级的node
 	cudaExternalSemaphore_t extSvoSemaphore_PG;
 	std::shared_ptr<FzbRayTracingSourceManager_Cuda> sourceManager;

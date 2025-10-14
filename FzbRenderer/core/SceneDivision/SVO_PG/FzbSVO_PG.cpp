@@ -253,9 +253,8 @@ FzbSVO_PG_Debug::FzbSVO_PG_Debug(pugi::xml_node& SVO_PG_DebugNode) {
 	}
 	else throw std::runtime_error("SVO_PG_Debug需要嵌套SVO_PG子组件");
 
-	while (pow(2, setting.SVONodeClusterLevel + 1) >= this->SVO_PG->setting.voxelNum) {
-		--this->setting.SVONodeClusterLevel;
-	}
+	while (pow(2, this->SVO_PG_MaxDepth + 2) < this->SVO_PG->setting.voxelNum)++this->SVO_PG_MaxDepth;
+	if (pow(2, setting.SVONodeClusterLevel + 1) >= this->SVO_PG->setting.voxelNum) this->setting.SVONodeClusterLevel = this->SVO_PG_MaxDepth;
 }
 void FzbSVO_PG_Debug::addMainSceneInfo() {};
 void FzbSVO_PG_Debug::addExtensions() {
@@ -444,13 +443,14 @@ void FzbSVO_PG_Debug::createVGBRenderPass_IrradianceInfo() {
 void FzbSVO_PG_Debug::createVGBRenderPass_SVONodeClusterInfo() {
 	//搞一个线框，显示聚类后的node的范围
 	FzbMesh cubeMesh = FzbMesh();
-	cubeMesh.instanceNum = std::pow(setting.SVO_PGSetting.voxelNum, 3) / pow(8, setting.SVONodeClusterLevel + 1);
+	cubeMesh.instanceNum = this->SVO_PG->svoCuda_pg->SVONodeCount_host[SVO_PG_MaxDepth - setting.SVONodeClusterLevel] * 8;
+	//cubeMesh.instanceNum = std::pow(setting.SVO_PGSetting.voxelNum, 3) / pow(8, setting.SVONodeClusterLevel + 1);
 	fzbCreateCubeWireframe(cubeMesh);
 	this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
 
 	//搞一个cube，展示聚类后内部AABB及其irradiance
 	cubeMesh = FzbMesh();
-	cubeMesh.instanceNum = std::pow(setting.SVO_PGSetting.voxelNum, 3) / pow(8, setting.SVONodeClusterLevel + 1);
+	cubeMesh.instanceNum = this->SVO_PG->svoCuda_pg->SVONodeCount_host[SVO_PG_MaxDepth - setting.SVONodeClusterLevel] * 8;
 	fzbCreateCube(cubeMesh, FzbVertexFormat());
 	this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
 
