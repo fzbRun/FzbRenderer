@@ -7,12 +7,7 @@
 因此，我们将获取属性的方式封装起来，隐藏内部信息
 */
 vec3 getNormal() {
-#if defined(useFaceNormal)
-	vec3 tangent = normalize(ddx(vertexWorldPos));
-	vec3 bitangent = normalize(ddy(vertexWorldPos));
-	return normalize(cross(tangent, bitangent));
-	return normalize(cross(tangent, bitangent));
-#elif defined(VERTEX_NORMAL)
+#if defined(VERTEX_NORMAL)
 	#if defined(NORMALMAP)
 	vec3 normal = (texture(normalMap, vertexTexCoords).xyz) * 2.0f - 1.0f;
 		#if defined(VERTEX_TEXCOORDS)
@@ -35,7 +30,10 @@ vec3 getNormal() {
 	mat3 TBN = mat3(tangent, bitangent, normal);
 	return normalize(TBN * normal_map);
 #else
-	return vec3(0.0f);
+//#if defined(useFaceNormal)
+	vec3 tangent = normalize(dFdx(vertexWorldPos));
+	vec3 bitangent = normalize(dFdy(vertexWorldPos));
+	return normalize(cross(bitangent, tangent));
 #endif
 }
 

@@ -31,7 +31,7 @@ public:
 	VkDeviceMemory memory = nullptr;
 	void* mapped = nullptr;
 	HANDLE handle = INVALID_HANDLE_VALUE;
-	uint64_t deviceAddress;
+	uint64_t deviceAddress = 0;
 	uint32_t size;
 
 	VkBufferUsageFlags usage;
@@ -47,7 +47,7 @@ public:
 	//这里的buffer一定要CPU可见，即VkMemoryPropertyFlags要有VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
 	void fillBuffer(void* bufferData);
 
-	void fzbGetBufferDeviceAddress();
+	void getBufferDeviceAddress();
 	
 	void clearBuffer(VkCommandBuffer commandBuffer, VkPipelineStageFlagBits waitStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
@@ -204,7 +204,7 @@ struct FzbStorageBuffer : public FzbBuffer {
 //---------------------------------------------------------------------------------------------------------------------------------
 FzbBuffer fzbCreateStorageBuffer(void* bufferData, uint32_t bufferSize, bool UseExternal = false);
 //创造一个空的buffer
-FzbBuffer fzbCreateStorageBuffer(uint32_t bufferSize, bool UseExternal = false);
+FzbBuffer fzbCreateStorageBuffer(uint32_t bufferSize, bool UseExternal = false, bool UseDeviceAddress = false);
 FzbBuffer fzbCreateUniformBuffer(uint32_t bufferSize);
 FzbBuffer fzbCreateIndirectCommandBuffer(void* bufferData, uint32_t bufferSize);
 #endif

@@ -507,6 +507,7 @@ void FzbMainComponent::createDevice() {
 	deviceFeatures.geometryShader = VK_TRUE;
 	deviceFeatures.fragmentStoresAndAtomics = VK_TRUE;
 	deviceFeatures.multiDrawIndirect = VK_TRUE;
+	deviceFeatures.shaderInt64 = VK_TRUE;
 
 	vk11Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
 	vk11Features.shaderDrawParameters = VK_TRUE;
@@ -519,6 +520,7 @@ void FzbMainComponent::createDevice() {
 	vk12Features.shaderInt8 = VK_TRUE;
 	vk12Features.shaderFloat16 = VK_TRUE;
 	vk12Features.scalarBlockLayout = VK_TRUE;
+	vk12Features.bufferDeviceAddress = VK_TRUE;
 
 	vk11Features.pNext = this->extensionFeatureList.featureList;
 	vk12Features.pNext = &vk11Features;

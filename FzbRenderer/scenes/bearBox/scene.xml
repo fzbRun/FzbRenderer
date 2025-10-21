@@ -26,12 +26,14 @@
 				<matrix value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1" />
 			</transform>
 		</shape>
+		<!--
 		<shape type = "rectangle" id = "lens">
 			<ref id="lensBSDF" />
 			<transform name="to_world">
 				<matrix value="1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 1" />
 			</transform>
 		</shape>
+		-->
 	</shapes>
 </scene>
 

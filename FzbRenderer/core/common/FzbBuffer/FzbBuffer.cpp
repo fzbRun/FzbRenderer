@@ -11,7 +11,7 @@ void GetMemoryWin32HandleKHR(VkMemoryGetWin32HandleInfoKHR* handleInfo, HANDLE* 
 }
 VkDeviceAddress getBufferDeviceAddressKHR(VkBufferDeviceAddressInfoKHR* handleInfo) {
 	VkDevice device = FzbRenderer::globalData.logicalDevice;
-	auto func = (PFN_vkGetBufferDeviceAddressKHR)vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR");
+	auto func = (PFN_vkGetBufferDeviceAddress)vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddress");
 	if (func != nullptr) {
 		return func(device, handleInfo);
 	}
@@ -187,7 +187,7 @@ void FzbBuffer::fillBuffer(void* bufferData) {
 	memcpy(data, bufferData, (size_t)size);	//将数据传入该暂存buffer
 	vkUnmapMemory(logicalDevice, memory);	//解除映射
 }
-void FzbBuffer::fzbGetBufferDeviceAddress() {
+void FzbBuffer::getBufferDeviceAddress() {
 	VkBufferDeviceAddressInfoKHR addressInfo{};
 	addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
 	addressInfo.buffer = buffer;
@@ -245,8 +245,10 @@ FzbBuffer fzbCreateStorageBuffer(void* bufferData, uint32_t bufferSize, bool Use
 	stagingBuffer.clean();
 	return fzbBuffer;
 }
-FzbBuffer fzbCreateStorageBuffer(uint32_t bufferSize, bool UseExternal) {
-	FzbBuffer fzbBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, UseExternal);
+FzbBuffer fzbCreateStorageBuffer(uint32_t bufferSize, bool UseExternal, bool UseDeviceAddress) {
+	VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	if (UseDeviceAddress) usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+	FzbBuffer fzbBuffer(bufferSize, usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, UseExternal);
 	fzbBuffer.fzbCreateBuffer();
 	return fzbBuffer;
 }

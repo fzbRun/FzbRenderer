@@ -45,10 +45,12 @@
 		</featureComponent>
 	</featureComponents> 
 	
-		<rendererType value = "SVO_PG_Debug">
+	<rendererType value = "SVO_PG_Debug">
 		<available value = "true" />
 		<rendererComponentSetting>
-			<voxelAABBDebugInfo value = "true" />
+			<voxelAABBDebugInfo value = "false" />
+			<voxelIrradianceDebugInfo value = "false" />
+			<SVONodeClusterDebugInfo value = "true" level = "1" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "SVO_PG">
@@ -56,8 +58,14 @@
 				<featureComponentSetting>
 					<voxelNum value = "64" />
 					<useCube value = "true" />
-					<useOBB value = "true" />
+					<useOneArray value = "false" />
+					<useOBB value = "false" />
 				</featureComponentSetting>
+				<childComponents>
+					<featureComponent name = "BVH">
+						<available value = "true" />
+					</featureComponent>
+				</childComponents>
 			</featureComponent>
 		</childComponents>
 	</rendererType>
@@ -67,7 +75,7 @@
 		<rendererComponentSetting>
 			<voxelAABBDebugInfo value = "false" />
 			<voxelIrradianceDebugInfo value = "false" />
-			<SVONodeClusterDebugInfo value = "true" level = "0" />
+			<SVONodeClusterDebugInfo value = "true" level = "1" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "SVO_PG">
@@ -75,6 +83,7 @@
 				<featureComponentSetting>
 					<voxelNum value = "64" />
 					<useCube value = "true" />
+					<useOneArray value = "false" />
 					<useOBB value = "false" />
 				</featureComponentSetting>
 				<childComponents>

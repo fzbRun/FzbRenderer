@@ -45,7 +45,7 @@ public:
 	void init() override;
 	void clean() override;
 
-	void createSVOBuffers();
+	void createSVOBuffers(bool useDeviceAddress = true);
 private:
 	void addExtensions();
 
@@ -66,10 +66,15 @@ struct FzbSVOSetting_PG_Debug {
 	bool voxelIrradianceDebugInfo = false;
 	bool SVONodeClusterDebugInfo = false;
 	uint32_t SVONodeClusterLevel = 0;
+	bool useDeviceAddress = false;	//用设备地址在renderDoc中看不到数据
 };
 struct FzbSVONodeClusterUniformObject {
 	glm::vec4 nodeSize_Num;
 	glm::vec4 startPos;
+	uint32_t maxDepth;
+	int nodeClusterInfoLevel = -1;	//-1表示全看
+	uint32_t nodeCounts[6] = { 0 };	//每层有多少个有值node
+	uint64_t SVONodesAddress[6] = { 0 };	//最大128^3，去掉根节点和叶节点，最多6层
 };
 struct FzbSVONodeBlockData {
 	uint32_t startIndex;	//当前线程组
@@ -96,7 +101,7 @@ public:
 	FzbSemaphore render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence = VK_NULL_HANDLE) override;
 	void clean() override;
 private:
-	uint32_t SVO_PG_MaxDepth = 0;
+	uint32_t SVO_PG_MaxDepth = 0;	//从0开始
 	void addExtensions();
 	void createImages() override;
 	void presentPrepare() override;

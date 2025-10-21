@@ -52,5 +52,5 @@ void main() {
 	vec3 normal = getNormal();
 	vec3 vertexAlbedo = getAlbedo().rgb;
 
-	fragColor = getIllumination(o, normal, vertexAlbedo) * 0.01f;
+	fragColor = getIllumination(o, normal, vertexAlbedo) * 0.1f + vec4(emissive.xyz, 0.0f);
 }

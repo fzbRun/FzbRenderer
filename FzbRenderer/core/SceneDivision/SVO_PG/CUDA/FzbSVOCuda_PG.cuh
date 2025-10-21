@@ -11,6 +11,7 @@
 struct FzbSVOSetting_PG {
 	uint32_t voxelNum = 64;
 	bool useCube = true;
+	bool useOneArray = true;
 	bool useOBB = true;
 };
 __host__ __device__ struct FzbVoxelData_PG {
@@ -26,26 +27,24 @@ struct FzbSVONodeData_PG {
 	FzbAABB AABB;
 	glm::vec3 irradiance;
 };
-__host__ __device__ struct FzbVoxelData_PG_OBB {
-	uint hasData;
-	glm::vec3 irradiance;
-	FzbOBBUint OBB;
-};
-struct FzbSVONodeData_PG_OBB {
-	uint32_t shuffleKey;
-	FzbOBB OBB;
-	glm::vec3 irradiance;
-};
 
-struct FzbSVONodeBlock {
-	uint32_t nodeCount;	//有值的node数量
-	uint32_t blockCount;
+struct FzbSVONodeThreadBlockInfo {
+	uint32_t divisibleNodeCount;	//有值且可分的node数量
+	uint32_t indivisibleNodeCount;	//有值且可分的node数量
 };
 struct FzbSVONodeTempInfo {
-	FzbSVONodeData_PG nodeData;
-	uint32_t hasData;
 	uint32_t nodeIndex;
-	uint32_t nodeIndexInThreadBlock;
+	uint32_t storageIndex;
+	uint32_t label;
+	uint32_t threadBlockIndex;
+};
+struct FzbSVOLayerInfo {
+	uint32_t divisibleNodeCount;
+	uint32_t indivisibleNodeCount;
+};
+struct FzbSVOIndivisibleNodeInfo {
+	uint32_t nodeLayer;
+	uint32_t nodeIndex;	//在nodeLevel层的索引
 };
 
 struct FzbVGBUniformData {
@@ -54,10 +53,14 @@ struct FzbVGBUniformData {
 	glm::vec3 voxelStartPos;
 };
 struct FzbSVOUnformData {
-	float surfaceAreaThreshold = 10.0f;	//如何合并后的AABB的表面超过原有子node的表面积之和的surfaceAreaThreshold倍，则认为不能合并
+	float surfaceAreaThreshold = 3.0f;	//如何合并后的AABB的表面超过原有子node的表面积之和的surfaceAreaThreshold倍，则认为不能合并
 	float irradianceThreshold = 10.0f;	//如果某个两个兄弟node的irradiance之比超过irradianceThreshold，则认为不能合并
-	float ignoreIrradianceValueThreshold = 1.0f;
+	float ignoreIrradianceValueThreshold = 10.0f;
 };
+
+extern __constant__ FzbVGBUniformData systemVGBUniformData;
+extern __constant__ FzbSVOUnformData systemSVOUniformData;
+const uint32_t createSVOKernelBlockSize = 512;
 
 struct FzbSVOCuda_PG {
 public:
@@ -66,23 +69,53 @@ public:
 	FzbVoxelData_PG* VGB;
 	FzbVGBUniformData VGBUniformData;
 	FzbSVOUnformData SVOUniformData;
-	std::vector<FzbSVONodeBlock*> SVONodeBlockInfos;
-	std::vector<FzbSVONodeTempInfo*> SVONodeTempInfos;
-	std::vector<uint32_t*> SVONodeCount;	//每层中hasDataAndDivisibleNodeCount
-	std::vector<uint32_t> SVONodeCount_host;
-	std::vector<uint32_t*> SVONodeIndices;	//每层中hasDataAndDivisibleNodeIndex
-	std::vector<FzbSVONodeData_PG*> SVOs_PG;	//每级的node
+
+	uint32_t SVONodes_maxDepth = 0;
+
+	std::vector<FzbSVONodeData_PG*> OctreeNodes_multiLayer;	//每级的node，满八叉树
+	//------------------------------多层SVO------------------------------
+	std::vector<FzbSVONodeThreadBlockInfo*> SVONodeThreadBlockInfos;	//用于多个线程组之间同步
+	std::vector<FzbSVONodeTempInfo*> SVODivisibleNodeTempInfos;	//每层中可分node的信息
+	
+	FzbSVOLayerInfo* SVOLayerInfos = nullptr;
+	std::vector<FzbSVOLayerInfo> SVOLayerInfos_host;
+
+	FzbSVOIndivisibleNodeInfo* SVOIndivisibleNodeInfos = nullptr;
+
+	std::vector<FzbSVONodeData_PG*> SVONodes_multiLayer;
+
+	uint32_t SVONodeTotalCount_host = 0;	//SVONodes中每层node数量之和
+	uint32_t SVOHasDataNodeTotalCount_host = 0;	//SVONodes中每层有值node数量之和
+	uint32_t SVOInDivisibleNodeTotalCount_host;	//SVONodes中每层不可分node数量之和
+	//-----------------------------计算weight---------------------------
+	FzbSVONodeData_PG** SVONodes_multiLayer_Array = nullptr;	//每层有值node的数组指针
+
+	float** SVONodeWeightsArray = nullptr;
+	std::vector<float*> SVONodeWeights;
+	float* SVONodeTotalWeightArray = nullptr;
+
 	cudaExternalSemaphore_t extSvoSemaphore_PG;
 	std::shared_ptr<FzbRayTracingSourceManager_Cuda> sourceManager;
+
+	cudaStream_t stream = nullptr;
 
 	FzbSVOCuda_PG();
 	FzbSVOCuda_PG(std::shared_ptr<FzbRayTracingSourceManager_Cuda> sourceManager, FzbSVOSetting_PG setting, FzbVGBUniformData VGBUniformData, FzbBuffer VGB, HANDLE SVOFinishedSemaphore_PG, FzbSVOUnformData SVOUniformData);
 
 	void initVGB();
-	void lightInject();
-	void createSVOCuda_PG();
+	void createSVOCuda_PG(HANDLE VGBFinishedSemaphore);
 	void clean();
 
 	void copyDataToBuffer(std::vector<FzbBuffer>& buffers);
+
+private:
+	void initLightInjectSource();
+	void lightInject();
+	void initCreateOctreeNodesSource();
+	void createOctreeNodes();
+	void initCreateSVONodesSource();
+	void createSVONodes();
+	void initGetSVONodesWeightSource();
+	void getSVONodesWeight();
 };
 #endif
