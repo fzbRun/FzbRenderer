@@ -29,14 +29,18 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 	glm::vec3 bitangent = glm::cross(triangleAttribute.normal, triangleAttribute.tangent) * triangleAttribute.handed;
 	glm::mat3 TBN = glm::mat3(triangleAttribute.tangent, bitangent, triangleAttribute.normal);
 
-	if (triangleAttribute.materialType == 0) {	//余弦重要性采样
-		float sinTheta = glm::sqrt(randomNumber1);
-		float cosTheta = glm::sqrt(1 - sinTheta * sinTheta);
+	if (triangleAttribute.materialType == 0) {	
+		//余弦重要性采样
+		//float sinTheta = glm::sqrt(randomNumber1);
+		//float cosTheta = glm::sqrt(1 - sinTheta * sinTheta);
+		//半球均匀采样
+		float cosTheta = randomNumber1;
+		float sinTheta = glm::sqrt(1 - cosTheta * cosTheta);
 		float x = sinTheta * glm::cos(phi);
 		float y = sinTheta * glm::sin(phi);
 		float z = cosTheta;
 		ray.direction = glm::normalize(TBN * glm::vec3(x, y, z));
-		pdf *= sinTheta * cosTheta / PI;
+		pdf *= 0.5f / PI;
 	}
 	else {
 		float cosTheta = glm::sqrt((1.0f - randomNumber1) / ((triangleAttribute.roughness * triangleAttribute.roughness - 1.0f) * randomNumber1 + 1.0f));
@@ -48,7 +52,7 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 		h = glm::normalize(TBN * h);
 
 		if (triangleAttribute.materialType == 1) {		//粗糙导体
-			ray.direction = 2.0f * (glm::dot(-ray.direction, h) * h + ray.direction);	//这里得到的只是h，还需要从h转为i
+			ray.direction = 2.0f * glm::dot(-ray.direction, h) * h + ray.direction;	//这里得到的只是h，还需要从h转为i
 			pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta * sinTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f));
 		}
 		else if (triangleAttribute.materialType == 2) {		//粗糙电解质

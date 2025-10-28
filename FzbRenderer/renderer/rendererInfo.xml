@@ -10,6 +10,7 @@
 		<available value = "true" />
 		<rendererComponentSetting>
 			<spp value = "1" />
+			<useSphericalRectangleSample value = "true" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "BVH">
@@ -45,7 +46,7 @@
 		</featureComponent>
 	</featureComponents> 
 	
-	<rendererType value = "SVO_PG_Debug">
+<rendererType value = "SVO_PG_Debug">
 		<available value = "true" />
 		<rendererComponentSetting>
 			<voxelAABBDebugInfo value = "false" />
@@ -69,13 +70,36 @@
 			</featureComponent>
 		</childComponents>
 	</rendererType>
-	-->
-	<rendererType value = "SVO_PG_Debug">
+	
+		<rendererType value = "SVOPathGuiding_soft">
 		<available value = "true" />
 		<rendererComponentSetting>
-			<voxelAABBDebugInfo value = "false" />
-			<voxelIrradianceDebugInfo value = "false" />
-			<SVONodeClusterDebugInfo value = "true" level = "1" />
+			<spp value = "1" />
+			<useSphericalRectangleSample value = "true" />
+		</rendererComponentSetting>
+		<childComponents>
+			<featureComponent name = "SVO_PG">
+				<available value = "true" />
+				<featureComponentSetting>
+					<voxelNum value = "64" />
+					<useCube value = "true" />
+					<useOneArray value = "false" />
+					<useOBB value = "false" />
+				</featureComponentSetting>
+				<childComponents>
+					<featureComponent name = "BVH">
+						<available value = "true" />
+					</featureComponent>
+				</childComponents>
+			</featureComponent>
+		</childComponents>
+	</rendererType>
+	-->
+	<rendererType value = "SVOPathGuiding_soft">
+		<available value = "true" />
+		<rendererComponentSetting>
+			<spp value = "1" />
+			<useSphericalRectangleSample value = "true" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "SVO_PG">

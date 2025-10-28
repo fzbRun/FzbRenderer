@@ -35,8 +35,8 @@ cudaExternalSemaphore_t importVulkanSemaphoreObjectFromFileDescriptor(int fd);
 cudaExternalSemaphore_t importVulkanSemaphoreObjectFromNTHandle(HANDLE handle);
 cudaExternalSemaphore_t importVulkanSemaphoreObjectFromNamedNTHandle(LPCWSTR name);
 cudaExternalSemaphore_t importVulkanSemaphoreObjectFromKMTHandle(HANDLE handle);
-void signalExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream);
-void waitExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream);
+cudaError_t signalExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream);
+cudaError_t waitExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream);
 void fromVulkanImageToCudaTexture(VkPhysicalDevice vkPhysicalDevice, FzbImage& vkImage, HANDLE handle, unsigned long long size,
     bool isDedicated, cudaExternalMemory_t& extMem, cudaMipmappedArray_t& mipmap, cudaTextureObject_t& texObj, bool sampleNormal = false);
 void fromVulkanImageToCudaSurface(VkPhysicalDevice vkPhysicalDevice, FzbImage& vkImage, HANDLE handle, unsigned long long size,

@@ -376,7 +376,7 @@ FzbMainScene::FzbMainScene(std::string path) {
 				std::string lightDataPath = "";
 				if (pugi::xml_node pathNode = shapeNode.select_node(".//string[@name='filename']").node()) {
 					lightDataPath = this->scenePath + "/" + std::string(pathNode.attribute("value").value());
-					light = FzbLight(lightDataPath);
+					light = FzbLight(lightDataPath, transformMatrix);
 				}
 				else light = FzbLight(transformMatrix);
 

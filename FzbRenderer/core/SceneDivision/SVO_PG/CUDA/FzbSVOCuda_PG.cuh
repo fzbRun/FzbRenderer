@@ -33,8 +33,8 @@ struct FzbSVONodeThreadBlockInfo {
 	uint32_t indivisibleNodeCount;	//有值且可分的node数量
 };
 struct FzbSVONodeTempInfo {
-	uint32_t nodeIndex;
-	uint32_t storageIndex;
+	uint32_t nodeIndex;		//在octree中的索引
+	uint32_t storageIndex;	//在svo中的索引
 	uint32_t label;
 	uint32_t threadBlockIndex;
 };
@@ -44,7 +44,7 @@ struct FzbSVOLayerInfo {
 };
 struct FzbSVOIndivisibleNodeInfo {
 	uint32_t nodeLayer;
-	uint32_t nodeIndex;	//在nodeLevel层的索引
+	uint32_t nodeIndex;	//在svo的一层的索引
 };
 
 struct FzbVGBUniformData {
@@ -58,9 +58,14 @@ struct FzbSVOUnformData {
 	float ignoreIrradianceValueThreshold = 10.0f;
 };
 
+//----------------------------------------------常量
 extern __constant__ FzbVGBUniformData systemVGBUniformData;
 extern __constant__ FzbSVOUnformData systemSVOUniformData;
 const uint32_t createSVOKernelBlockSize = 512;
+const std::vector<uint32_t> SVONodesMaxCount = {	//node越到上层越难聚类，所以上几层的node数应该不变，下几层的node数较原来小
+	1, 8, 64, 512, 1024, 1024, 1024, 1024
+};
+//----------------------------------------------常量-------------------------------------------------
 
 struct FzbSVOCuda_PG {
 public:
@@ -74,6 +79,9 @@ public:
 
 	std::vector<FzbSVONodeData_PG*> OctreeNodes_multiLayer;	//每级的node，满八叉树
 	//------------------------------多层SVO------------------------------
+	uint32_t SVONodeMaxCount = 0;
+	uint32_t SVOIndivisibleNodeMaxCount = 0;		//假设聚类后最多有indivisibleNodeMaxCount个不可分node，如果超出则重新分配
+
 	std::vector<FzbSVONodeThreadBlockInfo*> SVONodeThreadBlockInfos;	//用于多个线程组之间同步
 	std::vector<FzbSVONodeTempInfo*> SVODivisibleNodeTempInfos;	//每层中可分node的信息
 	
@@ -89,10 +97,8 @@ public:
 	uint32_t SVOInDivisibleNodeTotalCount_host;	//SVONodes中每层不可分node数量之和
 	//-----------------------------计算weight---------------------------
 	FzbSVONodeData_PG** SVONodes_multiLayer_Array = nullptr;	//每层有值node的数组指针
-
-	float** SVONodeWeightsArray = nullptr;
-	std::vector<float*> SVONodeWeights;
-	float* SVONodeTotalWeightArray = nullptr;
+	uint32_t* SVODivisibleNodeBlockWeight;
+	float* SVONodeWeights = nullptr;	//每个元素代表一个node和node之间的weigh(weight以每层为基础）
 
 	cudaExternalSemaphore_t extSvoSemaphore_PG;
 	std::shared_ptr<FzbRayTracingSourceManager_Cuda> sourceManager;
@@ -106,7 +112,7 @@ public:
 	void createSVOCuda_PG(HANDLE VGBFinishedSemaphore);
 	void clean();
 
-	void copyDataToBuffer(std::vector<FzbBuffer>& buffers);
+	void copyDataToBuffer(std::vector<FzbBuffer>& SVONodesBuffers, FzbBuffer SVOWeightsBuffer);
 
 private:
 	void initLightInjectSource();

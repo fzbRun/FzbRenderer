@@ -15,7 +15,8 @@ template<bool useExternSharedMemory>
 __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, const uint32_t rayCount) {
 	extern __shared__ float3 groupResultRadiance[];	//如果spp大于sharedMemorySPP，则使用共享内存， 数量为blockDim / spp, 最大6KB
-	__shared__ uint32_t spp_group;
+	__shared__ FzbPathTracingSetting groupSetting;
+	__shared__ uint32_t groupFrameCount;
 	__shared__ FzbPathTracingCameraInfo groupCameraInfo;				//216B
 	__shared__ uint32_t groupRandomNumberSeed;
 	__shared__ FzbRayTracingPointLight groupPointLightInfoArray[maxPointLightCount];	//512B
@@ -28,7 +29,8 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 	if (threadIdx.x < systemPointLightCount) groupPointLightInfoArray[threadIdx.x] = systemPointLightInfoArray[threadIdx.x];
 	if (threadIdx.x < systemAreaLightCount) grouprAreaLightInfoArray[threadIdx.x] = systemAreaLightInfoArray[threadIdx.x];
 	if (threadIdx.x == 0) {
-		spp_group = pathTracingSetting.spp;
+		groupSetting = pathTracingSetting;
+		groupFrameCount = systemFrameCount;
 		groupCameraInfo = systemCameraInfo;
 		groupRandomNumberSeed = systemRandomNumberSeed;
 		lightSet.pointLightCount = systemPointLightCount;
@@ -38,7 +40,7 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 	}
 	__syncthreads();
 
-	volatile const uint32_t& spp = spp_group;		//寄存器不够用，挤到了localMmeory，那还不如直接用sharedMemory呢
+	volatile const uint32_t& spp = groupSetting.spp;		//寄存器不够用，挤到了localMmeory，那还不如直接用sharedMemory呢
 	uint32_t resultIndex = threadIndex / spp;	//属于第几个spp，即bufferIndex
 	uint32_t groupSppIndex = threadIdx.x / spp;		//组内第几个spp
 	uint32_t sppLane = threadIndex % spp;	//不能用&，因为spp可能不是2的幂次
@@ -46,7 +48,8 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 		if (threadIdx.x < blockDim.x / spp) groupResultRadiance[threadIdx.x] = make_float3(0.0f);
 	}
 	//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
-	if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
+	//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
+	if (sppLane == 0) resultBuffer[resultIndex] *= ((float)groupFrameCount - 1) / (float)groupFrameCount;
 	__syncthreads();
 
 	uint32_t randomNumberSeed = groupRandomNumberSeed + threadIndex;
@@ -75,11 +78,12 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 
 	hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, ray, hitTriangleAttribute);
 	if (!hit) return;
-	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed);
-	
-	uint32_t maxBonceDepth = 1;
+	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample);
+
+	uint32_t maxBonceDepth = 2;
 	#pragma nounroll
 	while (maxBonceDepth > 0) {
+		randomNumberSeed += maxBonceDepth;
 		float randomNumber = rand(randomNumberSeed);
 		if (randomNumber > RR) break;
 		pdf *= RR;
@@ -90,14 +94,14 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 		lastHitTriangleAttribute = hitTriangleAttribute;
 		hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, ray, hitTriangleAttribute);
 		if (!hit) break;
-		//ray.hitPos = ray.direction * ray.depth + ray.startPos;
 
 		bsdf *= getBSDF(lastHitTriangleAttribute, ray.direction, lastDirection, ray) * glm::abs(glm::dot(ray.direction, lastHitTriangleAttribute.normal));
-		radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed) * bsdf / pdf;
+		radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample) * bsdf / pdf;
 		--maxBonceDepth;
 	}
 
 	radiance /= spp;
+	radiance /= groupFrameCount;
 	if (useExternSharedMemory && threadIdx.x < groupSppIndex * spp) {
 		//这是这里如果spp为32的整数倍，则可以先在warp中处理
 		atomicAdd(&groupResultRadiance[groupSppIndex].x, radiance.x);
@@ -132,8 +136,8 @@ FzbPathTracingCuda::FzbPathTracingCuda(std::shared_ptr<FzbRayTracingSourceManage
 
 	//设置cuda配置，更多的使用L1 cache
 	//cudaDeviceSetCacheConfig(cudaFuncCachePreferL1);
-	cudaFuncSetAttribute(pathTracing_cuda<true>, cudaFuncAttributeMaxDynamicSharedMemorySize, (setting.spp >= sharedMemorySPP ? blockSize / setting.spp : 0) * sizeof(float3));	//3070 128KB，则L1 96KB，sharedMemory 32KB
-	cudaFuncSetAttribute(pathTracing_cuda<false>, cudaFuncAttributeMaxDynamicSharedMemorySize, 0);
+	CHECK(cudaFuncSetAttribute(pathTracing_cuda<true>, cudaFuncAttributeMaxDynamicSharedMemorySize, (setting.spp >= sharedMemorySPP ? blockSize / setting.spp : 0) * sizeof(float3)));	//3070 128KB，则L1 96KB，sharedMemory 32KB
+	CHECK(cudaFuncSetAttribute(pathTracing_cuda<false>, cudaFuncAttributeMaxDynamicSharedMemorySize, 0));
 	//cudaFuncSetAttribute(pathTracing_cuda, cudaFuncAttributePreferredSharedMemoryCarveout, 10);	//3070 128KB，则L1 96KB，sharedMemory 32KB
 	//cudaFuncAttributes attr;
 	//cudaFuncGetAttributes(&attr, pathTracing_cuda);
@@ -153,23 +157,29 @@ void FzbPathTracingCuda::pathTracing(HANDLE startSemaphoreHandle) {
 
 	uint32_t sharedMemorySize = (setting.spp >= sharedMemorySPP ? blockSize / setting.spp : 0) * sizeof(float3);
 
-	if (!this->extStartSemphores.count(startSemaphoreHandle)) this->extStartSemphores.insert({ startSemaphoreHandle, importVulkanSemaphoreObjectFromNTHandle(startSemaphoreHandle) });
-	waitExternalSemaphore(this->extStartSemphores[startSemaphoreHandle], sourceManager->stream);
+	if (startSemaphoreHandle) {
+		if (!this->extStartSemphores.count(startSemaphoreHandle))
+			this->extStartSemphores.insert({ startSemaphoreHandle, importVulkanSemaphoreObjectFromNTHandle(startSemaphoreHandle) });
+		CHECK(waitExternalSemaphore(this->extStartSemphores[startSemaphoreHandle], sourceManager->stream));
+	}
 
-	//CHECK(cudaDeviceSynchronize());
-	//double start = cpuSecond();
+#ifndef NDEBUG
+	CHECK(cudaDeviceSynchronize());
+	double start = cpuSecond();
+#endif
 	if (setting.spp >= sharedMemorySPP) pathTracing_cuda<true> << <gridSize, blockSize, sharedMemorySize, sourceManager->stream >> > (sourceManager->resultBuffer, sourceManager->vertices, sourceManager->materialTextures, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray, rayCount);
 	else pathTracing_cuda<false> << <gridSize, blockSize, sharedMemorySize, sourceManager->stream >> > (sourceManager->resultBuffer, sourceManager->vertices, sourceManager->materialTextures, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray, rayCount);
-	//CHECK(cudaDeviceSynchronize());
-	//this->meanRunTime += cpuSecond() - start;
-	//++runCount;
-	//if (runCount == 20) {
-	//	std::cout << meanRunTime / runCount << std::endl;
-	//	runCount = 0;
-	//	meanRunTime = 0.0;
-	//}
-
-	signalExternalSemaphore(sourceManager->extRayTracingFinishedSemaphore, sourceManager->stream);
+#ifndef NDEBUG
+	CHECK(cudaDeviceSynchronize());
+	this->meanRunTime += cpuSecond() - start;
+	++runCount;
+	if (runCount == 20) {
+		std::cout << meanRunTime / runCount << std::endl;
+		runCount = 0;
+		meanRunTime = 0.0;
+	}
+#endif
+	CHECK(signalExternalSemaphore(sourceManager->extRayTracingFinishedSemaphore, sourceManager->stream));
 }
 void FzbPathTracingCuda::clean() {
 	for (auto& pair : this->extStartSemphores) CHECK(cudaDestroyExternalSemaphore(pair.second));

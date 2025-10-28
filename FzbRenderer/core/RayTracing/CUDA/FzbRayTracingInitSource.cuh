@@ -10,6 +10,8 @@
 #ifndef FZB_RAY_TRACING_INIT_SOURCE_CUH
 #define FZB_RAY_TRACING_INIT_SOURCE_CUH
 
+extern __constant__ uint32_t systemFrameCount;
+
 struct FzbRayTracingCudaSourceSet {
 	FzbBuffer rayTracingResultBuffer;
 	FzbSemaphore rayTracingFinishedSemphore;

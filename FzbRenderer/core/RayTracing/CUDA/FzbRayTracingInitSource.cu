@@ -1,6 +1,8 @@
 #include "./FzbRayTracingInitSource.cuh"
 #include "../../common/FzbRenderer.h"
+#include <random>
 
+__constant__ uint32_t systemFrameCount;
 __constant__ FzbPathTracingCameraInfo systemCameraInfo;
 __constant__ FzbRayTracingMaterialUniformObject materialInfoArray[maxMaterialCount];
 __constant__ bool useCudaRandom;
@@ -70,10 +72,17 @@ void FzbRayTracingSourceManager_Cuda::initRayTracingSource(FzbRayTracingCudaSour
 	//	CHECK(cudaMemcpyToSymbol(systemRandomNumberStates, &systemRandomNumberStates_device, sizeof(curandState*)));
 	//}
 
+	std::random_device rd;
+	std::mt19937 gen(rd()); // Mersenne Twister 引擎
+	std::uniform_int_distribution<uint32_t> distInt(0, UINT_MAX);	// 生成均匀分布整数
+	uint32_t randomNumber = distInt(gen);
+	CHECK(cudaMemcpyToSymbol(systemRandomNumberSeed, &randomNumber, sizeof(uint32_t)));
+
 	//创建stream
 	CHECK(cudaStreamCreate(&stream));
 }
 void FzbRayTracingSourceManager_Cuda::createRuntimeSource() {
+	CHECK(cudaMemcpyToSymbol(systemFrameCount, &FzbRenderer::globalData.frameIndex, sizeof(uint32_t)));
 	//为cameraInfo赋值
 	FzbPathTracingCameraInfo cameraInfo_host;
 	FzbCamera* camera = FzbRenderer::globalData.camera;
@@ -83,6 +92,13 @@ void FzbRayTracingSourceManager_Cuda::createRuntimeSource() {
 	cameraInfo_host.screenWidth = resolution.width;
 	cameraInfo_host.screenHeight = resolution.height;
 	CHECK(cudaMemcpyToSymbol(systemCameraInfo, &cameraInfo_host, sizeof(FzbPathTracingCameraInfo)));
+
+	//std::random_device rd;
+	//std::mt19937 gen(rd()); // Mersenne Twister 引擎
+	//std::uniform_int_distribution<uint32_t> distInt(0, UINT_MAX);	// 生成均匀分布整数
+	//uint32_t randomNumber = distInt(gen);
+	//CHECK(cudaMemcpyToSymbol(systemRandomNumberSeed, &randomNumber, sizeof(uint32_t)));
+	CHECK(cudaMemcpyToSymbol(systemRandomNumberSeed, &FzbRenderer::globalData.randomNumber, sizeof(uint32_t)));
 }
 void FzbRayTracingSourceManager_Cuda::clean() {
 	CHECK(cudaFree(resultBuffer));

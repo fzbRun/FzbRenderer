@@ -36,6 +36,7 @@ clock()»á¼ÆËãCPUÊ±¼ä£¬¶ø·Ç¹ÒÖÓÊ±¼ä¡£¼´ÈôÓĞ3¸öÏß³Ì²¢ĞĞÔËĞĞ£¬Ö´ĞĞ3Ãë£¬ÄÇÃ´clock»á·
 double cpuSecond();
 
 void checkKernelFunction();
+void checkLaunchConfiguration(uint32_t gridSize, uint32_t blockSize, uint32_t sharedMemSize);
 
 /*
 ÕâÀïÊÇ¹ØÓÚwarpÄÚ²¿²Ù×÷£¨Ô­Óï£©µÄÑ§Ï°

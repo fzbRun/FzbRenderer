@@ -96,9 +96,9 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 			nodeIndices[++stackTop] = node.leftNodeIndex;
 		}
 	}
-	if (anyHit && notOnlyDetection) {
+	if (anyHit) {
 		ray.hitPos = ray.direction * ray.depth + ray.startPos;
-		getTriangleMaterialAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute, bestHitTrianglePos, ray.hitPos);
+		if(notOnlyDetection) getTriangleMaterialAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute, bestHitTrianglePos, ray.hitPos);
 	}
 	return anyHit;
 }

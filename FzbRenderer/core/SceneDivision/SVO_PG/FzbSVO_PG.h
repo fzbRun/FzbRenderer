@@ -36,7 +36,8 @@ public:
 	FzbSemaphore SVOFinishedSemaphore;
 
 	std::shared_ptr<FzbSVOCuda_PG> svoCuda_pg;
-	std::vector<FzbBuffer> SVOBuffers;
+	std::vector<FzbBuffer> SVONodesBuffers;
+	FzbBuffer SVOWeightsBuffer;
 	FzbRayTracingSourceManager rayTracingSourceManager;
 
 	FzbSVO_PG();

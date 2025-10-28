@@ -32,7 +32,7 @@ FzbSVOCuda_PG::FzbSVOCuda_PG(std::shared_ptr<FzbRayTracingSourceManager_Cuda> so
 	initLightInjectSource();
 	initCreateOctreeNodesSource();
 	initCreateSVONodesSource();
-	//initGetSVONodesWeightSource();
+	initGetSVONodesWeightSource();
 
 	this->extSvoSemaphore_PG = importVulkanSemaphoreObjectFromNTHandle(SVOFinishedSemaphore_PG);
 }
@@ -68,22 +68,9 @@ void FzbSVOCuda_PG::createSVOCuda_PG(HANDLE VGBFinishedSemaphore) {
 	lightInject();
 	createOctreeNodes();
 	createSVONodes();
-	//getSVONodesWeight();
-}
-//--------------------------------------------------------------------计算weight-------------------------------------------------------------------------
-__global__ void getSVONodesWeight_device() {
-
+	getSVONodesWeight();
 }
 
-//void FzbSVOCuda_PG::getSVONodesWeight() {
-//	uint32_t nodeCount = 0;
-//	for (int i = 0; i <= this->SVONodes_multiLayer.size(); ++i) nodeCount += this->SVONodeCount_host[i] * 8;
-//	for (int i = 1; i <= this->SVONodes_multiLayer.size(); ++i) nodeCount -= this->SVONodeCount_host[i];	//去掉可分Node
-//
-//	for (int i = 0; i < this->SVONodeWeights.size(); ++i) CHECK(cudaFree(this->SVONodeWeights[i]));
-//	this->SVONodeWeights.resize(nodeCount);
-//	for (int i = 0; i < nodeCount; ++i) CHECK(cudaMalloc((void**)&this->SVONodeWeights[i], sizeof(float) * nodeCount));
-//}
 //----------------------------------------------------------------------------------------------------------------------------------------------------
 void FzbSVOCuda_PG::clean() {
 	CHECK(cudaDestroyExternalMemory(VGBExtMem));
@@ -98,22 +85,25 @@ void FzbSVOCuda_PG::clean() {
 	for (int i = 0; i < this->SVONodes_multiLayer.size(); ++i) if (SVONodes_multiLayer[i]) CHECK(cudaFree(this->SVONodes_multiLayer[i]));
 
 	if (this->SVONodes_multiLayer_Array) CHECK(cudaFree(this->SVONodes_multiLayer_Array));
-
-	for (int i = 0; i < this->SVONodeWeights.size(); ++i) if (this->SVONodeWeights[i]) CHECK(cudaFree(this->SVONodeWeights[i]));
-	if (this->SVONodeWeightsArray) CHECK(cudaFree(this->SVONodeWeightsArray));
-	if (this->SVONodeTotalWeightArray) CHECK(cudaFree(this->SVONodeTotalWeightArray));
+	if (this->SVODivisibleNodeBlockWeight) CHECK(cudaFree(this->SVODivisibleNodeBlockWeight));
+	if (this->SVONodeWeights) CHECK(cudaFree(this->SVONodeWeights));
 
 	CHECK(cudaDestroyExternalSemaphore(extSvoSemaphore_PG));
 }
 
-void FzbSVOCuda_PG::copyDataToBuffer(std::vector<FzbBuffer>& buffers) {
-	if (buffers.size() != this->SVONodes_maxDepth - 1) throw std::runtime_error("SVOBuffer数量不匹配");
+void FzbSVOCuda_PG::copyDataToBuffer(std::vector<FzbBuffer>& SVONodesBuffers, FzbBuffer SVOWeightsBuffer) {
+	if (SVONodesBuffers.size() != this->SVONodes_maxDepth - 1) throw std::runtime_error("SVOBuffer数量不匹配");
 	for (int i = 0; i < this->SVONodes_maxDepth - 1; ++i) {
-		FzbBuffer& SVOBuffer = buffers[i];
-		cudaExternalMemory_t SVOBufferExtMem = importVulkanMemoryObjectFromNTHandle(SVOBuffer.handle, SVOBuffer.size, false);
-		FzbSVONodeData_PG* SVOBuffer_ptr = (FzbSVONodeData_PG*)mapBufferOntoExternalMemory(SVOBufferExtMem, 0, SVOBuffer.size);
-		CHECK(cudaMemcpy(SVOBuffer_ptr, SVONodes_multiLayer[i + 1], SVOBuffer.size, cudaMemcpyDeviceToDevice));
-		CHECK(cudaDestroyExternalMemory(SVOBufferExtMem));
-		CHECK(cudaFree(SVOBuffer_ptr));
+		FzbBuffer& SVONodesBuffer = SVONodesBuffers[i];
+		cudaExternalMemory_t SVONodesBufferExtMem = importVulkanMemoryObjectFromNTHandle(SVONodesBuffer.handle, SVONodesBuffer.size, false);
+		FzbSVONodeData_PG* SVONodesBuffer_ptr = (FzbSVONodeData_PG*)mapBufferOntoExternalMemory(SVONodesBufferExtMem, 0, SVONodesBuffer.size);
+		CHECK(cudaMemcpy(SVONodesBuffer_ptr, SVONodes_multiLayer[i + 1], SVONodesBuffer.size, cudaMemcpyDeviceToDevice));
+		CHECK(cudaDestroyExternalMemory(SVONodesBufferExtMem));
+		CHECK(cudaFree(SVONodesBuffer_ptr));
 	}
+	cudaExternalMemory_t SVOWeightBufferExtMem = importVulkanMemoryObjectFromNTHandle(SVOWeightsBuffer.handle, SVOWeightsBuffer.size, false);
+	FzbSVONodeData_PG* SVOWeightBuffer_ptr = (FzbSVONodeData_PG*)mapBufferOntoExternalMemory(SVOWeightBufferExtMem, 0, SVOWeightsBuffer.size);
+	CHECK(cudaMemcpy(SVOWeightBuffer_ptr, SVONodeWeights, SVOWeightsBuffer.size, cudaMemcpyDeviceToDevice));
+	CHECK(cudaDestroyExternalMemory(SVOWeightBufferExtMem));
+	CHECK(cudaFree(SVOWeightBuffer_ptr));
 }

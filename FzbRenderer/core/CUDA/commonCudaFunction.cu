@@ -29,6 +29,27 @@ void checkKernelFunction() {
         printf("核函数已成功执行完成\n");
     }
 }
+void checkLaunchConfiguration(uint32_t gridSize, uint32_t blockSize, uint32_t sharedMemSize) {
+    cudaDeviceProp prop;
+    cudaGetDeviceProperties(&prop, 0);
+
+    printf("启动配置检查:\n");
+    printf("  网格大小: %u\n", gridSize);
+    printf("  块大小: %u\n", blockSize);
+    printf("  共享内存: %u bytes\n", sharedMemSize);
+    printf("  设备限制:\n");
+    printf("    - 每块最大线程数: %d\n", prop.maxThreadsPerBlock);
+    printf("    - 每块最大共享内存: %zu bytes\n", prop.sharedMemPerBlock);
+    printf("    - 最大网格维度: (%d, %d, %d)\n",
+        prop.maxGridSize[0], prop.maxGridSize[1], prop.maxGridSize[2]);
+
+    if (blockSize > prop.maxThreadsPerBlock) {
+        printf("错误: 块大小超出设备限制!\n");
+    }
+    if (sharedMemSize > prop.sharedMemPerBlock) {
+        printf("错误: 共享内存超出设备限制!\n");
+    }
+}
 
 //------------------------------------------warp内部操作----------------------------------------------
 

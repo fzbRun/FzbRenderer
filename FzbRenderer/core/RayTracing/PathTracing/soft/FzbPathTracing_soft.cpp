@@ -11,6 +11,7 @@ FzbPathTracing_soft::FzbPathTracing_soft(pugi::xml_node& PathTracingNode) {
 	else return;
 	if (pugi::xml_node componentSettingNode = PathTracingNode.child("rendererComponentSetting")) {
 		this->setting.spp = std::stoi(componentSettingNode.child("spp").attribute("value").value());
+		this->setting.useSphericalRectangleSample = std::string(componentSettingNode.child("useSphericalRectangleSample").attribute("value").value()) == "true";
 	}
 	this->setting.useCudaRandom = false;
 
@@ -37,7 +38,7 @@ FzbSemaphore FzbPathTracing_soft::render(uint32_t imageIndex, FzbSemaphore start
 	vkResetCommandBuffer(commandBuffer, 0);
 	fzbBeginCommandBuffer(commandBuffer);
 
-	pathTracingCUDA->pathTracing(startSemaphore.handle);
+	pathTracingCUDA->pathTracing(nullptr);
 	renderRenderPass.render(commandBuffer, imageIndex);
 
 	// 设置内存屏障，确保所有颜色附件写入完成
@@ -56,8 +57,8 @@ FzbSemaphore FzbPathTracing_soft::render(uint32_t imageIndex, FzbSemaphore start
 	//);
 	//vkCmdFillBuffer(commandBuffer, pathTracingResultBuffer.buffer, 0, pathTracingResultBuffer.size, 0);
 
-	std::vector<VkSemaphore> waitSemaphores = { rayTracingSourceManager.rayTracingFinishedSemphore.semaphore };
-	std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
+	std::vector<VkSemaphore> waitSemaphores = { startSemaphore.semaphore, rayTracingSourceManager.rayTracingFinishedSemphore.semaphore };
+	std::vector<VkPipelineStageFlags> waitStages = { VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT };
 	fzbSubmitCommandBuffer(commandBuffer, waitSemaphores, waitStages, { renderFinishedSemaphore.semaphore }, fence);
 
 	return renderFinishedSemaphore;

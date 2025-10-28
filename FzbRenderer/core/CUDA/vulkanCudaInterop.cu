@@ -386,7 +386,7 @@ cudaExternalSemaphore_t importVulkanSemaphoreObjectFromNTHandle(HANDLE handle) {
     desc.type = cudaExternalSemaphoreHandleTypeOpaqueWin32;
     desc.handle.win32.handle = handle;
 
-    cudaImportExternalSemaphore(&extSem, &desc);
+    CHECK(cudaImportExternalSemaphore(&extSem, &desc));
 
     // Input parameter 'handle' should be closed if it's not needed anymore
     //CloseHandle(handle);
@@ -439,13 +439,13 @@ Signaling such a semaphore object sets it to the signaled state.
 The corresponding wait that waits on this signal must be issued in Vulkan.
 Additionally, the wait that waits on this signal must be issued after this signal has been issued.
 */
-void signalExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
+cudaError_t signalExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
 
     cudaExternalSemaphoreSignalParams params = {};
 
     memset(&params, 0, sizeof(params));
 
-    cudaSignalExternalSemaphoresAsync(&extSem, &params, 1, stream);
+    return cudaSignalExternalSemaphoresAsync(&extSem, &params, 1, stream);
 
 }
 
@@ -455,13 +455,13 @@ Waiting on such a semaphore object waits until it reaches the signaled state and
 The corresponding signal that this wait is waiting on must be issued in Vulkan.
 Additionally, the signal must be issued before this wait can be issued.
 */
-void waitExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
+cudaError_t waitExternalSemaphore(cudaExternalSemaphore_t extSem, cudaStream_t stream) {
 
     cudaExternalSemaphoreWaitParams params = {};
 
     memset(&params, 0, sizeof(params));
 
-    cudaWaitExternalSemaphoresAsync(&extSem, &params, 1, stream);
+    return cudaWaitExternalSemaphoresAsync(&extSem, &params, 1, stream);
 
 }
 

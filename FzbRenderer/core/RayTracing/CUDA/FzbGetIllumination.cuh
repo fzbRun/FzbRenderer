@@ -27,6 +27,12 @@ struct FzbRayTracingLightSet {
 	uint32_t areaLightCount;
 	FzbRayTracingAreaLight* areaLightInfoArray;
 };
+struct FzbQuadrilateral {
+	glm::vec3 worldPos;
+	glm::vec3 normal;
+	glm::vec3 edge0;
+	glm::vec3 edge1;
+};
 //-------------------------------------------------------³£Á¿-----------------------------------------
 __device__ const float PI = 3.1415926535f;
 __device__ const float PI_countdown = 0.31830988618;
@@ -43,9 +49,12 @@ __device__ glm::vec3 fresnelSchlick(float cosTheta, const glm::vec3& F0);
 //refraction.y = eta
 __device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, const glm::vec3& incidence, const glm::vec3& outgoing, const FzbRay& ray);
 
+__device__ glm::vec3 sphericalRectangleSample(const FzbQuadrilateral& quadrangle, glm::vec3& hitPos, float u, float v, float& pdf);
+
 __device__ glm::vec3 getRadiance(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, const FzbRayTracingLightSet* lightSet,
 	const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
-	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, uint32_t& randomNumberSeed);
+	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, uint32_t& randomNumberSeed,
+	bool useSphericalRectangleSample = false);
 
 
 #endif
