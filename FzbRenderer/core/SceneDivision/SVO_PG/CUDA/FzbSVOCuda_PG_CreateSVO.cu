@@ -1061,7 +1061,7 @@ __global__ void createSVO_PG_last_type1(
 		nodeData.indivisible = 1;
 		nodeData.irradiance = voxelData.irradiance;
 		nodeData.label = label + 1;
-		nodeData.pdf = 1.0f;
+		//nodeData.pdf = 1.0f;
 		SVONodes[threadIdx.x] = nodeData;
 
 		FzbSVOIndivisibleNodeInfo nodeInfo;
@@ -1378,7 +1378,7 @@ __global__ void initSVO(FzbSVONodeData_PG* SVO, uint32_t svoCount) {
 
 	FzbSVONodeData_PG data;
 	data.indivisible = 1;
-	data.pdf = 1.0f;
+	//data.pdf = 1.0f;
 	//data.shuffleKey = 0;
 	data.label = 0;
 	data.AABB.leftX = FLT_MAX;

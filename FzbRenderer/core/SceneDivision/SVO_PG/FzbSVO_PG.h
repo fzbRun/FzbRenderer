@@ -36,6 +36,7 @@ public:
 	FzbSemaphore SVOFinishedSemaphore;
 
 	std::shared_ptr<FzbSVOCuda_PG> svoCuda_pg;
+	std::vector<FzbBuffer> OctreeNodesBuffers;
 	std::vector<FzbBuffer> SVONodesBuffers;
 	FzbBuffer SVOWeightsBuffer;
 	FzbRayTracingSourceManager rayTracingSourceManager;
@@ -46,6 +47,7 @@ public:
 	void init() override;
 	void clean() override;
 
+	void createOctreeBuffers();
 	void createSVOBuffers(bool useDeviceAddress = true);
 private:
 	void addExtensions();
@@ -65,6 +67,7 @@ struct FzbSVOSetting_PG_Debug {
 	FzbSVOSetting_PG SVO_PGSetting;
 	bool voxelAABBDebugInfo = true;
 	bool voxelIrradianceDebugInfo = false;
+	bool OctreeNodeDebugInfo = false;
 	bool SVONodeClusterDebugInfo = false;
 	uint32_t SVONodeClusterLevel = 0;
 	bool useDeviceAddress = false;	//用设备地址在renderDoc中看不到数据
@@ -106,9 +109,14 @@ private:
 	void addExtensions();
 	void createImages() override;
 	void presentPrepare() override;
-	void createBufferAndDescirptor();
+	
 	void createVGBRenderPass_AABBInfo();
 	void createVGBRenderPass_IrradianceInfo();
+
+	void createOctreeDebugBufferAndDescirptor();
+	void createOctreeRenderPass();
+
+	void createSVODebugBufferAndDescirptor();
 	void createVGBRenderPass_SVONodeClusterInfo();
 };
 

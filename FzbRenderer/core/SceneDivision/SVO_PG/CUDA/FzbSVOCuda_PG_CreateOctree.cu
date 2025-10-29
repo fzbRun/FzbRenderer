@@ -7,7 +7,8 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	uint32_t warpIndex = threadIdx.x / 32;
 	uint32_t warpLane = threadIdx.x & 31;
-	if (threadIndex >= voxelCount) return;
+
+	if (threadIndex >= voxelCount) return;		//voxelCount一定是32的整数倍，return不影响洗牌操纵
 	if (threadIdx.x == 0) {
 		groupVGBUniformData = systemVGBUniformData;
 		groupSVOUniformData = systemSVOUniformData;
@@ -17,14 +18,22 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 	//这里的block指的是父级node
 	uint32_t indexInBlock = threadIndex & 7;	//在8个兄弟node中的索引
 	uint32_t blockIndex = threadIndex / 8;		//block在全局的索引
-	uint32_t blockIndexInWarpBit = (blockIndex & 3) * 8;	//当前block在warp中的位索引
+	uint32_t blockFirstWarpLane = (blockIndex & 3) * 8;	//当前block在warp中的位索引
+	uint32_t blockNodeMask = 0xff << blockFirstWarpLane;
 	uint32_t blockIndexInGroup = threadIdx.x / 8;
 
 	FzbVoxelData_PG voxelData = VGB[threadIndex];
 	bool hasData = voxelData.hasData && voxelData.irradiance != glm::vec3(0.0f);
-	uint32_t activeMask = __ballot_sync(0xFFFFFFFF, hasData);
-	int firstActiveLaneInBlock = __ffs(activeMask & (0xff << blockIndexInWarpBit)) - 1;
-	if (firstActiveLaneInBlock == -1) return;	//当前block中node全部没有数据
+	uint32_t warpHasDataMask = __ballot_sync(0xFFFFFFFF, hasData);
+	uint32_t blockHasDataNodeCount = __popc(warpHasDataMask & blockNodeMask);
+
+	warpHasDataMask = blockHasDataNodeCount > 1 ? blockNodeMask : 0;
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 0);
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 8);
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 16);
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 24);
+
+	if (blockHasDataNodeCount == 0) return;	//当前block中node全部没有数据
 
 	FzbAABB AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	if (hasData) {
@@ -37,20 +46,23 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 			__int_as_float(voxelData.AABB.rightZ)
 		};
 	}
-	if (__popc(activeMask) == 1) {	//只有一个有值的node，则直接赋值即可
+	if (blockHasDataNodeCount == 1) {	//只有一个有值的node，则直接赋值即可
 		if (hasData) {
-			OctreeNodes[blockIndex].indivisible = 1;
-			OctreeNodes[blockIndex].AABB = AABB;
-			OctreeNodes[blockIndex].irradiance = voxelData.irradiance;
+			FzbSVONodeData_PG nodeData;
+			nodeData.indivisible = 1;
+			nodeData.AABB = AABB;
+			nodeData.irradiance = voxelData.irradiance;
+			nodeData.label = 0;
+			OctreeNodes[blockIndex] = nodeData;
 		}
 		return;
 	}
-	//------------------------------------------------irradiance判断-------------------------------------------------
+	//------------------------------------------------irradiance差距判断-------------------------------------------------
 	uint indivisible = 1;
 	float irrdianceValue = glm::length(voxelData.irradiance);
 	uint32_t ignore = 0;
 	for (int i = 0; i < 8; ++i) {
-		float other_val = __shfl_sync(0xFFFFFFFF, irrdianceValue, blockIndexInWarpBit + i);
+		float other_val = __shfl_sync(warpHasDataMask, irrdianceValue, blockFirstWarpLane + i);
 		float minIrradiance = min(irrdianceValue, other_val);
 		float maxIrradiance = max(irrdianceValue, other_val);
 		if (minIrradiance == 0.0f) continue;
@@ -62,86 +74,132 @@ __global__ void createSVO_PG_device_first(const FzbVoxelData_PG* __restrict__ VG
 		}
 	}
 	for (int offset = 4; offset > 0; offset /= 2) {
-		uint32_t other_val = __shfl_down_sync(0xFFFFFFFF, indivisible, offset);
+		uint32_t other_val = __shfl_down_sync(warpHasDataMask, indivisible, offset, 8);
 		indivisible = indivisible & other_val;
 	}
-	//------------------------------------------------计算irradiance-------------------------------------------------
-	glm::vec3 mergeIrradianceTotal = voxelData.irradiance;
-	for (int offset = 4; offset > 0; offset /= 2) {
-		mergeIrradianceTotal.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.x, offset);
-		mergeIrradianceTotal.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.y, offset);
-		mergeIrradianceTotal.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.z, offset);
-	}
-	glm::vec3 mergeIrradiance = ignore ? glm::vec3(0.0f) : voxelData.irradiance;
-	for (int offset = 4; offset > 0; offset /= 2) {
-		mergeIrradiance.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.x, offset);
-		mergeIrradiance.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.y, offset);
-		mergeIrradiance.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.z, offset);
-	}
-	//------------------------------------------得到整合后的AABB---------------------------------------------------------
-	if (ignore == 1) AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
-	FzbAABB mergeAABB = AABB;
+	indivisible = __shfl_sync(warpHasDataMask, indivisible, blockFirstWarpLane);
+	//---------------------------------------计算不被忽略的整合后的AABB-------------------------------------------------
+	FzbAABB mergeNotIgnoreAABB = AABB;
+	if (ignore == 1 && indivisible) mergeNotIgnoreAABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	//得到整合后的AABB的left
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.leftX, offset);
-		mergeAABB.leftX = fminf(mergeAABB.leftX, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, offset, 8);
+		mergeNotIgnoreAABB.leftX = fminf(mergeNotIgnoreAABB.leftX, other_val);
 	}
-	mergeAABB.leftX = __shfl_sync(0xFFFFFFFF, mergeAABB.leftX, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.leftX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.leftY, offset);
-		mergeAABB.leftY = fminf(mergeAABB.leftY, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, offset, 8);
+		mergeNotIgnoreAABB.leftY = fminf(mergeNotIgnoreAABB.leftY, other_val);
 	}
-	mergeAABB.leftY = __shfl_sync(0xFFFFFFFF, mergeAABB.leftY, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.leftY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.leftZ, offset);
-		mergeAABB.leftZ = fminf(mergeAABB.leftZ, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, offset, 8);
+		mergeNotIgnoreAABB.leftZ = fminf(mergeNotIgnoreAABB.leftZ, other_val);
 	}
-	mergeAABB.leftZ = __shfl_sync(0xFFFFFFFF, mergeAABB.leftZ, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.leftZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, blockFirstWarpLane);
 
 	//得到整合后的AABB的right
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.rightX, offset);
-		mergeAABB.rightX = fmaxf(mergeAABB.rightX, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, offset, 8);
+		mergeNotIgnoreAABB.rightX = fmaxf(mergeNotIgnoreAABB.rightX, other_val);
 	}
-	mergeAABB.rightX = __shfl_sync(0xFFFFFFFF, mergeAABB.rightX, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.rightX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.rightY, offset);
-		mergeAABB.rightY = fmaxf(mergeAABB.rightY, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, offset, 8);
+		mergeNotIgnoreAABB.rightY = fmaxf(mergeNotIgnoreAABB.rightY, other_val);
 	}
-	mergeAABB.rightY = __shfl_sync(0xFFFFFFFF, mergeAABB.rightY, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.rightY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.rightZ, offset);
-		mergeAABB.rightZ = fmaxf(mergeAABB.rightZ, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, offset, 8);
+		mergeNotIgnoreAABB.rightZ = fmaxf(mergeNotIgnoreAABB.rightZ, other_val);
 	}
-	mergeAABB.rightZ = __shfl_sync(0xFFFFFFFF, mergeAABB.rightZ, blockIndexInWarpBit);
-	//------------------------------------------------计算表面积-------------------------------------------------
+	mergeNotIgnoreAABB.rightZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, blockFirstWarpLane);
+
+	//计算所有不被忽略的node聚类后的AABB的表面积
+	float lengthX = mergeNotIgnoreAABB.rightX - mergeNotIgnoreAABB.leftX;
+	float lengthY = mergeNotIgnoreAABB.rightY - mergeNotIgnoreAABB.leftY;
+	float lengthZ = mergeNotIgnoreAABB.rightZ - mergeNotIgnoreAABB.leftZ;
+	float mergeNotIgnoreSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
+
 	float surfaceArea = 0.0f;
-	if (hasData && ignore == 0) {
+	if (hasData) {
 		float lengthX = AABB.rightX - AABB.leftX;
 		float lengthY = AABB.rightY - AABB.leftY;
 		float lengthZ = AABB.rightZ - AABB.leftZ;
 		surfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
 	}
-	for (int offset = 4; offset > 0; offset /= 2) {
-		surfaceArea += __shfl_down_sync(0xFFFFFFFF, surfaceArea, offset);
-	}
-	//--------------------------------------------------对父节点赋值-------------------------------------------------
-	if (warpLane == blockIndexInWarpBit) {
-		float lengthX = mergeAABB.rightX - mergeAABB.leftX;
-		float lengthY = mergeAABB.rightY - mergeAABB.leftY;
-		float lengthZ = mergeAABB.rightZ - mergeAABB.leftZ;
-		float mergeSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
-		if (surfaceArea != 0.0f && mergeSurfaceArea / surfaceArea > groupSVOUniformData.surfaceAreaThreshold) indivisible = 0;
 
-		OctreeNodes[blockIndex].indivisible = indivisible;
-		if (indivisible) OctreeNodes[blockIndex].pdf = glm::length(mergeIrradiance) / glm::length(mergeIrradianceTotal);
-		OctreeNodes[blockIndex].irradiance = mergeIrradianceTotal;
-		OctreeNodes[blockIndex].AABB = mergeAABB;
+	//不可忽略node的表面积之和
+	float surfaceAreaSum = ignore ? 0.0f : surfaceArea;
+	for (int offset = 4; offset > 0; offset /= 2)
+		surfaceAreaSum += __shfl_down_sync(warpHasDataMask, surfaceAreaSum, offset, 8);
+	//---------------------------------------根据聚类后的AABB表面积判断可分-------------------------------------------------
+	if (warpLane == blockFirstWarpLane)
+		if (surfaceAreaSum != 0.0f && mergeNotIgnoreSurfaceArea / surfaceAreaSum > groupSVOUniformData.surfaceAreaThreshold) indivisible = 0;
+	indivisible = __shfl_sync(warpHasDataMask, indivisible, blockFirstWarpLane);
+	//------------------------------------------------计算的irradiance之和-------------------------------------------------
+	glm::vec3 mergeIrradiance = voxelData.irradiance;
+	if (ignore && indivisible) mergeIrradiance *= mergeNotIgnoreSurfaceArea < 1e-6 ? 0.0f : surfaceArea / mergeNotIgnoreSurfaceArea;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradiance.x += __shfl_down_sync(warpHasDataMask, mergeIrradiance.x, offset, 8);
+		mergeIrradiance.y += __shfl_down_sync(warpHasDataMask, mergeIrradiance.y, offset, 8);
+		mergeIrradiance.z += __shfl_down_sync(warpHasDataMask, mergeIrradiance.z, offset, 8);
 	}
+	if (warpLane == blockFirstWarpLane) {
+		FzbSVONodeData_PG nodeData;
+		nodeData.indivisible = indivisible;
+		nodeData.AABB = mergeNotIgnoreAABB;
+		nodeData.irradiance = mergeIrradiance;
+		nodeData.label = 0;
+		OctreeNodes[blockIndex] = nodeData;
+	}
+#ifdef _DEBUG
+	//虽然后续得到和使用SVO时不需要可分node的AABB，但是debug可视化时需要
+	mergeNotIgnoreAABB = AABB;
+	//得到整合后的AABB的left
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, offset);
+		mergeNotIgnoreAABB.leftX = fminf(mergeNotIgnoreAABB.leftX, other_val);
+	}
+	mergeNotIgnoreAABB.leftX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, offset);
+		mergeNotIgnoreAABB.leftY = fminf(mergeNotIgnoreAABB.leftY, other_val);
+	}
+	mergeNotIgnoreAABB.leftY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, offset);
+		mergeNotIgnoreAABB.leftZ = fminf(mergeNotIgnoreAABB.leftZ, other_val);
+	}
+	mergeNotIgnoreAABB.leftZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, blockFirstWarpLane);
+
+	//得到整合后的AABB的right
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, offset);
+		mergeNotIgnoreAABB.rightX = fmaxf(mergeNotIgnoreAABB.rightX, other_val);
+	}
+	mergeNotIgnoreAABB.rightX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, offset);
+		mergeNotIgnoreAABB.rightY = fmaxf(mergeNotIgnoreAABB.rightY, other_val);
+	}
+	mergeNotIgnoreAABB.rightY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, offset);
+		mergeNotIgnoreAABB.rightZ = fmaxf(mergeNotIgnoreAABB.rightZ, other_val);
+	}
+	mergeNotIgnoreAABB.rightZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, blockFirstWarpLane);
+
+	if (warpLane == blockFirstWarpLane) OctreeNodes[blockIndex].AABB = mergeNotIgnoreAABB;
+#endif
 }
 __global__ void createSVO_PG_device(FzbSVONodeData_PG* OctreeNodes_children, FzbSVONodeData_PG* OctreeNodes, uint32_t nodeCount) {
 	__shared__ FzbSVOUnformData groupSVOUniformData;
@@ -158,37 +216,35 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* OctreeNodes_children, Fzb
 	//这里的block指的是父级node
 	uint32_t indexInBlock = threadIndex & 7;	//在8个兄弟node中的索引
 	uint32_t blockIndex = threadIndex / 8;		//block在全局的索引
-	uint32_t blockIndexInWarpBit = (blockIndex & 3) * 8;	//当前block在warp中的位索引
+	uint32_t blockFirstWarpLane = (blockIndex & 3) * 8;	//当前block在warp中的位索引
+	uint32_t blockNodeMask = 0xff << blockFirstWarpLane;
 	uint32_t blockIndexInGroup = threadIdx.x / 8;
-	//uint32_t blockCount = nodeCount / 2;	//每个轴有几个block
-	//uint32_t nodeIndexZ = (blockIndex / (blockCount * blockCount));
-	//uint32_t nodeIndexY = (blockIndex - nodeIndexZ * (blockCount * blockCount)) / blockCount;
-	//uint32_t nodeIndexX = blockIndex % blockCount;
-	//nodeIndexX = nodeIndexX * 2 + (indexInBlock & 1);
-	//nodeIndexY = nodeIndexY * 2 + ((indexInBlock >> 1) & 1);
-	//nodeIndexZ = nodeIndexZ * 2 + ((indexInBlock >> 2) & 1);
-	//uint32_t voxelIndexU = nodeIndexZ * (nodeCount * nodeCount) +
-	//	nodeIndexY * nodeCount + nodeIndexX;
-	FzbSVONodeData_PG nodeData = OctreeNodes_children[threadIndex];
-	bool hasData = glm::length(nodeData.irradiance) > 0.01f;
-	uint32_t activeMask = __ballot_sync(0xFFFFFFFF, hasData);
-	int firstActiveLaneInBlock = __ffs(activeMask & (0xff << blockIndexInWarpBit)) - 1;
-	if (firstActiveLaneInBlock == -1) return;	//当前block中node全部没有数据
 
-	if (__popc(activeMask) == 1) {	//只有一个有值的node，则直接赋值即可
+	FzbSVONodeData_PG nodeData = OctreeNodes_children[threadIndex];
+	bool hasData = nodeData.irradiance != glm::vec3(0.0f);
+	uint32_t warpHasDataMask = __ballot_sync(0xFFFFFFFF, hasData);
+	uint32_t blockHasDataNodeCount = __popc(warpHasDataMask & blockNodeMask);
+
+	warpHasDataMask = blockHasDataNodeCount > 1 ? blockNodeMask : 0;
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 0);
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 8);
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 16);
+	warpHasDataMask |= __shfl_sync(0xFFFFFFFF, warpHasDataMask, 24);
+
+	if (blockHasDataNodeCount == 0) return;	//当前block中node全部没有数据
+	if (blockHasDataNodeCount == 1) {	//只有一个有值的node，则直接赋值即可
 		if (hasData) {
-			OctreeNodes[blockIndex].indivisible = 1;
-			OctreeNodes[blockIndex].AABB = nodeData.AABB;
-			OctreeNodes[blockIndex].irradiance = nodeData.irradiance;
+			nodeData.indivisible = 1;
+			OctreeNodes[blockIndex] = nodeData;
 		}
 		return;
 	}
-	//------------------------------------------------irradiance判断-------------------------------------------------
+	//------------------------------------------------irradiance差距判断-------------------------------------------------
 	uint indivisible = 1;
 	float irrdianceValue = glm::length(nodeData.irradiance);
 	uint32_t ignore = 0;
 	for (int i = 0; i < 8; ++i) {
-		float other_val = __shfl_sync(0xFFFFFFFF, irrdianceValue, blockIndexInWarpBit + i);
+		float other_val = __shfl_sync(warpHasDataMask, irrdianceValue, blockFirstWarpLane + i);
 		float minIrradiance = min(irrdianceValue, other_val);
 		float maxIrradiance = max(irrdianceValue, other_val);
 		if (minIrradiance == 0.0f) continue;
@@ -200,63 +256,57 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* OctreeNodes_children, Fzb
 		}
 	}
 	for (int offset = 4; offset > 0; offset /= 2) {
-		uint32_t other_val = __shfl_down_sync(0xFFFFFFFF, indivisible, offset);
+		uint32_t other_val = __shfl_down_sync(warpHasDataMask, indivisible, offset, 8);
 		indivisible = indivisible & other_val;
 	}
-	//------------------------------------------------计算irradiance-------------------------------------------------
-	glm::vec3 mergeIrradianceTotal = nodeData.irradiance;
-	for (int offset = 4; offset > 0; offset /= 2) {
-		mergeIrradianceTotal.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.x, offset);
-		mergeIrradianceTotal.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.y, offset);
-		mergeIrradianceTotal.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradianceTotal.z, offset);
-	}
-	glm::vec3 mergeIrradiance = ignore ? glm::vec3(0.0f) : nodeData.irradiance;
-	for (int offset = 4; offset > 0; offset /= 2) {
-		mergeIrradiance.x += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.x, offset) * __shfl_down_sync(0xFFFFFFFF, nodeData.pdf, offset);
-		mergeIrradiance.y += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.y, offset) * __shfl_down_sync(0xFFFFFFFF, nodeData.pdf, offset);
-		mergeIrradiance.z += __shfl_down_sync(0xFFFFFFFF, mergeIrradiance.z, offset) * __shfl_down_sync(0xFFFFFFFF, nodeData.pdf, offset);
-	}
-	//------------------------------------------得到整合后的AABB---------------------------------------------------------
-	if (ignore == 1) nodeData.AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
-	FzbAABB mergeAABB = nodeData.AABB;
+	indivisible = __shfl_sync(warpHasDataMask, indivisible, blockFirstWarpLane);
+	//---------------------------------------计算不被忽略的整合后的AABB-------------------------------------------------
+	FzbAABB mergeNotIgnoreAABB = nodeData.AABB;
+	if (ignore == 1 && indivisible) mergeNotIgnoreAABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	//得到整合后的AABB的left
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.leftX, offset);
-		mergeAABB.leftX = fminf(mergeAABB.leftX, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, offset, 8);
+		mergeNotIgnoreAABB.leftX = fminf(mergeNotIgnoreAABB.leftX, other_val);
 	}
-	mergeAABB.leftX = __shfl_sync(0xFFFFFFFF, mergeAABB.leftX, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.leftX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.leftY, offset);
-		mergeAABB.leftY = fminf(mergeAABB.leftY, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, offset, 8);
+		mergeNotIgnoreAABB.leftY = fminf(mergeNotIgnoreAABB.leftY, other_val);
 	}
-	mergeAABB.leftY = __shfl_sync(0xFFFFFFFF, mergeAABB.leftY, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.leftY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.leftZ, offset);
-		mergeAABB.leftZ = fminf(mergeAABB.leftZ, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, offset, 8);
+		mergeNotIgnoreAABB.leftZ = fminf(mergeNotIgnoreAABB.leftZ, other_val);
 	}
-	mergeAABB.leftZ = __shfl_sync(0xFFFFFFFF, mergeAABB.leftZ, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.leftZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, blockFirstWarpLane);
 
 	//得到整合后的AABB的right
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.rightX, offset);
-		mergeAABB.rightX = fmaxf(mergeAABB.rightX, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, offset, 8);
+		mergeNotIgnoreAABB.rightX = fmaxf(mergeNotIgnoreAABB.rightX, other_val);
 	}
-	mergeAABB.rightX = __shfl_sync(0xFFFFFFFF, mergeAABB.rightX, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.rightX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.rightY, offset);
-		mergeAABB.rightY = fmaxf(mergeAABB.rightY, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, offset, 8);
+		mergeNotIgnoreAABB.rightY = fmaxf(mergeNotIgnoreAABB.rightY, other_val);
 	}
-	mergeAABB.rightY = __shfl_sync(0xFFFFFFFF, mergeAABB.rightY, blockIndexInWarpBit);
+	mergeNotIgnoreAABB.rightY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, blockFirstWarpLane);
 
 	for (int offset = 4; offset > 0; offset /= 2) {
-		float other_val = __shfl_down_sync(0xFFFFFFFF, mergeAABB.rightZ, offset);
-		mergeAABB.rightZ = fmaxf(mergeAABB.rightZ, other_val);
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, offset, 8);
+		mergeNotIgnoreAABB.rightZ = fmaxf(mergeNotIgnoreAABB.rightZ, other_val);
 	}
-	mergeAABB.rightZ = __shfl_sync(0xFFFFFFFF, mergeAABB.rightZ, blockIndexInWarpBit);
-	//------------------------------------------------计算表面积-------------------------------------------------
+	mergeNotIgnoreAABB.rightZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, blockFirstWarpLane);
+
+	//计算所有不被忽略的node聚类后的AABB的表面积
+	float lengthX = mergeNotIgnoreAABB.rightX - mergeNotIgnoreAABB.leftX;
+	float lengthY = mergeNotIgnoreAABB.rightY - mergeNotIgnoreAABB.leftY;
+	float lengthZ = mergeNotIgnoreAABB.rightZ - mergeNotIgnoreAABB.leftZ;
+	float mergeNotIgnoreSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
+
 	float surfaceArea = 0.0f;
 	if (hasData) {
 		float lengthX = nodeData.AABB.rightX - nodeData.AABB.leftX;
@@ -264,22 +314,74 @@ __global__ void createSVO_PG_device(FzbSVONodeData_PG* OctreeNodes_children, Fzb
 		float lengthZ = nodeData.AABB.rightZ - nodeData.AABB.leftZ;
 		surfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
 	}
-	for (int offset = 4; offset > 0; offset /= 2) {
-		surfaceArea += __shfl_down_sync(0xFFFFFFFF, surfaceArea, offset);
-	}
-	//--------------------------------------------------对父节点赋值-------------------------------------------------
-	if (warpLane == blockIndexInWarpBit) {
-		float lengthX = mergeAABB.rightX - mergeAABB.leftX;
-		float lengthY = mergeAABB.rightY - mergeAABB.leftY;
-		float lengthZ = mergeAABB.rightZ - mergeAABB.leftZ;
-		float mergeSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
-		if (surfaceArea != 0.0f && mergeSurfaceArea / surfaceArea > groupSVOUniformData.surfaceAreaThreshold) indivisible = 0;
 
-		OctreeNodes[blockIndex].indivisible = indivisible;
-		if (indivisible) OctreeNodes[blockIndex].pdf = glm::length(mergeIrradiance) / glm::length(mergeIrradianceTotal);
-		OctreeNodes[blockIndex].irradiance = mergeIrradianceTotal;
-		OctreeNodes[blockIndex].AABB = mergeAABB;
+	//不可忽略node的表面积之和
+	float surfaceAreaSum = ignore ? 0.0f : surfaceArea;
+	for (int offset = 4; offset > 0; offset /= 2)
+		surfaceAreaSum += __shfl_down_sync(warpHasDataMask, surfaceAreaSum, offset, 8);
+	//---------------------------------------根据聚类后的AABB表面积判断可分-------------------------------------------------
+	if (warpLane == blockFirstWarpLane)
+		if (surfaceAreaSum != 0.0f && mergeNotIgnoreSurfaceArea / surfaceAreaSum > groupSVOUniformData.surfaceAreaThreshold) indivisible = 0;
+	indivisible = __shfl_sync(warpHasDataMask, indivisible, blockFirstWarpLane);
+	//------------------------------------------------计算的irradiance之和-------------------------------------------------
+	glm::vec3 mergeIrradiance = nodeData.irradiance;
+	if (ignore && indivisible) mergeIrradiance *= mergeNotIgnoreSurfaceArea < 1e-6 ? 0.0f : surfaceArea / mergeNotIgnoreSurfaceArea;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradiance.x += __shfl_down_sync(warpHasDataMask, mergeIrradiance.x, offset, 8);
+		mergeIrradiance.y += __shfl_down_sync(warpHasDataMask, mergeIrradiance.y, offset, 8);
+		mergeIrradiance.z += __shfl_down_sync(warpHasDataMask, mergeIrradiance.z, offset, 8);
 	}
+	if (warpLane == blockFirstWarpLane) {
+		FzbSVONodeData_PG nodeData;
+		nodeData.indivisible = indivisible;
+		nodeData.AABB = mergeNotIgnoreAABB;
+		nodeData.irradiance = mergeIrradiance;
+		nodeData.label = 0;
+		OctreeNodes[blockIndex] = nodeData;
+	}
+#ifdef _DEBUG
+	//虽然后续得到和使用SVO时不需要可分node的AABB，但是debug可视化时需要
+	mergeNotIgnoreAABB = nodeData.AABB;
+	//得到整合后的AABB的left
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, offset);
+		mergeNotIgnoreAABB.leftX = fminf(mergeNotIgnoreAABB.leftX, other_val);
+	}
+	mergeNotIgnoreAABB.leftX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftX, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, offset);
+		mergeNotIgnoreAABB.leftY = fminf(mergeNotIgnoreAABB.leftY, other_val);
+	}
+	mergeNotIgnoreAABB.leftY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftY, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, offset);
+		mergeNotIgnoreAABB.leftZ = fminf(mergeNotIgnoreAABB.leftZ, other_val);
+	}
+	mergeNotIgnoreAABB.leftZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.leftZ, blockFirstWarpLane);
+
+	//得到整合后的AABB的right
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, offset);
+		mergeNotIgnoreAABB.rightX = fmaxf(mergeNotIgnoreAABB.rightX, other_val);
+	}
+	mergeNotIgnoreAABB.rightX = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightX, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, offset);
+		mergeNotIgnoreAABB.rightY = fmaxf(mergeNotIgnoreAABB.rightY, other_val);
+	}
+	mergeNotIgnoreAABB.rightY = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightY, blockFirstWarpLane);
+
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_val = __shfl_down_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, offset);
+		mergeNotIgnoreAABB.rightZ = fmaxf(mergeNotIgnoreAABB.rightZ, other_val);
+	}
+	mergeNotIgnoreAABB.rightZ = __shfl_sync(warpHasDataMask, mergeNotIgnoreAABB.rightZ, blockFirstWarpLane);
+
+	if (warpLane == blockFirstWarpLane) OctreeNodes[blockIndex].AABB = mergeNotIgnoreAABB;
+#endif
 }
 
 void FzbSVOCuda_PG::createOctreeNodes() {
@@ -304,7 +406,7 @@ __global__ void initOctree(FzbSVONodeData_PG* Octree, uint32_t svoCount) {
 
 	FzbSVONodeData_PG data;
 	data.indivisible = 1;
-	data.pdf = 1.0f;
+	//data.pdf = 1.0f;
 	//data.shuffleKey = 0;
 	data.label = 0;
 	data.AABB.leftX = FLT_MAX;

@@ -14,18 +14,19 @@ struct FzbSVOSetting_PG {
 	bool useOneArray = true;
 	bool useOBB = true;
 };
-__host__ __device__ struct FzbVoxelData_PG {
+struct FzbVoxelData_PG {
 	uint hasData;
 	glm::vec3 irradiance;
 	FzbAABBUint AABB;
 };
 struct FzbSVONodeData_PG {
 	uint32_t indivisible;
-	float pdf;	//去掉影响小的子node后需要弥补的pdf
+	//float pdf;	//去掉影响小的子node后需要弥补的pdf
 	//uint32_t shuffleKey;
 	uint32_t label;		//该node是当前层中第几个可分的node
-	FzbAABB AABB;
+	FzbAABB AABB;		//只记录不可分node的AABB
 	glm::vec3 irradiance;
+	float padding;
 };
 
 struct FzbSVONodeThreadBlockInfo {
@@ -97,7 +98,7 @@ public:
 	uint32_t SVOInDivisibleNodeTotalCount_host;	//SVONodes中每层不可分node数量之和
 	//-----------------------------计算weight---------------------------
 	FzbSVONodeData_PG** SVONodes_multiLayer_Array = nullptr;	//每层有值node的数组指针
-	uint32_t* SVODivisibleNodeBlockWeight;
+	float* SVODivisibleNodeBlockWeight;
 	float* SVONodeWeights = nullptr;	//每个元素代表一个node和node之间的weigh(weight以每层为基础）
 
 	cudaExternalSemaphore_t extSvoSemaphore_PG;
@@ -112,7 +113,8 @@ public:
 	void createSVOCuda_PG(HANDLE VGBFinishedSemaphore);
 	void clean();
 
-	void copyDataToBuffer(std::vector<FzbBuffer>& SVONodesBuffers, FzbBuffer SVOWeightsBuffer);
+	void coypyOctreeDataToBuffer(std::vector<FzbBuffer>& OctreeNodesBuffers);
+	void copySVODataToBuffer(std::vector<FzbBuffer>& SVONodesBuffers, FzbBuffer SVOWeightsBuffer);
 
 private:
 	void initLightInjectSource();

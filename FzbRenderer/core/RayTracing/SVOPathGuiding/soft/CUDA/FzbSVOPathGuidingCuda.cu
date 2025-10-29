@@ -108,7 +108,7 @@ __device__ void generateRay_SVOPathGuiding(
 
 	float randomU = rand(randomNumberSeed);		//当前node的AABB上的随机点
 	float randomV = rand(randomNumberSeed);
-	bool useSphericalRectangleSample = false;
+	bool useSphericalRectangleSample = true;
 	float sphericalRectangleSamplePDF = 1.0f;
 	if(useSphericalRectangleSample){
 		FzbQuadrilateral quadFace;
@@ -149,9 +149,10 @@ __device__ void generateRay_SVOPathGuiding(
 
 	if (glm::dot(ray.direction, hitTriangleAttribute.normal) <= 0) generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
 	else {
-		pdf *= selectNodWeightSum * targetNodeData.pdf * selectFacePDF;	//最终采样node的AABB可能忽略了一些包围盒，需要乘以pdf来弥补
-		if (sphericalRectangleSamplePDF) pdf *= sphericalRectangleSamplePDF;
-		else pdf *= glm::dot(-glm::normalize(ray.direction), faceNormal) / (glm::max(selectFaceArea, 0.001f) * glm::length(ray.direction));
+		pdf *= selectNodWeightSum * selectFacePDF;	//最终采样node的AABB可能忽略了一些包围盒，需要乘以pdf来弥补
+		pdf *= sphericalRectangleSamplePDF;
+		if (!useSphericalRectangleSample) 
+			pdf *= glm::dot(-glm::normalize(ray.direction), faceNormal) / glm::max(selectFaceArea * glm::max(glm::length(ray.direction), 0.01f), 0.001f);
 
 		ray.direction = glm::normalize(ray.direction);
 		ray.startPos = ray.direction * 0.01f + ray.hitPos;
@@ -266,6 +267,7 @@ __global__ void svoPathGuiding_cuda(
 
 	radiance /= spp;
 	radiance /= groupFrameCount;
+	radiance = glm::min(radiance, glm::vec3(1.0f));
 	if (useExternSharedMemory && threadIdx.x < groupSppIndex * spp) {
 		//这是这里如果spp为32的整数倍，则可以先在warp中处理
 		atomicAdd(&groupResultRadiance[groupSppIndex].x, radiance.x);

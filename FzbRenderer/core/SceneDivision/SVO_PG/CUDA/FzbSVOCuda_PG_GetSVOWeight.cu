@@ -6,7 +6,7 @@ __global__ void getSVONodesWeight_device(
 	const FzbSVOIndivisibleNodeInfo* __restrict__ indivisibleNodeInfos,
 	uint32_t SVONodeCountInLayer, uint32_t SVONodeTotalCount, uint32_t SVOInDivisibleNodeTotalCount,
 	FzbSVONodeData_PG** SVONodes,
-	uint32_t* SVODivisibleNodeBlockWeight, uint32_t divisibleNodeOffset, uint32_t fatherDivisibleNodeOffset,
+	float* SVODivisibleNodeBlockWeight, uint32_t divisibleNodeOffset, uint32_t fatherDivisibleNodeOffset,
 	uint32_t maxSVOLayer, uint32_t targetNodeLayer, uint32_t layerNodeOffset,
 	const float* __restrict__ vertices, const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray,
 	const uint32_t testCount, const uint32_t threadBlockCountForOneNode
@@ -187,21 +187,13 @@ __global__ void getSVONodesWeight_device(
 		blockWeightSum += __shfl_down_sync(0xFFFFFFFF, blockWeightSum, offset);
 	blockWeightSum = __shfl_sync(0xFFFFFFFF, blockWeightSum, firstBlockLane);
 
-	//uint32_t textWightIndex = indivisibleNodeIndex * SVONodeTotalCount + layerNodeOffset + targetNodeIndex;
-	//if (textWightIndex >= 1808 && textWightIndex <= 1815)
-	//	printf("%d %f %d\n", targetNodeData.indivisible, weight, hitCount);
-	//if (nodeInfo.nodeLayer == 3 && nodeInfo.nodeIndex == 99 && targetNodeLayer == 2 && targetNodeIndex == 43)
-	//	printf("%d %d %f\n", targetNodeLayer, targetNodeIndex, weight);
-	//if (nodeInfo.nodeLayer == 3 && nodeInfo.nodeIndex == 99 && targetNodeLayer == 3 && targetNodeIndex == 188)
-	//	printf("%d %d %f\n", targetNodeLayer, targetNodeIndex, blockWeightSum);
-
 	if (weight > 0.0f) {
 		uint32_t weightIndex = indivisibleNodeIndex * SVONodeTotalCount + layerNodeOffset + targetNodeIndex;
 		SVONodeWeights[weightIndex] = weight / blockWeightSum;
 	}
 	if (warpLane == firstBlockLane && targetNodeLayer > 1) {
-		uint32_t fatherNodeIndex = indivisibleNodeIndex * SVONodeTotalCount + fatherDivisibleNodeOffset + targetNodeIndex / 8;
-		SVODivisibleNodeBlockWeight[fatherNodeIndex] = blockWeightSum;
+		uint32_t fatherNodeLabel = indivisibleNodeIndex * SVONodeTotalCount + fatherDivisibleNodeOffset + targetNodeIndex / 8;
+		SVODivisibleNodeBlockWeight[fatherNodeLabel] = blockWeightSum;
 	}
 }
 /*
@@ -265,7 +257,6 @@ void FzbSVOCuda_PG::getSVONodesWeight() {
 			sourceManager->vertices, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray,
 			16, threadBlockCountForOneNode
 		);
-		//checkKernelFunction();
 	}
 	//uint32_t blockSize = SVONodeTotalCount_host;
 	//uint32_t threadBlockCountForOneNode = (blockSize + 511) / 512;
@@ -302,8 +293,8 @@ void FzbSVOCuda_PG::initGetSVONodesWeightSource() {
 	CHECK(cudaMalloc((void**)&this->SVONodes_multiLayer_Array, this->SVONodes_maxDepth * sizeof(FzbSVONodeData_PG*)));
 	CHECK(cudaMemcpy(this->SVONodes_multiLayer_Array, SVONodes_multiLayer.data(), this->SVONodes_maxDepth * sizeof(FzbSVONodeData_PG*), cudaMemcpyHostToDevice));
 
-	CHECK(cudaMalloc((void**)&this->SVODivisibleNodeBlockWeight, SVOIndivisibleNodeMaxCount * SVONodeMaxCount * sizeof(uint32_t)));
-	CHECK(cudaMemset(SVODivisibleNodeBlockWeight, 0, SVOIndivisibleNodeMaxCount * SVONodeMaxCount * sizeof(uint32_t)));
+	CHECK(cudaMalloc((void**)&this->SVODivisibleNodeBlockWeight, SVOIndivisibleNodeMaxCount * SVONodeMaxCount * sizeof(float)));
+	CHECK(cudaMemset(SVODivisibleNodeBlockWeight, 0, SVOIndivisibleNodeMaxCount * SVONodeMaxCount * sizeof(float)));
 
 	//最终的weiht，每个不可分node对应每个SVONode(包括无值)之间的weight
 	CHECK(cudaMalloc((void**)&this->SVONodeWeights, SVOIndivisibleNodeMaxCount * SVONodeMaxCount * sizeof(float)));

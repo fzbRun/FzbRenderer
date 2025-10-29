@@ -91,7 +91,18 @@ void FzbSVOCuda_PG::clean() {
 	CHECK(cudaDestroyExternalSemaphore(extSvoSemaphore_PG));
 }
 
-void FzbSVOCuda_PG::copyDataToBuffer(std::vector<FzbBuffer>& SVONodesBuffers, FzbBuffer SVOWeightsBuffer) {
+void FzbSVOCuda_PG::coypyOctreeDataToBuffer(std::vector<FzbBuffer>& OctreeNodesBuffers) {
+	if (OctreeNodesBuffers.size() != this->SVONodes_maxDepth - 2) throw std::runtime_error("OctreeBuffer数量不匹配");
+	for (int i = 0; i < this->SVONodes_maxDepth - 2; ++i) {
+		FzbBuffer& OctreeNodesBuffer = OctreeNodesBuffers[i];
+		cudaExternalMemory_t OctreeNodesBufferExtMem = importVulkanMemoryObjectFromNTHandle(OctreeNodesBuffer.handle, OctreeNodesBuffer.size, false);
+		FzbSVONodeData_PG* OctreeNodesBuffer_ptr = (FzbSVONodeData_PG*)mapBufferOntoExternalMemory(OctreeNodesBufferExtMem, 0, OctreeNodesBuffer.size);
+		CHECK(cudaMemcpy(OctreeNodesBuffer_ptr, OctreeNodes_multiLayer[i + 1], OctreeNodesBuffer.size, cudaMemcpyDeviceToDevice));
+		CHECK(cudaDestroyExternalMemory(OctreeNodesBufferExtMem));
+		CHECK(cudaFree(OctreeNodesBuffer_ptr));
+	}
+}
+void FzbSVOCuda_PG::copySVODataToBuffer(std::vector<FzbBuffer>& SVONodesBuffers, FzbBuffer SVOWeightsBuffer) {
 	if (SVONodesBuffers.size() != this->SVONodes_maxDepth - 1) throw std::runtime_error("SVOBuffer数量不匹配");
 	for (int i = 0; i < this->SVONodes_maxDepth - 1; ++i) {
 		FzbBuffer& SVONodesBuffer = SVONodesBuffers[i];
