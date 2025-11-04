@@ -2,7 +2,7 @@
 	<sensor type="perspective">
 		<float name="fov" value="60"/>
 		<transform name="to_world">
-			<matrix value="-0.137283 -0.0319925 -0.990015 4.05402 2.71355e-008 0.999478 -0.0322983 1.61647 0.990532 -0.00443408 -0.137213 -2.30652 0 0 0 1"/>
+			<matrix value="-0.137283 -0.0319925 -0.990015 6.05402 2.71355e-008 0.999478 -0.0322983 1.61647 0.990532 -0.00443408 -0.137213 -2.60652 0 0 0 1"/>
 		</transform>
 	</sensor>
 	<bsdfs>
@@ -63,7 +63,7 @@
 		<bsdf type="diffuse" id="LightBSDF">
 			<rgb name="reflectance" value="1, 1, 1" />
 			<emissive>
-				<rgb name="radiance" value="20, 20, 20" />
+				<rgb name="radiance" value="200, 200, 200" />
 			</emissive>
 		</bsdf>
 		<bsdf type="roughconductor" id="Pot2BSDF">
@@ -249,7 +249,7 @@
 			</transform>
 			<ref id="Pot3BSDF" />
 		</shape>
-		<shape type="obj" id="Material_0001">
+				<shape type="obj" id="Material_0001">
 			<string name="filename" value="models/Mesh009.obj" />
 			<transform name="to_world">
 				<matrix value="-0.0837611 0 0.0303939 -1.95645 0 0.0891049 0 0.651268 -0.0303939 0 -0.0837611 -3.57687 0 0 0 1" />

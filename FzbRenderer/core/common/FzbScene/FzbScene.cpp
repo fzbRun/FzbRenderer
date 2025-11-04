@@ -371,6 +371,7 @@ FzbMainScene::FzbMainScene(std::string path) {
 			if (lightType == "point") {
 				glm::vec3 position = glm::vec3(transformMatrix * glm::vec4(1.0f));
 				light = FzbLight(position);
+				light.type = FZB_POINT;
 			}
 			else if (lightType == "rectangle") {
 				std::string lightDataPath = "";
@@ -379,7 +380,7 @@ FzbMainScene::FzbMainScene(std::string path) {
 					light = FzbLight(lightDataPath, transformMatrix);
 				}
 				else light = FzbLight(transformMatrix);
-
+				light.type = FZB_AREA;
 				//说明光源mesh在后续不会自动添加到sceneMeshSet中，需要我们手动添加
 				if (pugi::xml_node meshNode = shapeNode.child("hasAddMesh")) {
 					if (std::string(meshNode.attribute("value").value()) == "false") {

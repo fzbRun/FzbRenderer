@@ -435,7 +435,7 @@ FzbLight::FzbLight(std::string dataPath, glm::mat4 modelMatrix) {
 		uint32_t startIndex = lightMesh.indices[i] * 6;
 		vertexPos[i] = glm::vec3(lightMesh.vertices[startIndex], lightMesh.vertices[startIndex + 1], lightMesh.vertices[startIndex + 2]);
 	}
-	this->normal = glm::vec3(lightMesh.vertices[3], lightMesh.vertices[4], lightMesh.vertices[5]);
+	this->normal = glm::normalize(glm::vec3(lightMesh.vertices[3], lightMesh.vertices[4], lightMesh.vertices[5]));
 	this->edge0 = vertexPos[1] - vertexPos[0];
 	this->edge1 = vertexPos[vertexPos.size() - 1] - vertexPos[0];
 	this->position = vertexPos[0];
@@ -446,7 +446,7 @@ FzbLight::FzbLight(std::string dataPath, glm::mat4 modelMatrix) {
 FzbLight::FzbLight(glm::mat4 modelMatrix) {
 	FzbMesh lightMesh;
 	fzbCreateRectangle(lightMesh, FzbVertexFormat(true), modelMatrix);
-	this->normal = glm::vec3(lightMesh.vertices[3], lightMesh.vertices[4], lightMesh.vertices[5]);
+	this->normal = glm::normalize(glm::vec3(lightMesh.vertices[3], lightMesh.vertices[4], lightMesh.vertices[5]));
 	this->edge0 = glm::vec3(lightMesh.vertices[6] - lightMesh.vertices[0], lightMesh.vertices[7] - lightMesh.vertices[1], lightMesh.vertices[8] - lightMesh.vertices[2]);
 	this->edge1 = glm::vec3(lightMesh.vertices[18] - lightMesh.vertices[0], lightMesh.vertices[19] - lightMesh.vertices[1], lightMesh.vertices[20] - lightMesh.vertices[2]);
 	this->position = glm::vec3(lightMesh.vertices[0], lightMesh.vertices[1], lightMesh.vertices[2]);

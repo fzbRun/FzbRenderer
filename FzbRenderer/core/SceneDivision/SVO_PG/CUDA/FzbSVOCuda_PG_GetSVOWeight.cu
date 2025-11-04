@@ -32,7 +32,7 @@ __global__ void getSVONodesWeight_device(
 
 	indivisibleNodeIndex = nodeData.label - 1;	//整棵SVO中第几个不可分node
 
-	uint32_t hitCount = 0;
+	//uint32_t hitCount = 0;
 	FzbSVONodeData_PG targetNodeData = groupSVONodesArray[targetNodeLayer][targetNodeIndex];
 	bool hasData = targetNodeData.irradiance.x != 0 || targetNodeData.irradiance.y != 0 || targetNodeData.irradiance.z != 0;
 	float weight = 0.0f;
@@ -80,33 +80,46 @@ __global__ void getSVONodesWeight_device(
 			for (int i = 0; i < testCount; ++i) {
 				float selectFaceProbability = rand(randomNumberSeed);
 				ray.startPos = glm::vec3(nodeData.AABB.leftX, nodeData.AABB.leftY, nodeData.AABB.leftZ);
+				glm::vec3 faceNormal = glm::vec3(0.0f);
 				glm::vec2 randomUV = Hammersley(i, testCount);
 				if (selectFaceProbability <= faceSelectWeight.x * 0.5f) {	//左面
 					ray.startPos.z += randomUV.x * distanceZ;
 					ray.startPos.y += randomUV.y * distanceY;
+
+					faceNormal.x = -1.0f;
 				}
 				else if (selectFaceProbability <= faceSelectWeight.x) {	//右面
 					ray.startPos.x += distanceX;
 					ray.startPos.z += randomUV.x * distanceZ;
 					ray.startPos.y += randomUV.y * distanceY;
+
+					faceNormal.x = 1.0f;
 				}
 				else if (selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y * 0.5f) {	//下面
 					ray.startPos.x += randomUV.x * distanceX;
 					ray.startPos.z += randomUV.y * distanceZ;
+
+					faceNormal.y = -1.0f;
 				}
 				else if(selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y){	//在上面
 					ray.startPos.y += distanceY;	
 					ray.startPos.x += randomUV.x * distanceX;
 					ray.startPos.z += randomUV.y * distanceZ;
+
+					faceNormal.y = 1.0f;
 				}
 				else if (selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y + faceSelectWeight.z * 0.5f) {	//后面
 					ray.startPos.x += randomUV.x * distanceX;
 					ray.startPos.y += randomUV.y * distanceY;
+
+					faceNormal.z = -1.0f;
 				}
 				else {
 					ray.startPos.z += nodeDirection.z > 0 ? distanceZ : 0.0f;	//前面
 					ray.startPos.x += randomUV.x * distanceX;
 					ray.startPos.y += randomUV.y * distanceY;
+
+					faceNormal.z = 1.0f;
 				}
 
 				selectFaceProbability = rand(randomNumberSeed);
@@ -135,17 +148,22 @@ __global__ void getSVONodesWeight_device(
 
 				bool hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, nullptr, ray, triangleAttribute, false);
 				if (!hit) continue;
-				if (ray.depth >= r) ++hitCount;
-				//if (ray.hitPos.x >= targetNodeData.AABB.leftX &&
-				//	ray.hitPos.y >= targetNodeData.AABB.leftY &&
-				//	ray.hitPos.z >= targetNodeData.AABB.leftZ &&
-				//	ray.hitPos.x <= targetNodeData.AABB.rightX &&
-				//	ray.hitPos.y <= targetNodeData.AABB.rightY &&
-				//	ray.hitPos.z <= targetNodeData.AABB.rightZ) ++hitCount;
+				//if (ray.depth >= r) ++hitCount;
+				if (ray.hitPos.x >= targetNodeData.AABB.leftX &&
+					ray.hitPos.y >= targetNodeData.AABB.leftY &&
+					ray.hitPos.z >= targetNodeData.AABB.leftZ &&
+					ray.hitPos.x <= targetNodeData.AABB.rightX &&
+					ray.hitPos.y <= targetNodeData.AABB.rightY &&
+					ray.hitPos.z <= targetNodeData.AABB.rightZ) {
+					//++hitCount;
+					weight += max(dot(triangleAttribute.normal, -ray.direction), 0.0f) * max(dot(faceNormal, ray.direction), 0.0f);
+					//可以进一步考虑折射的事情
+				}
 			}
 
-			float occlusionRatio = (float)hitCount / testCount;
-			weight = occlusionRatio * glm::length(targetNodeData.irradiance);
+			//float occlusionRatio = (float)hitCount / testCount;
+			//weight = occlusionRatio * glm::length(targetNodeData.irradiance);
+			weight *= glm::length(targetNodeData.irradiance) / testCount;
 		}
 	}
 

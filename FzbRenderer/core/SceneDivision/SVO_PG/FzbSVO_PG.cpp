@@ -14,6 +14,7 @@ FzbSVO_PG::FzbSVO_PG(pugi::xml_node& SVO_PGNode) {
 	if (pugi::xml_node SVOSettingNode = SVO_PGNode.child("featureComponentSetting")) {
 		this->setting.voxelNum = std::stoi(SVOSettingNode.child("voxelNum").attribute("value").value());
 		this->setting.useCube = std::string(SVOSettingNode.child("useCube").attribute("value").value()) == "true";
+		this->setting.lightInjectSPP = std::stoi(SVOSettingNode.child("lightInjectSPP").attribute("value").value());
 		this->setting.thresholds.irradianceRelRatioThreshold = std::stof(SVOSettingNode.child("irradianceRelRatioThreshold").attribute("value").value());
 		this->setting.thresholds.irradianceRelRatioThreshold = std::stof(SVOSettingNode.child("irradianceRelRatioThreshold").attribute("value").value());
 		this->setting.thresholds.surfaceAreaThreshold = std::stof(SVOSettingNode.child("surfaceAreaThreshold").attribute("value").value());
@@ -275,7 +276,9 @@ FzbSVO_PG_Debug::FzbSVO_PG_Debug(pugi::xml_node& SVO_PG_DebugNode) {
 	//if (setting.SVONodeClusterLevel == 0) throw std::runtime_error("暂时不支持查看无聚类效果");
 	if (setting.SVONodeClusterLevel >= this->SVO_PG_MaxDepth - 1) this->setting.SVONodeClusterLevel = this->SVO_PG_MaxDepth - 2;
 }
-void FzbSVO_PG_Debug::addMainSceneInfo() {};
+void FzbSVO_PG_Debug::addMainSceneInfo() {
+	
+};
 void FzbSVO_PG_Debug::addExtensions() {
 	FzbRenderer::globalData.deviceFeatures.fillModeNonSolid = VK_TRUE;
 	FzbRenderer::globalData.deviceFeatures.wideLines = VK_TRUE;
@@ -676,6 +679,11 @@ void FzbSVO_PG_Debug::createVGBRenderPass_SVONodeClusterInfo() {
 
 	this->presentSourceManager.componentScene.createVertexBuffer(true, false);
 	this->presentSourceManager.addSource(shaderInfos);
+
+	if (this->SVO_PG_MaxDepth > 5)
+		this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath].shaderVariants[0].macros.insert({ "LAYER5", true });
+	if (this->SVO_PG_MaxDepth > 6)
+		this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath].shaderVariants[0].macros.insert({ "LAYER6", true });
 
 	if (lookCube) {
 		FzbSubPass CubeSubPass = FzbSubPass(renderRenderPass.renderPass, 0,

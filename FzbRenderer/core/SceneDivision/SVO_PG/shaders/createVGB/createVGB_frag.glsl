@@ -154,11 +154,11 @@ void main() {
 		}
 	}
 	
-	vec3 tangent = normalize(dFdx(worldPos));
-	vec3 bitangent = normalize(dFdy(worldPos));
-	vec3 normal =  normalize(cross(bitangent, tangent));
-	atomicAdd(vgb[voxelIndexU].meanNormal.w, 1.0f);
-	atomicAdd(vgb[voxelIndexU].meanNormal.x, normal.x);
-	atomicAdd(vgb[voxelIndexU].meanNormal.y, normal.y);
-	atomicAdd(vgb[voxelIndexU].meanNormal.z, normal.z);
+	//vec3 tangent = normalize(dFdx(worldPos));
+	//vec3 bitangent = normalize(dFdy(worldPos));
+	//vec3 normal =  normalize(cross(bitangent, tangent));
+	//atomicAdd(vgb[voxelIndexU].meanNormal.w, 1.0f);
+	//atomicAdd(vgb[voxelIndexU].meanNormal.x, normal.x);
+	//atomicAdd(vgb[voxelIndexU].meanNormal.y, normal.y);
+	//atomicAdd(vgb[voxelIndexU].meanNormal.z, normal.z);
 }

@@ -121,8 +121,6 @@ __device__ void generateRay_SVOPathGuiding(
 			}
 
 			ray.direction = sphericalRectangleSample(sampleQuad, randomU, randomV, sphericalRectangleSampleProbability);
-			//if (systemFrameCount == 1)
-			//	printf("%f %f %f\n", quad0.S, quad1.S, quad2.S);
 		}
 	}
 	else {
@@ -146,7 +144,7 @@ __device__ void generateRay_SVOPathGuiding(
 
 			faceNormal.x = face0Normal.x;
 			selectFaceArea = faceArea.x;
-			sphericalRectangleSampleProbability *= faceSelectWeight.x;
+			sphericalRectangleSampleProbability = faceSelectWeight.x;
 		}
 		else if (selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y) {
 			samplePos = face1StartPos;
@@ -155,7 +153,7 @@ __device__ void generateRay_SVOPathGuiding(
 
 			faceNormal.y = face1Normal.y;
 			selectFaceArea = faceArea.y;
-			sphericalRectangleSampleProbability *= faceSelectWeight.y;
+			sphericalRectangleSampleProbability = faceSelectWeight.y;
 		}
 		else {
 			samplePos = face2StartPos;
@@ -164,7 +162,7 @@ __device__ void generateRay_SVOPathGuiding(
 
 			faceNormal.z = face2Normal.z;
 			selectFaceArea = faceArea.z;
-			sphericalRectangleSampleProbability *= faceSelectWeight.z;
+			sphericalRectangleSampleProbability = faceSelectWeight.z;
 		}
 
 		ray.direction = samplePos - ray.hitPos;
@@ -174,9 +172,11 @@ __device__ void generateRay_SVOPathGuiding(
 	else {
 		pdf *= selectNodeWeightSum;
 		pdf *= sphericalRectangleSampleProbability;
-		if (!groupSetting.useSphericalRectangleSample)
-			pdf *= glm::dot(-glm::normalize(ray.direction), faceNormal) / glm::max(selectFaceArea * glm::max(glm::length(ray.direction), 0.01f), 0.001f);
-
+		if (!groupSetting.useSphericalRectangleSample) {
+			float r = glm::length(ray.direction);
+			pdf *= glm::dot(-glm::normalize(ray.direction), faceNormal) / glm::max((selectFaceArea * r * r), 0.001f);
+		}
+		
 		ray.direction = glm::normalize(ray.direction);
 		ray.startPos = ray.direction * 0.01f + ray.hitPos;
 		ray.depth = FLT_MAX;
@@ -238,7 +238,13 @@ __global__ void svoPathGuiding_cuda(
 		if (groupFrameCount == 1) resultBuffer[resultIndex] = make_float4(0.0f);
 		//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
 		//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
-		resultBuffer[resultIndex] *= ((float)groupFrameCount - 1) / (float)groupFrameCount;
+		float4 result = resultBuffer[resultIndex];
+		if (!isfinite(result.x) || !isfinite(result.y) || !isfinite(result.z)) {
+			printf("x\n");
+			resultBuffer[resultIndex] = make_float4(0.0f);
+		}
+		else resultBuffer[resultIndex] = result * ((float)groupFrameCount - 1) / (float)groupFrameCount;
+
 	}
 	__syncthreads();
 
@@ -291,14 +297,10 @@ __global__ void svoPathGuiding_cuda(
 		--maxBonceDepth;
 	}
 
-	//if (sppLane == 0) {
-	//	float4 result = resultBuffer[resultIndex];
-	//	result += make_float4(radiance.x, radiance.y, radiance.z, 0.0f);
-	//	printf("%d %f %f %f\n", threadIndex, result.x, result.y, result.z);
-	//}
-
 	radiance /= spp;
 	radiance /= groupFrameCount;
+	radiance = glm::min(radiance, glm::vec3(20.0f));
+	if (!isfinite(radiance.x) || !isfinite(radiance.y) || !isfinite(radiance.z)) radiance == glm::vec3(0.0f);
 	if (useExternSharedMemory && threadIdx.x < groupSppIndex * spp) {
 		//这是这里如果spp为32的整数倍，则可以先在warp中处理
 		atomicAdd(&groupResultRadiance[groupSppIndex].x, radiance.x);

@@ -22,6 +22,7 @@ struct FzbSVOUnformData {
 struct FzbSVOSetting_PG {
 	uint32_t voxelNum = 64;
 	bool useCube = true;
+	uint32_t lightInjectSPP = 16;
 	FzbSVOUnformData thresholds;
 };
 struct FzbVoxelData_PG {

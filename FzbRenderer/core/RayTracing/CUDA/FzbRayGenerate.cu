@@ -53,7 +53,7 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 
 		if (triangleAttribute.materialType == 1) {		//粗糙导体
 			ray.direction = 2.0f * glm::dot(-ray.direction, h) * h + ray.direction;	//这里得到的只是h，还需要从h转为i
-			pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta * sinTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f));
+			pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f));
 		}
 		else if (triangleAttribute.materialType == 2) {		//粗糙电解质
 			/*
@@ -76,7 +76,7 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 				ray.refraction = false;
 				pdf *= F_oneChanel;
 				ray.direction = 2.0f * glm::dot(-ray.direction, h) * h + ray.direction;
-				pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta * sinTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f));
+				pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f));
 			}
 			else {	//折射
 				ray.refraction = true;

@@ -67,8 +67,8 @@ void FzbSVOCuda_PG::createSVOCuda_PG(HANDLE VGBFinishedSemaphore) {
 	waitExternalSemaphore(importVulkanSemaphoreObjectFromNTHandle(VGBFinishedSemaphore), stream);
 	lightInject();
 	createOctreeNodes();
-	//createSVONodes();
-	//getSVONodesWeight();
+	createSVONodes();
+	getSVONodesWeight();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------

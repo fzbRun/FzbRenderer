@@ -47,9 +47,10 @@ std::vector<VkVertexInputAttributeDescription> FzbVertexFormat::getAttributeDesc
 	attributeDescriptions.push_back(posDescriptor);
 
 	uint32_t attributeOffset = 0;
+	uint32_t location = 1;
 	if (useNormal) {
 		normalDescriptor.binding = 0;
-		normalDescriptor.location = 1;
+		normalDescriptor.location = location++;
 		normalDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
 		attributeOffset += 3 * sizeof(float);
 		normalDescriptor.offset = attributeOffset;
@@ -57,7 +58,7 @@ std::vector<VkVertexInputAttributeDescription> FzbVertexFormat::getAttributeDesc
 	}
 	if (useTexCoord) {
 		texCoordDescriptor.binding = 0;
-		texCoordDescriptor.location = 2;
+		texCoordDescriptor.location = location++;
 		texCoordDescriptor.format = VK_FORMAT_R32G32_SFLOAT;
 		attributeOffset += 3 * sizeof(float);
 		texCoordDescriptor.offset = attributeOffset;
@@ -65,7 +66,7 @@ std::vector<VkVertexInputAttributeDescription> FzbVertexFormat::getAttributeDesc
 	}
 	if (useTangent) {
 		tangentDescriptor.binding = 0;
-		tangentDescriptor.location = 3;
+		tangentDescriptor.location = location++;
 		tangentDescriptor.format = VK_FORMAT_R32G32B32_SFLOAT;
 		attributeOffset += 2 * sizeof(float);
 		tangentDescriptor.offset = attributeOffset;

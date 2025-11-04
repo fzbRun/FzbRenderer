@@ -261,7 +261,7 @@ __device__ glm::vec3 NEE(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, c
 		else if (abs(tempRay.depth - r) > 0.1f) continue;
 		glm::vec3 lightRadiance_cosTheta = light.radiance;
 		if (!useSphericalRectangleSample) {
-			lightRadiance_cosTheta *= glm::clamp(glm::dot(-light.normal, tempRay.direction), 0.0f, 1.0f);	//微分单位从dw换为dA
+			lightRadiance_cosTheta *= glm::dot(-light.normal, tempRay.direction);	//微分单位从dw换为dA
 			r = glm::max(r, 0.001f);
 			lightRadiance_cosTheta /= r * r;
 		}
