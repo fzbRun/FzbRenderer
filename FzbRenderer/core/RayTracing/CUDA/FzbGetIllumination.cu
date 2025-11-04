@@ -70,6 +70,76 @@ __device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, cons
 	return glm::vec3(0.0f);
 }
 
+__device__ FzbQuadrilateral_resue initQuadrilateral(glm::vec3& hitPos, glm::vec3& quadRangleStartPos, glm::vec3& ex, glm::vec3& ey) {
+	FzbQuadrilateral_resue quadrangle;
+	quadrangle.o = hitPos;
+	float exl = glm::length(ex);
+	float eyl = glm::length(ey);
+	quadrangle.x = ex / exl;
+	quadrangle.y = ey / eyl;
+	quadrangle.z = glm::cross(quadrangle.x, quadrangle.y);
+
+	glm::vec3 d = quadRangleStartPos - quadrangle.o;
+	quadrangle.z0 = glm::dot(d, quadrangle.z);
+	if (quadrangle.z0 > 0) {
+		quadrangle.z *= -1.0f;
+		quadrangle.z0 *= -1.0f;
+	}
+	quadrangle.z0sq = quadrangle.z0 * quadrangle.z0;
+
+	quadrangle.x0 = glm::dot(d, quadrangle.x);
+	quadrangle.y0 = glm::dot(d, quadrangle.y);
+	quadrangle.x1 = quadrangle.x0 + exl;
+	quadrangle.y1 = quadrangle.y0 + eyl;
+	quadrangle.y0sq = quadrangle.y0 * quadrangle.y0;
+	quadrangle.y1sq = quadrangle.y1 * quadrangle.y1;
+
+	glm::vec3 v00 = glm::vec3(quadrangle.x0, quadrangle.y0, quadrangle.z0);
+	glm::vec3 v01 = glm::vec3(quadrangle.x0, quadrangle.y1, quadrangle.z0);
+	glm::vec3 v10 = glm::vec3(quadrangle.x1, quadrangle.y0, quadrangle.z0);
+	glm::vec3 v11 = glm::vec3(quadrangle.x1, quadrangle.y1, quadrangle.z0);
+
+	glm::vec3 n0 = glm::vec3(0.0f, quadrangle.z0, -quadrangle.y0);//glm::normalize(cross(v00, v10));
+	n0.z /= glm::sqrt(quadrangle.z0sq + quadrangle.y0sq);	//后续只有z需要被用到，x，y会乘以0，不用管
+	glm::vec3 n1 = glm::vec3(-quadrangle.z0, 0.0f, quadrangle.x1);//glm::normalize(cross(v10, v11));
+	n1.z /= glm::sqrt(quadrangle.z0sq + quadrangle.x1 * quadrangle.x1);
+	glm::vec3 n2 = glm::vec3(0.0f, -quadrangle.z0, quadrangle.y1);//glm::normalize(cross(v11, v01));
+	n2.z /= glm::sqrt(quadrangle.z0sq + quadrangle.y1sq);
+	glm::vec3 n3 = glm::vec3(quadrangle.z0, 0.0f, -quadrangle.x0);//glm::normalize(cross(v01, v00));
+	n3.z /= glm::sqrt(quadrangle.z0sq + quadrangle.x0 * quadrangle.x0);
+
+	float g0 = glm::acos(-n0.z * n1.z);	//glm::acos(-glm::dot(n0, n1));
+	float g1 = glm::acos(-n1.z * n2.z);	//glm::acos(-glm::dot(n1, n2));
+	float g2 = glm::acos(-n2.z * n3.z);	//glm::acos(-glm::dot(n2, n3));
+	float g3 = glm::acos(-n3.z * n0.z);	//glm::acos(-glm::dot(n3, n0));
+
+	quadrangle.b0 = n0.z;
+	quadrangle.b1 = n2.z;
+	quadrangle.b0sq = quadrangle.b0 * quadrangle.b0;
+	quadrangle.k = 2 * PI - g2 - g3;
+	quadrangle.S = g0 + g1 - quadrangle.k;
+
+	return quadrangle;
+}
+__device__ glm::vec3 sphericalRectangleSample(const FzbQuadrilateral_resue& quadrangle, float u, float v, float& pdf) {
+	pdf *= 1.0f / quadrangle.S;
+
+	float au = u * quadrangle.S + quadrangle.k;
+	float fu = (glm::cos(au) * quadrangle.b0 - quadrangle.b1) / glm::sin(au);
+	float cu = 1.0f / glm::sqrt(fu * fu + quadrangle.b0sq) * (fu > 0.0f ? 1.0f : -1.0f);
+	cu = glm::clamp(cu, -1.0f, 1.0f);
+	float xu = -(cu * quadrangle.z0) / glm::sqrt(1.0f - cu * cu);
+	xu = glm::clamp(xu, quadrangle.x0, quadrangle.x1);
+
+	float dl = sqrt(xu * xu + quadrangle.z0sq);
+	float h0 = quadrangle.y0 / glm::sqrt(dl * dl + quadrangle.y0sq);
+	float h1 = quadrangle.y1 / glm::sqrt(dl * dl + quadrangle.y1sq);
+	float hv = h0 + v * (h1 - h0);
+	float hv2 = hv * hv;
+	float yv = hv2 < 1 - 1e-6 ? (hv * dl) / glm::sqrt(1.0f - hv2) : quadrangle.y1;
+
+	return xu * quadrangle.x + yv * quadrangle.y + quadrangle.z0 * quadrangle.z;	//未归一化
+}
 __device__ glm::vec3 sphericalRectangleSample(const FzbQuadrilateral& quadrangle, glm::vec3& hitPos, float u, float v, float& pdf) {
 	float exl = glm::length(quadrangle.edge0);
 	float eyl = glm::length(quadrangle.edge1);
@@ -77,7 +147,7 @@ __device__ glm::vec3 sphericalRectangleSample(const FzbQuadrilateral& quadrangle
 	glm::vec3 axisY = quadrangle.edge1 / eyl;
 	glm::vec3 axisZ = quadrangle.normal;
 
-	glm::vec3 d = quadrangle.worldPos - hitPos;
+	glm::vec3 d = quadrangle.startPos - hitPos;
 	float z0 = glm::dot(d, axisZ);
 	if (z0 > 0) {
 		axisZ *= -1.0f;
@@ -169,7 +239,7 @@ __device__ glm::vec3 NEE(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, c
 		float pdf = 1.0f / light.area;
 		if (useSphericalRectangleSample) {
 			FzbQuadrilateral quadrangle;
-			quadrangle.worldPos = light.worldPos;
+			quadrangle.startPos = light.worldPos;
 			quadrangle.normal = light.normal;
 			quadrangle.edge0 = light.edge0;
 			quadrangle.edge1 = light.edge1;

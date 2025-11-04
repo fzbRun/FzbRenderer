@@ -46,11 +46,12 @@
 		</featureComponent>
 	</featureComponents> 
 	
-<rendererType value = "SVO_PG_Debug">
+	<rendererType value = "SVO_PG_Debug">
 		<available value = "true" />
 		<rendererComponentSetting>
 			<voxelAABBDebugInfo value = "false" />
 			<voxelIrradianceDebugInfo value = "false" />
+			<OctreeNodeDebugInfo value = "false" />
 			<SVONodeClusterDebugInfo value = "true" level = "1" />
 		</rendererComponentSetting>
 		<childComponents>
@@ -59,8 +60,10 @@
 				<featureComponentSetting>
 					<voxelNum value = "64" />
 					<useCube value = "true" />
-					<useOneArray value = "false" />
-					<useOBB value = "false" />
+					<irradianceThreshold value = "10.0" />
+					<ignoreIrradianceValueThreshold value = "100.0" />
+					<surfaceAreaThreshold value = "2.5" />
+					<voxelMultiple value = "16.0" />
 				</featureComponentSetting>
 				<childComponents>
 					<featureComponent name = "BVH">
@@ -71,30 +74,6 @@
 		</childComponents>
 	</rendererType>
 	
-		<rendererType value = "SVOPathGuiding_soft">
-		<available value = "true" />
-		<rendererComponentSetting>
-			<spp value = "1" />
-			<useSphericalRectangleSample value = "true" />
-		</rendererComponentSetting>
-		<childComponents>
-			<featureComponent name = "SVO_PG">
-				<available value = "true" />
-				<featureComponentSetting>
-					<voxelNum value = "64" />
-					<useCube value = "true" />
-					<useOneArray value = "false" />
-					<useOBB value = "false" />
-				</featureComponentSetting>
-				<childComponents>
-					<featureComponent name = "BVH">
-						<available value = "true" />
-					</featureComponent>
-				</childComponents>
-			</featureComponent>
-		</childComponents>
-	</rendererType>
-	-->
 	<rendererType value = "SVOPathGuiding_soft">
 		<available value = "true" />
 		<rendererComponentSetting>
@@ -107,8 +86,40 @@
 				<featureComponentSetting>
 					<voxelNum value = "64" />
 					<useCube value = "true" />
-					<useOneArray value = "false" />
-					<useOBB value = "false" />
+					<irradianceThreshold value = "10.0" />
+					<ignoreIrradianceValueThreshold value = "100.0" />
+					<surfaceAreaThreshold value = "2.5" />
+					<voxelMultiple value = "16.0" />
+				</featureComponentSetting>
+				<childComponents>
+					<featureComponent name = "BVH">
+						<available value = "true" />
+					</featureComponent>
+				</childComponents>
+			</featureComponent>
+		</childComponents>
+	</rendererType>
+	-->
+	<rendererType value = "SVO_PG_Debug">
+		<available value = "true" />
+		<rendererComponentSetting>
+			<voxelAABBDebugInfo value = "false" />
+			<voxelIrradianceDebugInfo value = "false" />
+			<OctreeNodeDebugInfo value = "true" />
+			<SVONodeClusterDebugInfo value = "false" level = "1" />
+		</rendererComponentSetting>
+		<childComponents>
+			<featureComponent name = "SVO_PG">
+				<available value = "true" />
+				<featureComponentSetting>
+					<voxelNum value = "64" />
+					<useCube value = "true" />
+
+					<irradianceRelRatioThreshold value = "0.1" />
+					<ignoreIrradianceValueThreshold value = "100.0" />
+					<surfaceAreaThreshold value = "2.5" />
+					<voxelMultiple value = "16.0" />
+					
 				</featureComponentSetting>
 				<childComponents>
 					<featureComponent name = "BVH">
@@ -119,3 +130,10 @@
 		</childComponents>
 	</rendererType>
 </renderer>
+
+<!--
+					<geometricDistanceThreshold value = "1.0" />
+					<irradianceRelRatioThreshold value = "0.1" />
+					<irradianceThreshold value = "200" />
+					<ignoreThreshold value = "0.2" />
+-->

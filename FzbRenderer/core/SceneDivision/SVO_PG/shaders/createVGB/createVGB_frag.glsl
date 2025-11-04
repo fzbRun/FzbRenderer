@@ -1,4 +1,5 @@
 #extension GL_EXT_scalar_block_layout : enable
+#extension GL_EXT_shader_atomic_float : enable
 
 layout(location = 0) in vec3 worldPos;
 
@@ -17,8 +18,8 @@ struct FzbAABBUint {
 	uint rightZ;
 };
 struct FzbSVOVoxelData_PG {
-	uint hasData;
 	vec3 irradiance;
+	vec4 meanNormal;
 	FzbAABBUint AABB;
 };
 layout(set = 0, binding = 1, scalar) coherent volatile buffer VGB {
@@ -91,7 +92,6 @@ void main() {
 	}
 
 	FzbAABBUint AABB = vgb[voxelIndexU].AABB;
-	atomicExchange(vgb[voxelIndexU].hasData, 1);
 	float leftX = uintBitsToFloat(AABB.leftX);
 	float leftY = uintBitsToFloat(AABB.leftY);
 	float leftZ = uintBitsToFloat(AABB.leftZ);
@@ -153,10 +153,12 @@ void main() {
 			preVal = curVal;
 		}
 	}
-	//ATOMIC_FLOAT_MIN(vgb[voxelIndexU].AABB.leftX, worldPos.x);
-	//ATOMIC_FLOAT_MIN(vgb[voxelIndexU].AABB.leftY, worldPos.y);
-	//ATOMIC_FLOAT_MIN(vgb[voxelIndexU].AABB.leftZ, worldPos.z);
-	//ATOMIC_FLOAT_MAX(vgb[voxelIndexU].AABB.rightX, worldPos.x);
-	//ATOMIC_FLOAT_MAX(vgb[voxelIndexU].AABB.rightY, worldPos.y);
-	//ATOMIC_FLOAT_MAX(vgb[voxelIndexU].AABB.rightZ, worldPos.z);
+	
+	vec3 tangent = normalize(dFdx(worldPos));
+	vec3 bitangent = normalize(dFdy(worldPos));
+	vec3 normal =  normalize(cross(bitangent, tangent));
+	atomicAdd(vgb[voxelIndexU].meanNormal.w, 1.0f);
+	atomicAdd(vgb[voxelIndexU].meanNormal.x, normal.x);
+	atomicAdd(vgb[voxelIndexU].meanNormal.y, normal.y);
+	atomicAdd(vgb[voxelIndexU].meanNormal.z, normal.z);
 }

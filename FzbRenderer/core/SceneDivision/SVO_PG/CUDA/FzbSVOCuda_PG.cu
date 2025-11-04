@@ -42,7 +42,7 @@ __global__ void initVGB_Cuda(FzbVoxelData_PG* VGB, uint32_t voxelCount) {
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	if (threadIndex >= voxelCount) return;
 	FzbVoxelData_PG data;
-	data.hasData = 0;
+	data.meanNormal = glm::vec4(0.0f);
 	data.AABB.leftX = __float_as_int(FLT_MAX);
 	data.AABB.leftY = __float_as_int(FLT_MAX);
 	data.AABB.leftZ = __float_as_int(FLT_MAX);
@@ -67,8 +67,8 @@ void FzbSVOCuda_PG::createSVOCuda_PG(HANDLE VGBFinishedSemaphore) {
 	waitExternalSemaphore(importVulkanSemaphoreObjectFromNTHandle(VGBFinishedSemaphore), stream);
 	lightInject();
 	createOctreeNodes();
-	createSVONodes();
-	getSVONodesWeight();
+	//createSVONodes();
+	//getSVONodesWeight();
 }
 
 //----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -106,6 +106,7 @@ void FzbSVOCuda_PG::copySVODataToBuffer(std::vector<FzbBuffer>& SVONodesBuffers,
 	if (SVONodesBuffers.size() != this->SVONodes_maxDepth - 1) throw std::runtime_error("SVOBuffer ˝¡ø≤ª∆•≈‰");
 	for (int i = 0; i < this->SVONodes_maxDepth - 1; ++i) {
 		FzbBuffer& SVONodesBuffer = SVONodesBuffers[i];
+		if (SVONodesBuffer.size == 0) break;
 		cudaExternalMemory_t SVONodesBufferExtMem = importVulkanMemoryObjectFromNTHandle(SVONodesBuffer.handle, SVONodesBuffer.size, false);
 		FzbSVONodeData_PG* SVONodesBuffer_ptr = (FzbSVONodeData_PG*)mapBufferOntoExternalMemory(SVONodesBufferExtMem, 0, SVONodesBuffer.size);
 		CHECK(cudaMemcpy(SVONodesBuffer_ptr, SVONodes_multiLayer[i + 1], SVONodesBuffer.size, cudaMemcpyDeviceToDevice));

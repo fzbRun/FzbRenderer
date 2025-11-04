@@ -522,6 +522,14 @@ void FzbMainComponent::createDevice() {
 	vk12Features.scalarBlockLayout = VK_TRUE;
 	vk12Features.bufferDeviceAddress = VK_TRUE;
 
+	//开启原子浮点数计算
+	deviceExtensions.push_back(VK_EXT_SHADER_ATOMIC_FLOAT_EXTENSION_NAME);
+	VkPhysicalDeviceShaderAtomicFloatFeaturesEXT atomicFloatFeatures{};
+	atomicFloatFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_FLOAT_FEATURES_EXT;
+	atomicFloatFeatures.shaderBufferFloat32AtomicAdd = VK_TRUE;
+	atomicFloatFeatures.pNext = this->extensionFeatureList.featureList;
+	this->extensionFeatureList.featureList = &atomicFloatFeatures;
+
 	vk11Features.pNext = this->extensionFeatureList.featureList;
 	vk12Features.pNext = &vk11Features;
 	VkPhysicalDeviceFeatures2 features2{};

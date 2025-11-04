@@ -32,7 +32,7 @@ public:
 	void* mapped = nullptr;
 	HANDLE handle = INVALID_HANDLE_VALUE;
 	uint64_t deviceAddress = 0;
-	uint32_t size;
+	uint32_t size = 0;
 
 	VkBufferUsageFlags usage;
 	VkMemoryPropertyFlags properties;

@@ -37,144 +37,113 @@ __global__ void getSVONodesWeight_device(
 	bool hasData = targetNodeData.irradiance.x != 0 || targetNodeData.irradiance.y != 0 || targetNodeData.irradiance.z != 0;
 	float weight = 0.0f;
 	if (hasData) {
-		if (targetNodeData.indivisible == 0) {
+		if (targetNodeData.indivisible == 0) {		//fatherNode一定是可分node
 			uint32_t weightIndex = indivisibleNodeIndex * SVONodeTotalCount + divisibleNodeOffset + targetNodeData.label - 1;
 			weight = SVODivisibleNodeBlockWeight[weightIndex];
 		}
 		else if (!(targetNodeLayer == nodeInfo.nodeLayer && targetNodeIndex == nodeInfo.nodeIndex)) {
-			bool isFather =
-				targetNodeData.AABB.leftX <= nodeData.AABB.leftX &&
-				targetNodeData.AABB.leftY <= nodeData.AABB.leftY &&
-				targetNodeData.AABB.leftZ <= nodeData.AABB.leftZ &&
-				targetNodeData.AABB.rightX >= nodeData.AABB.rightX &&
-				targetNodeData.AABB.rightY >= nodeData.AABB.rightY &&
-				targetNodeData.AABB.rightZ >= nodeData.AABB.rightZ;
+			glm::vec3 nodeCenterPos = glm::vec3(nodeData.AABB.leftX + nodeData.AABB.rightX, nodeData.AABB.leftY + nodeData.AABB.rightY, nodeData.AABB.leftZ + nodeData.AABB.rightZ) * 0.5f;
+			glm::vec3 targetNodeCenterPos = glm::vec3(targetNodeData.AABB.leftX + targetNodeData.AABB.rightX, targetNodeData.AABB.leftY + targetNodeData.AABB.rightY, targetNodeData.AABB.leftZ + targetNodeData.AABB.rightZ) * 0.5f;
+			glm::vec3 nodeDirection = glm::normalize(targetNodeCenterPos - nodeCenterPos);
 
-			uint32_t randomNumberSeed = groupRandomNumberSeed + threadIdx.x + blockDim.x * blockIdx.x;
+			glm::vec3 face0Normal = glm::vec3(nodeDirection.x > 0 ? 1.0f : -1.0f, 0.0f, 0.0f);
+			glm::vec3 face1Normal = glm::vec3(0.0f, nodeDirection.y > 0 ? 1.0f : -1.0f, 0.0f);
+			glm::vec3 face2Normal = glm::vec3(0.0f, 0.0f, nodeDirection.z > 0 ? 1.0f : -1.0f);
+
+			float cosThetaFace0 = glm::dot(nodeDirection, face0Normal);
+			float cosThetaFace1 = glm::dot(nodeDirection, face1Normal);
+			float cosThetaFace2 = glm::dot(nodeDirection, face2Normal);
+
 			float distanceX = nodeData.AABB.rightX - nodeData.AABB.leftX;
 			float distanceY = nodeData.AABB.rightY - nodeData.AABB.leftY;
 			float distanceZ = nodeData.AABB.rightZ - nodeData.AABB.leftZ;
 
+			glm::vec3 faceArea;		//这里应该是投影面，而不是直接的面积
+			faceArea.x = distanceY * distanceZ * cosThetaFace0;
+			faceArea.y = distanceX * distanceZ * cosThetaFace1;
+			faceArea.z = distanceX * distanceY * cosThetaFace2;
+			glm::vec3 faceSelectWeight = faceArea / (faceArea.x + faceArea.y + faceArea.z);
+
 			float targetDistanceX = targetNodeData.AABB.rightX - targetNodeData.AABB.leftX;
 			float targetDistanceY = targetNodeData.AABB.rightY - targetNodeData.AABB.leftY;
 			float targetDistanceZ = targetNodeData.AABB.rightZ - targetNodeData.AABB.leftZ;
-			FzbRay ray;
+
+			glm::vec3 targetFaceArea;		//这里应该是投影面，而不是直接的面积
+			targetFaceArea.x = targetDistanceY * targetDistanceZ * cosThetaFace0;
+			targetFaceArea.y = targetDistanceX * targetDistanceZ * cosThetaFace1;
+			targetFaceArea.z = targetDistanceX * targetDistanceY * cosThetaFace2;
+			glm::vec3 targetFaceSelectWeight = targetFaceArea / (targetFaceArea.x + targetFaceArea.y + targetFaceArea.z);
+
+			uint32_t randomNumberSeed = groupRandomNumberSeed + threadIdx.x + blockDim.x * blockIdx.x;
 			FzbTriangleAttribute triangleAttribute;
-			if (isFather) {
-				for (int i = 0; i < testCount; ++i) {
-					ray.depth = FLT_MAX;
-
-					uint32_t faceIndex = uint32_t(rand(randomNumberSeed) * 6);	//0表示leftX，1表示rightX……
-					float randomU = rand(randomNumberSeed);		//当前node的AABB上的随机点
-					float randomV = rand(randomNumberSeed);
-					ray.startPos = glm::vec3(nodeData.AABB.leftX, nodeData.AABB.leftY, nodeData.AABB.leftZ);
-					if (faceIndex & 4) {
-						ray.startPos.z += (faceIndex & 1) * distanceZ;
-						ray.startPos.x += randomU * distanceX;
-						ray.startPos.y += randomV * distanceY;
-					}
-					else if (faceIndex & 2) {
-						ray.startPos.y += (faceIndex & 1) * distanceY;
-						ray.startPos.x += randomU * distanceX;
-						ray.startPos.z += randomV * distanceZ;
-					}
-					else {
-						ray.startPos.x += (faceIndex & 1) * distanceX;
-						ray.startPos.z += randomU * distanceZ;
-						ray.startPos.y += randomV * distanceY;
-					}
-
-					faceIndex = uint32_t(rand(randomNumberSeed) * 6);
-					randomU = rand(randomNumberSeed);		//targetnode的AABB上的随机点
-					randomV = rand(randomNumberSeed);
-					ray.direction = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
-					if (faceIndex & 4) {
-						ray.direction.z += (faceIndex & 1) * targetDistanceZ;
-						ray.direction.x += randomU * targetDistanceX;
-						ray.direction.y += randomV * targetDistanceY;
-					}
-					else if (faceIndex & 2) {
-						ray.direction.y += (faceIndex & 1) * targetDistanceY;
-						ray.direction.x += randomU * targetDistanceX;
-						ray.direction.z += randomV * targetDistanceZ;
-					}
-					else {
-						ray.direction.x += (faceIndex & 1) * targetDistanceX;
-						ray.direction.z += randomU * targetDistanceZ;
-						ray.direction.y += randomV * targetDistanceY;
-					}
-
-					ray.direction = ray.direction - ray.startPos;
-					float r = glm::length(ray.direction);
-					ray.direction = glm::normalize(ray.direction);
-
-					bool hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, nullptr, ray, triangleAttribute, false);
-					if (!hit) continue;
-					if (ray.hitPos.x < targetNodeData.AABB.leftX || ray.hitPos.y < targetNodeData.AABB.leftY || ray.hitPos.z < targetNodeData.AABB.leftZ ||
-						ray.hitPos.x > targetNodeData.AABB.rightX || ray.hitPos.y > targetNodeData.AABB.rightY || ray.hitPos.z > targetNodeData.AABB.rightZ) continue;
-					++hitCount;
+			FzbRay ray;
+			for (int i = 0; i < testCount; ++i) {
+				float selectFaceProbability = rand(randomNumberSeed);
+				ray.startPos = glm::vec3(nodeData.AABB.leftX, nodeData.AABB.leftY, nodeData.AABB.leftZ);
+				glm::vec2 randomUV = Hammersley(i, testCount);
+				if (selectFaceProbability <= faceSelectWeight.x * 0.5f) {	//左面
+					ray.startPos.z += randomUV.x * distanceZ;
+					ray.startPos.y += randomUV.y * distanceY;
 				}
-			}
-			else {
-				glm::vec3 nodeCenterPos = glm::vec3(nodeData.AABB.leftX + nodeData.AABB.rightX, nodeData.AABB.leftY + nodeData.AABB.rightY, nodeData.AABB.leftZ + nodeData.AABB.rightZ) * 0.5f;
-				glm::vec3 targetNodeCenterPos = glm::vec3(targetNodeData.AABB.leftX + targetNodeData.AABB.rightX, targetNodeData.AABB.leftY + targetNodeData.AABB.rightY, targetNodeData.AABB.leftZ + targetNodeData.AABB.rightZ) * 0.5f;
-				glm::vec3 nodeDirection = targetNodeCenterPos - nodeCenterPos;
-
-				for (int i = 0; i < testCount; ++i) {
-					ray.depth = FLT_MAX;
-
-					uint32_t faceIndex = uint32_t(rand(randomNumberSeed) * 6);	//0表示leftX，1表示rightX……
-					float randomU = rand(randomNumberSeed);		//当前node的AABB上的随机点
-					float randomV = rand(randomNumberSeed);
-					ray.startPos = glm::vec3(nodeData.AABB.leftX, nodeData.AABB.leftY, nodeData.AABB.leftZ);
-					if (faceIndex & 4) {
-						ray.startPos.z += (faceIndex & 1) * distanceZ;
-						ray.startPos.x += randomU * distanceX;
-						ray.startPos.y += randomV * distanceY;
-					}
-					else if (faceIndex & 2) {
-						ray.startPos.y += (faceIndex & 1) * distanceY;
-						ray.startPos.x += randomU * distanceX;
-						ray.startPos.z += randomV * distanceZ;
-					}
-					else {
-						ray.startPos.x += (faceIndex & 1) * distanceX;
-						ray.startPos.z += randomU * distanceZ;
-						ray.startPos.y += randomV * distanceY;
-					}
-
-					faceIndex = uint32_t(rand(randomNumberSeed) * 3);
-					randomU = rand(randomNumberSeed);		//targetnode的AABB上的随机点
-					randomV = rand(randomNumberSeed);
-					ray.direction = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
-
-					if (faceIndex & 2) {
-						ray.direction.z += nodeDirection.z < 0 ? targetDistanceZ : 0.0f;	//在后边
-						ray.direction.x += randomU * targetDistanceX;
-						ray.direction.y += randomV * targetDistanceY;
-					}
-					else if (faceIndex & 1) {
-						ray.direction.y += nodeDirection.y < 0 ? targetDistanceY : 0.0f;	//在下边
-						ray.direction.x += randomU * targetDistanceX;
-						ray.direction.z += randomV * targetDistanceZ;
-					}
-					else {
-						ray.direction.x += nodeDirection.x < 0 ? targetDistanceX : 0.0f;	//在左边
-						ray.direction.z += randomU * targetDistanceZ;
-						ray.direction.y += randomV * targetDistanceY;
-					}
-
-					ray.direction = ray.direction - ray.startPos;
-					float r = glm::length(ray.direction);
-					ray.direction = glm::normalize(ray.direction);
-
-					bool hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, nullptr, ray, triangleAttribute, false);
-					if (!hit) continue;
-					if (ray.hitPos.x < targetNodeData.AABB.leftX || ray.hitPos.y < targetNodeData.AABB.leftY || ray.hitPos.z < targetNodeData.AABB.leftZ ||
-						ray.hitPos.x > targetNodeData.AABB.rightX || ray.hitPos.y > targetNodeData.AABB.rightY || ray.hitPos.z > targetNodeData.AABB.rightZ) continue;
-					++hitCount;
+				else if (selectFaceProbability <= faceSelectWeight.x) {	//右面
+					ray.startPos.x += distanceX;
+					ray.startPos.z += randomUV.x * distanceZ;
+					ray.startPos.y += randomUV.y * distanceY;
 				}
+				else if (selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y * 0.5f) {	//下面
+					ray.startPos.x += randomUV.x * distanceX;
+					ray.startPos.z += randomUV.y * distanceZ;
+				}
+				else if(selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y){	//在上面
+					ray.startPos.y += distanceY;	
+					ray.startPos.x += randomUV.x * distanceX;
+					ray.startPos.z += randomUV.y * distanceZ;
+				}
+				else if (selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y + faceSelectWeight.z * 0.5f) {	//后面
+					ray.startPos.x += randomUV.x * distanceX;
+					ray.startPos.y += randomUV.y * distanceY;
+				}
+				else {
+					ray.startPos.z += nodeDirection.z > 0 ? distanceZ : 0.0f;	//前面
+					ray.startPos.x += randomUV.x * distanceX;
+					ray.startPos.y += randomUV.y * distanceY;
+				}
+
+				selectFaceProbability = rand(randomNumberSeed);
+				randomUV = Hammersley(testCount - i - 1, testCount);
+				ray.direction = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
+				if (selectFaceProbability <= targetFaceSelectWeight.x) {
+					ray.direction.x += nodeDirection.x < 0 ? targetDistanceX : 0.0f;	//在左边
+					ray.direction.z += randomUV.x * targetDistanceZ;
+					ray.direction.y += randomUV.y * targetDistanceY;
+				}
+				else if (selectFaceProbability <= 1.0f - targetFaceSelectWeight.z) {
+					ray.direction.y += nodeDirection.y < 0 ? targetDistanceY : 0.0f;	//在下边
+					ray.direction.x += randomUV.x * targetDistanceX;
+					ray.direction.z += randomUV.y * targetDistanceZ;
+				}
+				else {
+					ray.direction.z += nodeDirection.z < 0 ? targetDistanceZ : 0.0f;	//在后边
+					ray.direction.x += randomUV.x * targetDistanceX;
+					ray.direction.y += randomUV.y * targetDistanceY;
+				}
+
+				float r = glm::length(ray.direction - ray.startPos);
+				ray.direction = glm::normalize(ray.direction - ray.startPos);
+				ray.startPos += ray.direction * 0.001f;
+				ray.depth = FLT_MAX;
+
+				bool hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, nullptr, ray, triangleAttribute, false);
+				if (!hit) continue;
+				if (ray.depth >= r) ++hitCount;
+				//if (ray.hitPos.x >= targetNodeData.AABB.leftX &&
+				//	ray.hitPos.y >= targetNodeData.AABB.leftY &&
+				//	ray.hitPos.z >= targetNodeData.AABB.leftZ &&
+				//	ray.hitPos.x <= targetNodeData.AABB.rightX &&
+				//	ray.hitPos.y <= targetNodeData.AABB.rightY &&
+				//	ray.hitPos.z <= targetNodeData.AABB.rightZ) ++hitCount;
 			}
+
 			float occlusionRatio = (float)hitCount / testCount;
 			weight = occlusionRatio * glm::length(targetNodeData.irradiance);
 		}
@@ -195,40 +164,13 @@ __global__ void getSVONodesWeight_device(
 		uint32_t fatherNodeLabel = indivisibleNodeIndex * SVONodeTotalCount + fatherDivisibleNodeOffset + targetNodeIndex / 8;
 		SVODivisibleNodeBlockWeight[fatherNodeLabel] = blockWeightSum;
 	}
+
+	//if (nodeInfo.nodeLayer == 3 && nodeInfo.nodeIndex == 180) {
+	//	if (targetNodeLayer == 3 && targetNodeIndex >= 184 && targetNodeIndex <= 191) {
+	//		printf("%f\n", weight / blockWeightSum);
+	//	}
+	//}
 }
-/*
-__global__ void getSVONodesWeight_device_step2(
-	float* SVONodeWeights, float* layerWeights,
-	uint32_t SVONodeTotalCount, uint32_t SVOInDivisibleNodeTotalCount,
-	FzbSVOLayerInfo* layerInfos, uint32_t maxSVOLayer
-) {
-	__shared__ FzbSVOLayerInfo groupSVOLayerInfos[8];
-	uint32_t threadIndex = blockDim.x * blockIdx.x + threadIdx.x;
-	if (threadIndex >= SVONodeTotalCount * SVOInDivisibleNodeTotalCount) return;
-
-	if (blockIdx.x == gridDim.x - 1) {
-		if(threadIdx.x == 0) for (int i = 0; i < maxSVOLayer; ++i) groupSVOLayerInfos[i] = layerInfos[i];
-	}else if (threadIdx.x < maxSVOLayer) groupSVOLayerInfos[threadIdx.x] = layerInfos[threadIdx.x];
-	uint32_t indivisibleNodeIndex = threadIndex / SVONodeTotalCount;
-	int targetNodeIndex = threadIndex % SVONodeTotalCount;
-	__syncthreads();
-
-	int targetNodeLayer = 1;
-	if (targetNodeIndex >= 8) {
-		targetNodeIndex -= 8;
-		while (targetNodeIndex >= 0) {
-			++targetNodeLayer;
-			targetNodeIndex -= groupSVOLayerInfos[targetNodeLayer - 1].divisibleNodeCount * 8;
-		}
-	}
-
-	float weight = SVONodeWeights[threadIndex];
-	uint32_t layerWeightIndex = indivisibleNodeIndex * maxSVOLayer + targetNodeLayer;
-	float layerWeight = layerWeights[layerWeightIndex];
-	SVONodeWeights[threadIndex] = layerWeight == 0.0f ? 0.0f : weight / layerWeight;
-	//if (weight != 0.0f) printf("%f %f %f\n", weight, layerWeight, layerWeight == 0.0f ? 0.0f : weight / layerWeight);
-}
-*/
 
 void FzbSVOCuda_PG::getSVONodesWeight() {
 	uint32_t SVODivisibleNodeAccCount = 0;
@@ -237,6 +179,8 @@ void FzbSVOCuda_PG::getSVONodesWeight() {
 	uint32_t layerDivisibleNodeOffset = SVODivisibleNodeAccCount;
 	uint32_t layerNodeOffset = SVONodeTotalCount_host;
 	for (int i = this->SVONodes_maxDepth - 1; i > 0; --i) {
+		if (SVOLayerInfos_host[i - 1].divisibleNodeCount == 0) continue;
+
 		uint32_t layerNodeCount = SVOLayerInfos_host[i - 1].divisibleNodeCount * 8;		//这一层的node总数
 		uint32_t blockSize = layerNodeCount;	//线程组大小为该层node总数
 		uint32_t threadBlockCountForOneNode = (blockSize + 511) / 512;
@@ -257,6 +201,7 @@ void FzbSVOCuda_PG::getSVONodesWeight() {
 			sourceManager->vertices, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray,
 			16, threadBlockCountForOneNode
 		);
+		checkKernelFunction();
 	}
 	//uint32_t blockSize = SVONodeTotalCount_host;
 	//uint32_t threadBlockCountForOneNode = (blockSize + 511) / 512;

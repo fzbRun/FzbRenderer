@@ -43,20 +43,21 @@ __device__ void generateRay_SVOPathGuiding(
 	FzbSVONodeData_PG targetNodeData;
 	bool getTargetNode = false;
 	int childNodeIndex;
-	float selectNodWeightSum = 1.0f;
+	float selectNodeWeightSum = 1.0f;
 	for (; targetLayerIndex < groupSetting.maxSVOLayer; ++targetLayerIndex) {
 		float randomNumber = rand(randomNumberSeed);
 		for (childNodeIndex = 0; childNodeIndex < 8; ++childNodeIndex) {
 			float weight = groupSetting.SVONodeWeights[nodeWeightStartIndex + childNodeIndex];
 			if (randomNumber <= weight) {
 				targetNodeData = groupSetting.SVONodes[targetLayerIndex][targetNodeDataIndex + childNodeIndex];
-				selectNodWeightSum *= weight;	//找到该node的概率密度
+				selectNodeWeightSum *= weight;	//找到该node的概率密度
 				if (targetNodeData.indivisible) getTargetNode = true;
 				else targetNodeDataIndex = (targetNodeData.label - 1) * 8;	//其子节点在该层的起始索引
 				break;
 			}
 			randomNumber -= weight;
 		}
+
 		if (getTargetNode || childNodeIndex == 8) break;
 		layerNodeSum += groupSetting.SVOLayerInfos[targetLayerIndex - 1].divisibleNodeCount * 8;
 		nodeWeightStartIndex = layerNodeSum + targetNodeDataIndex;
@@ -75,73 +76,95 @@ __device__ void generateRay_SVOPathGuiding(
 	glm::vec3 targetNodeCenterPos = glm::vec3(targetNodeData.AABB.leftX + targetNodeData.AABB.rightX, targetNodeData.AABB.leftY + targetNodeData.AABB.rightY, targetNodeData.AABB.leftZ + targetNodeData.AABB.rightZ) * 0.5f;
 	glm::vec3 nodeDirection = targetNodeCenterPos - nodeCenterPos;
 
-	glm::vec3 faceArea;
-	faceArea.x = targetDistanceY * targetDistanceZ;
-	faceArea.y = targetDistanceX * targetDistanceZ;
-	faceArea.z = targetDistanceX * targetDistanceY;
-	glm::vec3 faceSelectWeight = glm::normalize(faceArea);
-	float faceSelectRandomNumber = rand(randomNumberSeed);
-	uint32_t faceIndex = faceSelectRandomNumber <= faceSelectWeight.x ? 0 : faceSelectRandomNumber <= faceSelectWeight.x + faceSelectWeight.y ? 1 : 2;
+	glm::vec3 face0StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
+	face0StartPos.x += nodeDirection.x < 0 ? targetDistanceX : 0.0f;	//在左边
+	glm::vec3 face1StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
+	face1StartPos.y += nodeDirection.y < 0 ? targetDistanceY : 0.0f;	//在下边
+	glm::vec3 face2StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
+	face2StartPos.z += nodeDirection.z < 0 ? targetDistanceZ : 0.0f;	//在后边
 
 	float selectFaceArea = 1.0f;
-	float selectFacePDF = 1.0f;
 	glm::vec3 faceNormal = glm::vec3(0.0f);
-	glm::vec3 faceStartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
-	if (faceIndex == 0) {
-		faceStartPos.x += nodeDirection.x < 0 ? targetDistanceX : 0.0f;	//在左边
-		faceNormal.x = nodeDirection.x < 0 ? 1.0f : -1.0f;
-		selectFaceArea = faceArea.x;
-		selectFacePDF = faceSelectWeight.x;
-	}
-	else if (faceIndex == 1) {
-		faceStartPos.y += nodeDirection.y < 0 ? targetDistanceY : 0.0f;	//在下边
-		faceNormal.y = nodeDirection.y < 0 ? 1.0f : -1.0f;
-		selectFaceArea = faceArea.y;
-		selectFacePDF = faceSelectWeight.y;
-	}
-	else {
-		faceStartPos.z += nodeDirection.z < 0 ? targetDistanceZ : 0.0f;	//在后边
-		faceNormal.z = nodeDirection.z < 0 ? 1.0f : -1.0f;
-		selectFaceArea = faceArea.z;
-		selectFacePDF = faceSelectWeight.z;
-	}
-
+	float sphericalRectangleSampleProbability = 1.0f;
+	float selectFaceProbability = rand(randomNumberSeed);
 	float randomU = rand(randomNumberSeed);		//当前node的AABB上的随机点
 	float randomV = rand(randomNumberSeed);
-	bool useSphericalRectangleSample = true;
-	float sphericalRectangleSamplePDF = 1.0f;
-	if(useSphericalRectangleSample){
-		FzbQuadrilateral quadFace;
-		quadFace.worldPos = faceStartPos;
-		quadFace.normal = faceNormal;
-		if (faceIndex == 0) {
-			quadFace.edge0 = targetDistanceZ * glm::vec3(0.0f, 0.0f, 1.0f);
-			quadFace.edge1 = targetDistanceY * glm::vec3(0.0f, 1.0f, 0.0f);
-		}
-		else if (faceIndex == 1) {
-			quadFace.edge0 = targetDistanceX * glm::vec3(1.0f, 0.0f, 0.0f);
-			quadFace.edge1 = targetDistanceZ * glm::vec3(0.0f, 0.0f, 1.0f);
-		}
-		else {
-			quadFace.edge0 = targetDistanceX * glm::vec3(1.0f, 0.0f, 0.0f);
-			quadFace.edge1 = targetDistanceY * glm::vec3(0.0f, 1.0f, 0.0f);
-		}
+	if (groupSetting.useSphericalRectangleSample) {
+		glm::vec3 edge0 = glm::vec3(targetDistanceX, 0.0f, 0.0f);
+		glm::vec3 edge1 = glm::vec3(0.0f, targetDistanceY, 0.0f);
+		glm::vec3 edge2 = glm::vec3(0.0f, 0.0f, targetDistanceZ);
+	
+		FzbQuadrilateral_resue quad0 = initQuadrilateral(ray.hitPos, face0StartPos, edge2, edge1);
+		quad0.S = isnan(quad0.S) ? 0.0f : quad0.S;
+		FzbQuadrilateral_resue quad1 = initQuadrilateral(ray.hitPos, face1StartPos, edge0, edge2);
+		quad1.S = isnan(quad1.S) ? 0.0f : quad1.S;
+		FzbQuadrilateral_resue quad2 = initQuadrilateral(ray.hitPos, face2StartPos, edge0, edge1);
+		quad2.S = isnan(quad2.S) ? 0.0f : quad2.S;
 
-		ray.direction = sphericalRectangleSample(quadFace, ray.hitPos, randomU, randomV, sphericalRectangleSamplePDF);
+		//发生这种全为0的情况说明hitPos位于采样平面上，我们退化为BSDF采样
+		if (quad0.S + quad1.S + quad2.S == 0.0f) ray.direction = -hitTriangleAttribute.normal;
+		else {
+			glm::vec3 sphereQuadrilateralSolidAngle = glm::vec3(quad0.S, quad1.S, quad2.S);
+			sphereQuadrilateralSolidAngle /= quad0.S + quad1.S + quad2.S;
+			FzbQuadrilateral_resue sampleQuad;
+			if (selectFaceProbability <= sphereQuadrilateralSolidAngle.x) {
+				sampleQuad = quad0;
+				sphericalRectangleSampleProbability *= sphereQuadrilateralSolidAngle.x;
+			}
+			else if (selectFaceProbability <= 1.0f - sphereQuadrilateralSolidAngle.z) {
+				sampleQuad = quad1;
+				sphericalRectangleSampleProbability *= sphereQuadrilateralSolidAngle.y;
+			}
+			else {
+				sampleQuad = quad2;
+				sphericalRectangleSampleProbability *= sphereQuadrilateralSolidAngle.z;
+			}
+
+			ray.direction = sphericalRectangleSample(sampleQuad, randomU, randomV, sphericalRectangleSampleProbability);
+			//if (systemFrameCount == 1)
+			//	printf("%f %f %f\n", quad0.S, quad1.S, quad2.S);
+		}
 	}
 	else {
-		glm::vec3 samplePos = faceStartPos;
-		if (faceIndex == 0) {
+		glm::vec3 face0Normal = glm::vec3(nodeDirection.x < 0 ? 1.0f : -1.0f, 0.0f, 0.0f);
+		glm::vec3 face1Normal = glm::vec3(0.0f, nodeDirection.y < 0 ? 1.0f : -1.0f, 0.0f);
+		glm::vec3 face2Normal = glm::vec3(0.0f, 0.0f, nodeDirection.z < 0 ? 1.0f : -1.0f);
+
+		nodeDirection = glm::normalize(nodeDirection);
+
+		glm::vec3 faceArea;		//这里应该是投影面，而不是直接的面积
+		faceArea.x = targetDistanceY * targetDistanceZ * glm::dot(-nodeDirection, face0Normal);
+		faceArea.y = targetDistanceX * targetDistanceZ * glm::dot(-nodeDirection, face1Normal);
+		faceArea.z = targetDistanceX * targetDistanceY * glm::dot(-nodeDirection, face2Normal);
+		glm::vec3 faceSelectWeight = faceArea / (faceArea.x + faceArea.y + faceArea.z);
+
+		glm::vec3 samplePos;
+		if (selectFaceProbability <= faceSelectWeight.x) {
+			samplePos = face0StartPos;
 			samplePos.z += randomU * targetDistanceZ;
 			samplePos.y += randomV * targetDistanceY;
+
+			faceNormal.x = face0Normal.x;
+			selectFaceArea = faceArea.x;
+			sphericalRectangleSampleProbability *= faceSelectWeight.x;
 		}
-		else if (faceIndex == 1) {
+		else if (selectFaceProbability <= faceSelectWeight.x + faceSelectWeight.y) {
+			samplePos = face1StartPos;
 			samplePos.x += randomU * targetDistanceX;
 			samplePos.z += randomV * targetDistanceZ;
+
+			faceNormal.y = face1Normal.y;
+			selectFaceArea = faceArea.y;
+			sphericalRectangleSampleProbability *= faceSelectWeight.y;
 		}
 		else {
+			samplePos = face2StartPos;
 			samplePos.x += randomU * targetDistanceX;
 			samplePos.y += randomV * targetDistanceY;
+
+			faceNormal.z = face2Normal.z;
+			selectFaceArea = faceArea.z;
+			sphericalRectangleSampleProbability *= faceSelectWeight.z;
 		}
 
 		ray.direction = samplePos - ray.hitPos;
@@ -149,16 +172,16 @@ __device__ void generateRay_SVOPathGuiding(
 
 	if (glm::dot(ray.direction, hitTriangleAttribute.normal) <= 0) generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
 	else {
-		pdf *= selectNodWeightSum * selectFacePDF;	//最终采样node的AABB可能忽略了一些包围盒，需要乘以pdf来弥补
-		pdf *= sphericalRectangleSamplePDF;
-		if (!useSphericalRectangleSample) 
+		pdf *= selectNodeWeightSum;
+		pdf *= sphericalRectangleSampleProbability;
+		if (!groupSetting.useSphericalRectangleSample)
 			pdf *= glm::dot(-glm::normalize(ray.direction), faceNormal) / glm::max(selectFaceArea * glm::max(glm::length(ray.direction), 0.01f), 0.001f);
 
 		ray.direction = glm::normalize(ray.direction);
 		ray.startPos = ray.direction * 0.01f + ray.hitPos;
 		ray.depth = FLT_MAX;
 	}
-}
+}	
 //-------------------------------------------------------------------------------------------------
 template<bool useExternSharedMemory>
 __global__ void svoPathGuiding_cuda(
@@ -211,9 +234,12 @@ __global__ void svoPathGuiding_cuda(
 	if (useExternSharedMemory) {
 		if (threadIdx.x < blockDim.x / spp) groupResultRadiance[threadIdx.x] = make_float3(0.0f);
 	}
-	//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
-	//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
-	if (sppLane == 0) resultBuffer[resultIndex] *= ((float)groupFrameCount - 1) / (float)groupFrameCount;
+	if (sppLane == 0) {
+		if (groupFrameCount == 1) resultBuffer[resultIndex] = make_float4(0.0f);
+		//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
+		//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
+		resultBuffer[resultIndex] *= ((float)groupFrameCount - 1) / (float)groupFrameCount;
+	}
 	__syncthreads();
 
 	uint32_t randomNumberSeed = groupRandomNumberSeed + threadIndex;
@@ -265,9 +291,14 @@ __global__ void svoPathGuiding_cuda(
 		--maxBonceDepth;
 	}
 
+	//if (sppLane == 0) {
+	//	float4 result = resultBuffer[resultIndex];
+	//	result += make_float4(radiance.x, radiance.y, radiance.z, 0.0f);
+	//	printf("%d %f %f %f\n", threadIndex, result.x, result.y, result.z);
+	//}
+
 	radiance /= spp;
 	radiance /= groupFrameCount;
-	radiance = glm::min(radiance, glm::vec3(1.0f));
 	if (useExternSharedMemory && threadIdx.x < groupSppIndex * spp) {
 		//这是这里如果spp为32的整数倍，则可以先在warp中处理
 		atomicAdd(&groupResultRadiance[groupSppIndex].x, radiance.x);

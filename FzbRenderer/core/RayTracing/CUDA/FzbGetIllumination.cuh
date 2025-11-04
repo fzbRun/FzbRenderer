@@ -28,10 +28,18 @@ struct FzbRayTracingLightSet {
 	FzbRayTracingAreaLight* areaLightInfoArray;
 };
 struct FzbQuadrilateral {
-	glm::vec3 worldPos;
+	glm::vec3 startPos;
 	glm::vec3 normal;
 	glm::vec3 edge0;
 	glm::vec3 edge1;
+};
+struct FzbQuadrilateral_resue {		//对于一个面需要被多次采样，则可以初始化一次后复用
+	glm:: vec3 o, x, y, z;
+	float z0, z0sq;
+	float x0, y0, y0sq; // rectangle coords in ’R’
+	float x1, y1, y1sq; //
+	float b0, b1, b0sq, k; // misc precomputed constants
+	float S; // solid angle of ’Q’
 };
 //-------------------------------------------------------常量-----------------------------------------
 __device__ const float PI = 3.1415926535f;
@@ -49,6 +57,8 @@ __device__ glm::vec3 fresnelSchlick(float cosTheta, const glm::vec3& F0);
 //refraction.y = eta
 __device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, const glm::vec3& incidence, const glm::vec3& outgoing, const FzbRay& ray);
 
+__device__ FzbQuadrilateral_resue initQuadrilateral(glm::vec3& hitPos, glm::vec3& quadRangleStartPos, glm::vec3& ex, glm::vec3& ey);
+__device__ glm::vec3 sphericalRectangleSample(const FzbQuadrilateral_resue& quadrangle, float u, float v, float& pdf);
 __device__ glm::vec3 sphericalRectangleSample(const FzbQuadrilateral& quadrangle, glm::vec3& hitPos, float u, float v, float& pdf);
 
 __device__ glm::vec3 getRadiance(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, const FzbRayTracingLightSet* lightSet,

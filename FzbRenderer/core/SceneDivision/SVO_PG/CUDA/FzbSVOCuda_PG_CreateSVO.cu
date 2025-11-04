@@ -890,8 +890,8 @@ __global__ void createSVO_PG_first_type3(
 	bool hasData = false;
 	bool divisible = false;
 	bool indivisible = false;
-	if (threadIdx.x < divisibleFatherNodeCount * 8) {	//向32取整(为了洗牌操作)，所以最后一个warp中可能有的线程没有父节点
-		FzbSVONodeTempInfo fatherNodeTempInfo = divisibleFatherNodeInfos[threadIdx.x / 8];
+	if (threadIndex < divisibleFatherNodeCount * 8) {	//向32取整(为了洗牌操作)，所以最后一个warp中可能有的线程没有父节点
+		FzbSVONodeTempInfo fatherNodeTempInfo = divisibleFatherNodeInfos[threadIndex / 8];
 		octreeNodeIndex = fatherNodeTempInfo.nodeIndex * 8 + laneInBlock;
 		nodeData = OctreeNodes[octreeNodeIndex];
 		hasData = nodeData.irradiance.x + nodeData.irradiance.y + nodeData.irradiance.z != 0.0f;
@@ -934,16 +934,16 @@ __global__ void createSVO_PG_first_type3(
 		warpIndivisibleNodeOffset = groupIndivisibleNodeOffsetInWarp[warpIndex - 1];
 	}
 
-	if (warpIndex == warpCount - 1 && warpLane == 0) {
-		groupDivisibleNodeOffset = atomicAdd(&layerInfo[layerIndex].divisibleNodeCount, groupDivisibleNodeOffsetInWarp[warpIndex]);
-		groupIndivisibleNodeOffset = atomicAdd(&layerInfo[layerIndex].indivisibleNodeCount, groupIndivisibleNodeOffsetInWarp[warpIndex]);
+	if (threadIdx.x == 0) {
+		groupDivisibleNodeOffset = atomicAdd(&layerInfo[layerIndex].divisibleNodeCount, groupDivisibleNodeOffsetInWarp[warpCount - 1]);
+		groupIndivisibleNodeOffset = atomicAdd(&layerInfo[layerIndex].indivisibleNodeCount, groupIndivisibleNodeOffsetInWarp[warpCount - 1]);
 	}
 	__syncthreads();
 
-	if (warpLane == 0) {
-		warpDivisibleNodeOffset += groupDivisibleNodeOffset;
-		//warpIndivisibleNodeOffset += groupIndivisibleNodeOffset;
-	}
+	//if (warpLane == 0) {
+	//	//warpDivisibleNodeOffset += groupDivisibleNodeOffset;
+	//	//warpIndivisibleNodeOffset += groupIndivisibleNodeOffset;
+	//}
 	warpDivisibleNodeOffset = __shfl_sync(0xFFFFFFFF, warpDivisibleNodeOffset, 0);
 	warpIndivisibleNodeOffset = __shfl_sync(0xFFFFFFFF, warpIndivisibleNodeOffset, 0);
 
@@ -955,27 +955,27 @@ __global__ void createSVO_PG_first_type3(
 		tempInfo.nodeIndex = octreeNodeIndex;
 		tempInfo.storageIndex = threadIndex;
 		tempInfo.threadBlockIndex = blockIdx.x;
-		divisibleNodeTempInfos[nodeOffsetInLayer + nodeInfosHalfSize] = tempInfo;	//先放到后半部分，同步后再搬到前半部分
+		divisibleNodeTempInfos[groupDivisibleNodeOffset + nodeOffsetInLayer + nodeInfosHalfSize] = tempInfo;	//先放到后半部分，同步后再搬到前半部分
 
 		nodeData.label = nodeOffsetInLayer + 1;
 	}
 	else if(indivisible) {
-		uint32_t nodeOffsetInLayer = groupIndivisibleNodeOffset + warpIndivisibleNodeOffset + __popc(warpIndivisibleNodeMask << (32 - warpLane));
+		uint32_t nodeOffsetInLayer = warpIndivisibleNodeOffset + __popc(warpIndivisibleNodeMask << (32 - warpLane));
 
 		FzbSVOIndivisibleNodeInfo nodeInfo;
 		nodeInfo.nodeLayer = layerIndex;
 		nodeInfo.nodeIndex = threadIndex;
-		indivisibleNodeInfos[indivisibleNodeTotalCount + nodeOffsetInLayer] = nodeInfo;
+		indivisibleNodeInfos[indivisibleNodeTotalCount + groupIndivisibleNodeOffset + nodeOffsetInLayer] = nodeInfo;
 
-		nodeData.label = indivisibleNodeTotalCount +  warpIndivisibleNodeOffset + 1;		//线程组内的label
+		nodeData.label = indivisibleNodeTotalCount + nodeOffsetInLayer + 1;		//线程组内的label
 	}
 
 	if (hasData) SVONodes[threadIndex] = nodeData;
 
-	if (warpIndex == warpCount - 1 && warpLane == 0) {
+	if (threadIdx.x == 0) {
 		FzbSVONodeThreadBlockInfo blockInfo;
-		blockInfo.divisibleNodeCount = groupDivisibleNodeOffsetInWarp[warpIndex];
-		blockInfo.divisibleNodeCount = groupIndivisibleNodeOffsetInWarp[warpIndex];
+		blockInfo.divisibleNodeCount = groupDivisibleNodeOffsetInWarp[warpCount - 1];
+		blockInfo.indivisibleNodeCount = groupIndivisibleNodeOffsetInWarp[warpCount - 1];
 		threadBlockInfos[blockIdx.x] = blockInfo;
 	}
 }
@@ -998,7 +998,7 @@ __global__ void createSVO_PG_second_divisible(
 	uint32_t labelOffset = threadBlockDivisibleLabelOffset[nodeInfo.threadBlockIndex];	//得到前面线程组的可分node数之和
 
 	uint32_t label = nodeInfo.label + labelOffset;	//当前可分node在原线程组中的label加上前面线程组的可分node数之和就是在该layer的label
-	divisibleNodeTempInfos[label].label = label;
+	divisibleNodeTempInfos[label - 1] = nodeInfo;
 	SVONodes[nodeInfo.storageIndex].label = label;
 }
 __global__ void createSVO_PG_second_inDivisible(
@@ -1011,7 +1011,7 @@ __global__ void createSVO_PG_second_inDivisible(
 	if (threadIdx.x == 0) {	//每个元素表示该线程组前面的线程组的可分node数之和
 		threadBlockDivisibleLabelOffset[0] = 0;
 		for (int i = 1; i < threadBlockCount; ++i)
-			threadBlockDivisibleLabelOffset[i] = threadBlockDivisibleLabelOffset[i - 1] + threadBlockInfos[i - 1].divisibleNodeCount;
+			threadBlockDivisibleLabelOffset[i] = threadBlockDivisibleLabelOffset[i - 1] + threadBlockInfos[i - 1].indivisibleNodeCount;
 	}
 	__syncthreads();
 
@@ -1156,8 +1156,8 @@ __global__ void createSVO_PG_last_type3(
 
 	FzbVoxelData_PG voxelData;
 	bool hasData = false;
-	if (threadIdx.x < divisibleFatherNodeCount * 8) {	//向32取整(为了洗牌操作)，所以最后一个warp中可能有的线程没有父节点
-		FzbSVONodeTempInfo fatherNodeTempInfo = divisibleFatherNodeInfos[threadIdx.x / 8];
+	if (threadIndex < divisibleFatherNodeCount * 8) {	//向32取整(为了洗牌操作)，所以最后一个warp中可能有的线程没有父节点
+		FzbSVONodeTempInfo fatherNodeTempInfo = divisibleFatherNodeInfos[threadIndex / 8];
 		uint32_t VGBNodeIndex = fatherNodeTempInfo.nodeIndex * 8 + laneInBlock;
 		voxelData = VGB[VGBNodeIndex];
 		hasData = (voxelData.irradiance.x + voxelData.irradiance.y + voxelData.irradiance.z) != 0.0f;
@@ -1180,11 +1180,11 @@ __global__ void createSVO_PG_last_type3(
 	uint32_t warpHasDataNodeOffset = 0;
 	if (warpLane == 0 && warpIndex > 0) warpHasDataNodeOffset = groupHasDataNodeOffsetInWarp[warpIndex - 1];
 
-	if (warpIndex == warpCount - 1 && warpLane == 0)
-		groupHasNodeOffset = atomicAdd(&layerInfo[layerIndex].indivisibleNodeCount, groupHasDataNodeOffsetInWarp[warpIndex]);
+	if (threadIdx.x == 0)
+		groupHasNodeOffset = atomicAdd(&layerInfo[layerIndex].indivisibleNodeCount, groupHasDataNodeOffsetInWarp[warpCount - 1]);
 	__syncthreads();
 
-	if (warpLane == 0) warpHasDataNodeOffset += groupHasNodeOffset;
+	//if (warpLane == 0) warpHasDataNodeOffset += groupHasNodeOffset;
 	warpHasDataNodeOffset = __shfl_sync(0xFFFFFFFF, warpHasDataNodeOffset, 0);
 
 	if(hasData) {
@@ -1261,18 +1261,18 @@ void FzbSVOCuda_PG::createSVONodes() {
 					SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host);
 			}
 			else {
-				throw std::runtime_error("出现了多个线程组的情况，注意一下");
 				FzbSVONodeThreadBlockInfo* threadBlockInfos = SVONodeThreadBlockInfos[i];
-				uint32_t maxNodeTotalCount = pow(8, i);
+				uint32_t nodeInfosHalfSize = SVONodesMaxCount[i];
 				createSVO_PG_first_type3 <<<gridSize, blockSize, sharedDataSize, stream >>>
 				(
 					SVONodes,
 					OctreeNodes,
 					divisibleFatherNodeInfos, divisibleFatherNodeCount,
 					threadBlockInfos,
-					divisibleNodeTempInfos, maxNodeTotalCount,
+					divisibleNodeTempInfos, nodeInfosHalfSize,
 					SVOLayerInfos, i,
-					SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host);
+					SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host
+				);
 			}
 		}
 
@@ -1282,7 +1282,7 @@ void FzbSVOCuda_PG::createSVONodes() {
 		
 		if (gridSize > 1) {
 			FzbSVONodeThreadBlockInfo* threadBlockInfos = SVONodeThreadBlockInfos[i];
-			uint32_t maxNodeTotalCount = pow(8, i);
+			uint32_t nodeInfosHalfSize = SVONodesMaxCount[i];
 
 			uint32_t lastBlockSize = blockSize;
 			uint32_t lastGridSize = gridSize;
@@ -1290,7 +1290,7 @@ void FzbSVOCuda_PG::createSVONodes() {
 			gridSize = (divisibleNodeCount + blockSize - 1) / blockSize;
 			uint32_t sharedDataSize = lastGridSize * sizeof(uint32_t);
 			createSVO_PG_second_divisible<<<gridSize, blockSize, sharedDataSize, stream>>>
-				(SVONodes, threadBlockInfos, lastGridSize, divisibleNodeTempInfos, maxNodeTotalCount);
+				(SVONodes, threadBlockInfos, lastGridSize, divisibleNodeTempInfos, nodeInfosHalfSize);
 
 			blockSize = inDivisibleNodeCount > createSVOKernelBlockSize ? createSVOKernelBlockSize : inDivisibleNodeCount;
 			gridSize = (inDivisibleNodeCount + blockSize - 1) / blockSize;
@@ -1321,8 +1321,6 @@ void FzbSVOCuda_PG::createSVONodes() {
 					SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host);
 		}
 		else {
-			throw std::runtime_error("出现了多个线程组的情况，注意一下");
-
 			FzbSVONodeThreadBlockInfo* threadBlockInfos = SVONodeThreadBlockInfos[SVONodes_maxDepth - 1];
 
 			nodeTotalCount = ((nodeTotalCount + 31) / 32) * 32;	//向32取整，因为warp内要用洗牌操作，线程不够，可能拿不到数据
@@ -1336,17 +1334,18 @@ void FzbSVOCuda_PG::createSVONodes() {
 						VGB,
 						divisibleFatherNodeInfos, divisibleFatherNodeCount,
 						SVOLayerInfos, SVONodes_maxDepth - 1,
-						SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host);
+						SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host
+					);
 			}
 			else {
-				throw std::runtime_error("出现了多个线程组的情况，注意一下");
 				createSVO_PG_last_type3<<<gridSize, blockSize, sharedDataSize, stream>>>
 				(	SVONodes,
 					VGB,
 					divisibleFatherNodeInfos, divisibleFatherNodeCount,
 					threadBlockInfos,
 					SVOLayerInfos, SVONodes_maxDepth - 1,
-					SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host);
+					SVOIndivisibleNodeInfos, SVOInDivisibleNodeTotalCount_host
+				);
 			}
 		}
 
@@ -1420,7 +1419,7 @@ void FzbSVOCuda_PG::initCreateSVONodesSource() {
 
 	this->SVODivisibleNodeTempInfos.resize(SVONodes_maxDepth);
 	for (int i = 0; i < this->SVONodes_maxDepth - 1; ++i) {		//要算叶节点
-		uint32_t maxNodeCount = SVONodesMaxCount[i];	// std::pow(8, i);
+		uint32_t maxNodeCount = SVONodesMaxCount[i] * 2;	// std::pow(8, i);
 		CHECK(cudaMalloc((void**)&SVODivisibleNodeTempInfos[i], maxNodeCount * sizeof(FzbSVONodeTempInfo)));
 	}
 	FzbSVONodeTempInfo rootNodeTempInfo;

@@ -7,16 +7,26 @@
 
 #ifndef CREATE_SVO_PATH_GUIDING_CUH
 #define CREATE_SVO_PATH_GUIDING_CUH
+struct FzbVGBUniformData {
+	uint32_t voxelCount;
+	glm::vec3 voxelSize;
+	glm::vec3 voxelStartPos;
+};
+struct FzbSVOUnformData {
+	float irradianceRelRatioThreshold = 0.1f;
+	float ignoreIrradianceValueThreshold = 100.0f;
+	float surfaceAreaThreshold = 2.5f;
+	float voxelMultiple = 16.0f;
+};
 
 struct FzbSVOSetting_PG {
 	uint32_t voxelNum = 64;
 	bool useCube = true;
-	bool useOneArray = true;
-	bool useOBB = true;
+	FzbSVOUnformData thresholds;
 };
 struct FzbVoxelData_PG {
-	uint hasData;
 	glm::vec3 irradiance;
+	glm::vec4 meanNormal;
 	FzbAABBUint AABB;
 };
 struct FzbSVONodeData_PG {
@@ -25,8 +35,9 @@ struct FzbSVONodeData_PG {
 	//uint32_t shuffleKey;
 	uint32_t label;		//该node是当前层中第几个可分的node
 	FzbAABB AABB;		//只记录不可分node的AABB
+	float influence;
 	glm::vec3 irradiance;
-	float padding;
+	glm::vec3 normal;
 };
 
 struct FzbSVONodeThreadBlockInfo {
@@ -48,23 +59,12 @@ struct FzbSVOIndivisibleNodeInfo {
 	uint32_t nodeIndex;	//在svo的一层的索引
 };
 
-struct FzbVGBUniformData {
-	uint32_t voxelCount;
-	glm::vec3 voxelSize;
-	glm::vec3 voxelStartPos;
-};
-struct FzbSVOUnformData {
-	float surfaceAreaThreshold = 3.0f;	//如何合并后的AABB的表面超过原有子node的表面积之和的surfaceAreaThreshold倍，则认为不能合并
-	float irradianceThreshold = 10.0f;	//如果某个两个兄弟node的irradiance之比超过irradianceThreshold，则认为不能合并
-	float ignoreIrradianceValueThreshold = 10.0f;
-};
-
 //----------------------------------------------常量
 extern __constant__ FzbVGBUniformData systemVGBUniformData;
 extern __constant__ FzbSVOUnformData systemSVOUniformData;
 const uint32_t createSVOKernelBlockSize = 512;
 const std::vector<uint32_t> SVONodesMaxCount = {	//node越到上层越难聚类，所以上几层的node数应该不变，下几层的node数较原来小
-	1, 8, 64, 512, 1024, 1024, 1024, 1024
+	1, 8, 64, 512, 2048, 2048, 2048, 2048
 };
 //----------------------------------------------常量-------------------------------------------------
 

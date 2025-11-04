@@ -8,7 +8,7 @@
 struct FzbSVOPathGuidingSetting_soft {
 	FzbSVOSetting_PG SVO_PGSetting;
 	uint32_t spp = 1;
-	bool useSphericalRectangleSample = false;
+	bool useSphericalRectangleSample;
 };
 struct FzbSVOPathGuidingCudaSetting {
 	uint32_t spp;

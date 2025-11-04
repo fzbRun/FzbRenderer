@@ -14,8 +14,10 @@ FzbSVO_PG::FzbSVO_PG(pugi::xml_node& SVO_PGNode) {
 	if (pugi::xml_node SVOSettingNode = SVO_PGNode.child("featureComponentSetting")) {
 		this->setting.voxelNum = std::stoi(SVOSettingNode.child("voxelNum").attribute("value").value());
 		this->setting.useCube = std::string(SVOSettingNode.child("useCube").attribute("value").value()) == "true";
-		this->setting.useOneArray = std::string(SVOSettingNode.child("useOneArray").attribute("value").value()) == "true";
-		this->setting.useOBB = std::string(SVOSettingNode.child("useOBB").attribute("value").value()) == "true";
+		this->setting.thresholds.irradianceRelRatioThreshold = std::stof(SVOSettingNode.child("irradianceRelRatioThreshold").attribute("value").value());
+		this->setting.thresholds.irradianceRelRatioThreshold = std::stof(SVOSettingNode.child("irradianceRelRatioThreshold").attribute("value").value());
+		this->setting.thresholds.surfaceAreaThreshold = std::stof(SVOSettingNode.child("surfaceAreaThreshold").attribute("value").value());
+		this->setting.thresholds.voxelMultiple = std::stof(SVOSettingNode.child("voxelMultiple").attribute("value").value());
 	}
 
 	addMainSceneInfo();
@@ -34,7 +36,10 @@ void FzbSVO_PG::init() {
 	createSemaphore();
 
 	FzbVGBUniformData VGBUniformData = { setting.voxelNum, glm::vec3(uniformBufferObject.voxelSize_Num), uniformBufferObject.voxelStartPos };
-	svoCuda_pg = std::make_shared<FzbSVOCuda_PG>(rayTracingSourceManager.sourceManagerCuda, setting, VGBUniformData, VGB, SVOFinishedSemaphore.handle, FzbSVOUnformData());
+	setting.thresholds.voxelMultiple *= (uniformBufferObject.voxelSize_Num.x * uniformBufferObject.voxelSize_Num.y +
+		uniformBufferObject.voxelSize_Num.x * uniformBufferObject.voxelSize_Num.z +
+		uniformBufferObject.voxelSize_Num.y * uniformBufferObject.voxelSize_Num.z) * 2.0f;
+	svoCuda_pg = std::make_shared<FzbSVOCuda_PG>(rayTracingSourceManager.sourceManagerCuda, setting, VGBUniformData, VGB, SVOFinishedSemaphore.handle, setting.thresholds);
 	createVGB();
 	createSVO_PG();
 }
@@ -232,7 +237,9 @@ void FzbSVO_PG::createOctreeBuffers() {
 void FzbSVO_PG::createSVOBuffers(bool useDeviceAddress) {
 	this->SVONodesBuffers.resize(this->svoCuda_pg->SVONodes_maxDepth - 1);	//不算根节点
 	for (int i = 0; i < SVONodesBuffers.size(); ++i) {
-		uint32_t bufferSize = SVONodesMaxCount[i + 1] * sizeof(FzbSVONodeData_PG);
+		uint32_t nodeCount = this->svoCuda_pg->SVOLayerInfos_host[i].divisibleNodeCount * 8;
+		if (nodeCount == 0) break;
+		uint32_t bufferSize = nodeCount * sizeof(FzbSVONodeData_PG);
 		this->SVONodesBuffers[i] = fzbCreateStorageBuffer(bufferSize, true, useDeviceAddress);
 	}
 	this->SVOWeightsBuffer = fzbCreateStorageBuffer(this->svoCuda_pg->SVOIndivisibleNodeMaxCount * this->svoCuda_pg->SVONodeMaxCount * sizeof(float), true);
@@ -475,9 +482,11 @@ void FzbSVO_PG_Debug::createOctreeRenderPass() {
 	shaderInfos.insert({ "roughconductor", roughconductorShaderInfo });
 
 	//搞一个线框，显示聚类后的node的范围
+	uint32_t nodeCount = 0;
+	for (int i = 1; i < this->SVO_PG_MaxDepth - 1; ++i) nodeCount += std::pow(8, i);
 	cubeMesh.clean();
 	cubeMesh = FzbMesh();
-	cubeMesh.instanceNum = 100;
+	cubeMesh.instanceNum = nodeCount;
 	//cubeMesh.instanceNum = std::pow(setting.SVO_PGSetting.voxelNum, 3) / pow(8, setting.SVONodeClusterLevel + 1);
 	fzbCreateCubeWireframe(cubeMesh);
 	this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
