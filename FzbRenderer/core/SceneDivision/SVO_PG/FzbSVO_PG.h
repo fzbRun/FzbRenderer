@@ -69,7 +69,8 @@ struct FzbSVOSetting_PG_Debug {
 	bool voxelIrradianceDebugInfo = false;
 	bool OctreeNodeDebugInfo = false;
 	bool SVONodeClusterDebugInfo = false;
-	uint32_t SVONodeClusterLevel = 0;
+	bool lookCube = 0;
+	bool SVOWeightsDebugInfo = false;
 	bool useDeviceAddress = false;	//用设备地址在renderDoc中看不到数据
 };
 struct FzbSVONodeClusterUniformObject {
@@ -86,6 +87,15 @@ struct FzbSVONodeBlockData {
 	uint32_t nodeNum;
 };
 
+struct FzbSVOWeightsUniformObject {
+	glm::vec4 nodeSize_Num;
+	glm::vec4 startPos;
+	uint32_t maxDepth;
+	uint32_t svoNodeTotalCount = 0;
+	int divisibleNodeCounts[7];
+	int indivisibleNodeCounts[7];
+};
+
 struct FzbSVO_PG_Debug : public FzbFeatureComponent_LoopRender {
 public:
 	FzbSVOSetting_PG_Debug setting;
@@ -96,7 +106,7 @@ public:
 	VkDescriptorSetLayout descriptorSetLayout = nullptr;
 	VkDescriptorSet descriptorSet = nullptr;
 
-	FzbBuffer SVONodeClusterUniformBuffer;
+	FzbBuffer debugUniformBuffer;
 
 	FzbSVO_PG_Debug();
 	FzbSVO_PG_Debug(pugi::xml_node& SVO_PG_DebugNode);
@@ -118,6 +128,9 @@ private:
 
 	void createSVODebugBufferAndDescirptor();
 	void createVGBRenderPass_SVONodeClusterInfo();
+
+	void createSVOWeightsDebugBufferAndDescirptor();
+	void createSVORenderPass_SVOWeightsInfo();
 };
 
 #endif

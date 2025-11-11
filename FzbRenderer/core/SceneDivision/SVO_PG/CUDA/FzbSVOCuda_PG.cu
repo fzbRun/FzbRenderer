@@ -42,14 +42,15 @@ __global__ void initVGB_Cuda(FzbVoxelData_PG* VGB, uint32_t voxelCount) {
 	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	if (threadIndex >= voxelCount) return;
 	FzbVoxelData_PG data;
-	data.meanNormal = glm::vec4(0.0f);
 	data.AABB.leftX = __float_as_int(FLT_MAX);
 	data.AABB.leftY = __float_as_int(FLT_MAX);
 	data.AABB.leftZ = __float_as_int(FLT_MAX);
 	data.AABB.rightX = __float_as_int(-FLT_MAX);
 	data.AABB.rightY = __float_as_int(-FLT_MAX);
 	data.AABB.rightZ = __float_as_int(-FLT_MAX);
-	data.irradiance = glm::vec3(0.0f);
+	data.irradiance = glm::vec4(0.0f);
+	data.meanNormal_G = glm::vec4(0.0f);
+	data.meanNormal_E = glm::vec4(0.0f);
 	VGB[threadIndex] = data;
 }
 void FzbSVOCuda_PG::initVGB() {
@@ -95,6 +96,7 @@ void FzbSVOCuda_PG::coypyOctreeDataToBuffer(std::vector<FzbBuffer>& OctreeNodesB
 	if (OctreeNodesBuffers.size() != this->SVONodes_maxDepth - 2) throw std::runtime_error("OctreeBuffer ˝¡ø≤ª∆•≈‰");
 	for (int i = 0; i < this->SVONodes_maxDepth - 2; ++i) {
 		FzbBuffer& OctreeNodesBuffer = OctreeNodesBuffers[i];
+		checkKernelFunction();
 		cudaExternalMemory_t OctreeNodesBufferExtMem = importVulkanMemoryObjectFromNTHandle(OctreeNodesBuffer.handle, OctreeNodesBuffer.size, false);
 		FzbSVONodeData_PG* OctreeNodesBuffer_ptr = (FzbSVONodeData_PG*)mapBufferOntoExternalMemory(OctreeNodesBufferExtMem, 0, OctreeNodesBuffer.size);
 		CHECK(cudaMemcpy(OctreeNodesBuffer_ptr, OctreeNodes_multiLayer[i + 1], OctreeNodesBuffer.size, cudaMemcpyDeviceToDevice));

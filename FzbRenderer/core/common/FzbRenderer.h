@@ -7,7 +7,7 @@
 #ifndef FZB_APPLICATION_H
 #define FZB_APPLICATION_H
 
-const uint32_t MAXFRAMECOUNT = 4096;
+const uint32_t MAXFRAMECOUNT = 65536;
 
 std::shared_ptr<FzbFeatureComponent> createFzbComponent(std::string componentName, pugi::xml_node& node);
 class FzbRenderer {

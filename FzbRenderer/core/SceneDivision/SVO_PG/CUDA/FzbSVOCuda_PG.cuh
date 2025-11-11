@@ -14,9 +14,7 @@ struct FzbVGBUniformData {
 };
 struct FzbSVOUnformData {
 	float irradianceRelRatioThreshold = 0.1f;
-	float ignoreIrradianceValueThreshold = 100.0f;
-	float surfaceAreaThreshold = 2.5f;
-	float voxelMultiple = 16.0f;
+	float cosineDiffThreshold = 0.707f;
 };
 
 struct FzbSVOSetting_PG {
@@ -26,19 +24,19 @@ struct FzbSVOSetting_PG {
 	FzbSVOUnformData thresholds;
 };
 struct FzbVoxelData_PG {
-	glm::vec3 irradiance;
-	glm::vec4 meanNormal;
+	glm::vec4 irradiance;
+	glm::vec4 meanNormal_G;
+	glm::vec4 meanNormal_E;
 	FzbAABBUint AABB;
 };
 struct FzbSVONodeData_PG {
 	uint32_t indivisible;
-	//float pdf;	//去掉影响小的子node后需要弥补的pdf
-	//uint32_t shuffleKey;
 	uint32_t label;		//该node是当前层中第几个可分的node
-	FzbAABB AABB;		//只记录不可分node的AABB
-	float influence;
+	FzbAABB AABB_G;		//node中几何的AABB
+	FzbAABB AABB_E;		//node中光照的AABB
 	glm::vec3 irradiance;
-	glm::vec3 normal;
+	glm::vec3 meanNormal_G;	//没有归一化
+	glm::vec3 meanNormal_E;	//没有归一化
 };
 
 struct FzbSVONodeThreadBlockInfo {
@@ -96,7 +94,7 @@ public:
 
 	uint32_t SVONodeTotalCount_host = 0;	//SVONodes中每层node数量之和
 	uint32_t SVOHasDataNodeTotalCount_host = 0;	//SVONodes中每层有值node数量之和
-	uint32_t SVOInDivisibleNodeTotalCount_host;	//SVONodes中每层不可分node数量之和
+	uint32_t SVOInDivisibleNodeTotalCount_host = 0;	//SVONodes中每层不可分node数量之和
 	//-----------------------------计算weight---------------------------
 	FzbSVONodeData_PG** SVONodes_multiLayer_Array = nullptr;	//每层有值node的数组指针
 	float* SVODivisibleNodeBlockWeight;

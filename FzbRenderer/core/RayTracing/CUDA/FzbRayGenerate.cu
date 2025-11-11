@@ -40,7 +40,7 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 		float y = sinTheta * glm::sin(phi);
 		float z = cosTheta;
 		ray.direction = glm::normalize(TBN * glm::vec3(x, y, z));
-		pdf *= 0.5f / PI;
+		pdf *= 0.5f * PI_countdown;
 	}
 	else {
 		float cosTheta = glm::sqrt((1.0f - randomNumber1) / ((triangleAttribute.roughness * triangleAttribute.roughness - 1.0f) * randomNumber1 + 1.0f));
@@ -52,8 +52,8 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 		h = glm::normalize(TBN * h);
 
 		if (triangleAttribute.materialType == 1) {		//粗糙导体
-			ray.direction = 2.0f * glm::dot(-ray.direction, h) * h + ray.direction;	//这里得到的只是h，还需要从h转为i
-			pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f));
+			pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f)), 0.001f);
+			ray.direction = 2.0f * glm::max(glm::dot(-ray.direction, h), 0.001f) * h + ray.direction;	//这里得到的只是h，还需要从h转为i
 		}
 		else if (triangleAttribute.materialType == 2) {		//粗糙电解质
 			/*
@@ -75,16 +75,16 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 			if (randomNumber3 < F_oneChanel) {	//反射
 				ray.refraction = false;
 				pdf *= F_oneChanel;
-				ray.direction = 2.0f * glm::dot(-ray.direction, h) * h + ray.direction;
-				pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f));
+				pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f)), 0.001f);
+				ray.direction = 2.0f * glm::max(glm::dot(-ray.direction, h), 0.001f) * h + ray.direction;
 			}
 			else {	//折射
 				ray.refraction = true;
 				pdf *= 1.0f - F_oneChanel;
 				//glm::vec3 o = -ray.direction;
-				ray.direction = glm::normalize((eta * cosTheta_OH - (glm::sqrt(1.0f + eta * eta * (cosTheta_OH * cosTheta_OH - 1.0f)))) * h + eta * ray.direction);
 				float weight = (eta * eta) / ((1.0f + eta * eta + 2.0f * eta) * cosTheta_OH);
-				pdf *= DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * weight;
+				pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * weight, 0.001f);
+				ray.direction = glm::normalize((eta * cosTheta_OH - (glm::sqrt(1.0f + eta * eta * (cosTheta_OH * cosTheta_OH - 1.0f)))) * h + eta * ray.direction);
 			}
 		}
 	}

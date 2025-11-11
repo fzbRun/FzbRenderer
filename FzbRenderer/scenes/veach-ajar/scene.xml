@@ -63,7 +63,7 @@
 		<bsdf type="diffuse" id="LightBSDF">
 			<rgb name="reflectance" value="1, 1, 1" />
 			<emissive>
-				<rgb name="radiance" value="200, 200, 200" />
+				<rgb name="radiance" value="500, 500, 500" />
 			</emissive>
 		</bsdf>
 		<bsdf type="roughconductor" id="Pot2BSDF">

@@ -20,7 +20,7 @@ __device__ float GeometrySchlickGGX(float NdotV, float roughness)
 	float k = (r * r) / 8.0;
 
 	float nom = NdotV;
-	float denom = NdotV * (1.0 - k) + k;
+	float denom = glm::max(NdotV * (1.0f - k) + k, 0.0001f);
 
 	return nom / denom;
 }
@@ -58,12 +58,22 @@ __device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, cons
 			return ft;
 		}
 		else {
-			glm::vec3 h = normalize(incidence + outgoing);
+			glm::vec3 h = glm::normalize(incidence + outgoing);
 			float NDF = DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness);
 			float G = GeometrySmith(triangleAttribute.normal, outgoing, incidence, triangleAttribute.roughness);
 			glm::vec3 F = fresnelSchlick(glm::max(glm::dot(h, outgoing), 0.0f), triangleAttribute.albedo);
 			glm::vec3 fr = NDF * G * F;
 			float weight = 4.0f * glm::max(glm::dot(triangleAttribute.normal, outgoing), 0.0f) * glm::max(glm::dot(triangleAttribute.normal, incidence), 0.0f) + 0.01f;
+
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("fr:%f %f %f weight:%f\n", fr.x, fr.y, fr.z, weight);
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("NDF:%f G:%f F:%f %f %f\n", NDF, G, F.x, F.y, F.z);
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("normal:%f %f %f\n", triangleAttribute.normal.x, triangleAttribute.normal.y, triangleAttribute.normal.z);
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("h:%f %f %f\n", h.x, h.y, h.z);
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("roughness:%f\n", triangleAttribute.roughness);
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("h:%f %f %f\n", h.x, h.y, h.z);
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("incidence:%f %f %f\n", incidence.x, incidence.y, incidence.z);
+			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("outgoing:%f %f %f\n", outgoing.x, outgoing.y, outgoing.z);
+ 
 			return fr /= weight;
 		}
 	} 

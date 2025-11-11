@@ -16,9 +16,7 @@ FzbSVO_PG::FzbSVO_PG(pugi::xml_node& SVO_PGNode) {
 		this->setting.useCube = std::string(SVOSettingNode.child("useCube").attribute("value").value()) == "true";
 		this->setting.lightInjectSPP = std::stoi(SVOSettingNode.child("lightInjectSPP").attribute("value").value());
 		this->setting.thresholds.irradianceRelRatioThreshold = std::stof(SVOSettingNode.child("irradianceRelRatioThreshold").attribute("value").value());
-		this->setting.thresholds.irradianceRelRatioThreshold = std::stof(SVOSettingNode.child("irradianceRelRatioThreshold").attribute("value").value());
-		this->setting.thresholds.surfaceAreaThreshold = std::stof(SVOSettingNode.child("surfaceAreaThreshold").attribute("value").value());
-		this->setting.thresholds.voxelMultiple = std::stof(SVOSettingNode.child("voxelMultiple").attribute("value").value());
+		this->setting.thresholds.cosineDiffThreshold = std::stof(SVOSettingNode.child("cosineDiffThreshold").attribute("value").value());
 	}
 
 	addMainSceneInfo();
@@ -36,10 +34,8 @@ void FzbSVO_PG::init() {
 	createBufferAndDescriptor();
 	createSemaphore();
 
+	rayTracingSourceManager.createSource();
 	FzbVGBUniformData VGBUniformData = { setting.voxelNum, glm::vec3(uniformBufferObject.voxelSize_Num), uniformBufferObject.voxelStartPos };
-	setting.thresholds.voxelMultiple *= (uniformBufferObject.voxelSize_Num.x * uniformBufferObject.voxelSize_Num.y +
-		uniformBufferObject.voxelSize_Num.x * uniformBufferObject.voxelSize_Num.z +
-		uniformBufferObject.voxelSize_Num.y * uniformBufferObject.voxelSize_Num.z) * 2.0f;
 	svoCuda_pg = std::make_shared<FzbSVOCuda_PG>(rayTracingSourceManager.sourceManagerCuda, setting, VGBUniformData, VGB, SVOFinishedSemaphore.handle, setting.thresholds);
 	createVGB();
 	createSVO_PG();
@@ -222,7 +218,6 @@ void FzbSVO_PG::createVGB() {
 	fzbSubmitCommandBuffer(commandBuffer, {}, waitStages, { VGBFinishedSemaphore.semaphore });
 }
 void FzbSVO_PG::createSVO_PG() {
-	rayTracingSourceManager.createSource();
 	svoCuda_pg->createSVOCuda_PG(VGBFinishedSemaphore.handle);
 }
 
@@ -260,7 +255,9 @@ FzbSVO_PG_Debug::FzbSVO_PG_Debug(pugi::xml_node& SVO_PG_DebugNode) {
 		this->setting.voxelIrradianceDebugInfo = std::string(SVOSettingNode.child("voxelIrradianceDebugInfo").attribute("value").value()) == "true";
 		this->setting.OctreeNodeDebugInfo = std::string(SVOSettingNode.child("OctreeNodeDebugInfo").attribute("value").value()) == "true";
 		this->setting.SVONodeClusterDebugInfo = std::string(SVOSettingNode.child("SVONodeClusterDebugInfo").attribute("value").value()) == "true";
-		this->setting.SVONodeClusterLevel = std::stoi(SVOSettingNode.child("SVONodeClusterDebugInfo").attribute("level").value());
+		//this->setting.SVONodeClusterLevel = std::stoi(SVOSettingNode.child("SVONodeClusterDebugInfo").attribute("level").value());
+		this->setting.lookCube = std::string(SVOSettingNode.child("SVONodeClusterDebugInfo").attribute("lookCube").value()) == "true";
+		this->setting.SVOWeightsDebugInfo = std::string(SVOSettingNode.child("SVOWeightsDebugInfo").attribute("value").value()) == "true";
 	}
 
 	addMainSceneInfo();
@@ -274,7 +271,7 @@ FzbSVO_PG_Debug::FzbSVO_PG_Debug(pugi::xml_node& SVO_PG_DebugNode) {
 
 	while (pow(2, this->SVO_PG_MaxDepth) <= this->SVO_PG->setting.voxelNum) ++this->SVO_PG_MaxDepth;
 	//if (setting.SVONodeClusterLevel == 0) throw std::runtime_error("暂时不支持查看无聚类效果");
-	if (setting.SVONodeClusterLevel >= this->SVO_PG_MaxDepth - 1) this->setting.SVONodeClusterLevel = this->SVO_PG_MaxDepth - 2;
+	//if (setting.SVONodeClusterLevel >= this->SVO_PG_MaxDepth - 1) this->setting.SVONodeClusterLevel = this->SVO_PG_MaxDepth - 2;
 }
 void FzbSVO_PG_Debug::addMainSceneInfo() {
 	
@@ -321,7 +318,7 @@ void FzbSVO_PG_Debug::clean() {
 	presentSourceManager.clean();
 	depthMap.clean();
 	if (descriptorSetLayout) vkDestroyDescriptorSetLayout(FzbRenderer::globalData.logicalDevice, descriptorSetLayout, nullptr);
-	SVONodeClusterUniformBuffer.clean();
+	debugUniformBuffer.clean();
 }
 
 void FzbSVO_PG_Debug::presentPrepare() {
@@ -336,6 +333,10 @@ void FzbSVO_PG_Debug::presentPrepare() {
 	else if (setting.SVONodeClusterDebugInfo) {
 		createSVODebugBufferAndDescirptor();
 		createVGBRenderPass_SVONodeClusterInfo();
+	}
+	else if (setting.SVOWeightsDebugInfo) {
+		createSVOWeightsDebugBufferAndDescirptor();
+		createSVORenderPass_SVOWeightsInfo();
 	}
 }
 
@@ -426,32 +427,55 @@ void FzbSVO_PG_Debug::createOctreeDebugBufferAndDescirptor() {
 
 	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, this->SVO_PG_MaxDepth - 2 });
+	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
 	this->descriptorPool = fzbCreateDescriptorPool(bufferTypeAndNum);
 
-	uint32_t descriptorSetArraySize = this->SVO_PG_MaxDepth - 2;
+	uint32_t descriptorSetArraySize = this->SVO_PG_MaxDepth - 2 + 1;
 
 	std::vector<VkDescriptorType> descriptorTypes(0);
-	for (int i = 0; i < descriptorSetArraySize; ++i) descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	for (int i = 0; i < this->SVO_PG_MaxDepth - 2; ++i) descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
 	std::vector<VkShaderStageFlags> descriptorShaderFlags(0);
-	for (int i = 0; i < descriptorSetArraySize; ++i) descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	for (int i = 0; i < this->SVO_PG_MaxDepth - 2; ++i) descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
 	descriptorSetLayout = fzbCreateDescriptLayout(descriptorSetArraySize, descriptorTypes, descriptorShaderFlags);
 	descriptorSet = fzbCreateDescriptorSet(descriptorPool, descriptorSetLayout);
 
+	this->debugUniformBuffer = fzbCreateUniformBuffer(sizeof(FzbSVONodeClusterUniformObject));
+	FzbSVONodeClusterUniformObject nodeClusterUniformObject;
+	nodeClusterUniformObject.nodeSize_Num = this->SVO_PG->uniformBufferObject.voxelSize_Num;
+	nodeClusterUniformObject.startPos = this->SVO_PG->uniformBufferObject.voxelStartPos;
+	nodeClusterUniformObject.maxDepth = this->SVO_PG_MaxDepth;
+	memcpy(debugUniformBuffer.mapped, &nodeClusterUniformObject, sizeof(FzbSVONodeClusterUniformObject));
 
 	std::vector<VkWriteDescriptorSet> OctreeBufferDescriptorWrites(descriptorSetArraySize);
-	std::vector<VkDescriptorBufferInfo> octreeBufferInfos(descriptorSetArraySize);
-	for (int i = 0; i < descriptorSetArraySize; ++i) {
+
+	VkDescriptorBufferInfo uniformBuffer;
+	uniformBuffer.buffer = debugUniformBuffer.buffer;
+	uniformBuffer.offset = 0;
+	uniformBuffer.range = debugUniformBuffer.size;
+
+	OctreeBufferDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	OctreeBufferDescriptorWrites[0].dstSet = descriptorSet;
+	OctreeBufferDescriptorWrites[0].dstBinding = 0;
+	OctreeBufferDescriptorWrites[0].dstArrayElement = 0;
+	OctreeBufferDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	OctreeBufferDescriptorWrites[0].descriptorCount = 1;
+	OctreeBufferDescriptorWrites[0].pBufferInfo = &uniformBuffer;
+
+	std::vector<VkDescriptorBufferInfo> octreeBufferInfos(this->SVO_PG_MaxDepth - 2);
+	for (int i = 0; i < this->SVO_PG_MaxDepth - 2; ++i) {
 		octreeBufferInfos[i].buffer = this->SVO_PG->OctreeNodesBuffers[i].buffer;
 		octreeBufferInfos[i].offset = 0;
 		octreeBufferInfos[i].range = this->SVO_PG->OctreeNodesBuffers[i].size;
 
-		OctreeBufferDescriptorWrites[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		OctreeBufferDescriptorWrites[i].dstSet = descriptorSet;
-		OctreeBufferDescriptorWrites[i].dstBinding = i;
-		OctreeBufferDescriptorWrites[i].dstArrayElement = 0;
-		OctreeBufferDescriptorWrites[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		OctreeBufferDescriptorWrites[i].descriptorCount = 1;
-		OctreeBufferDescriptorWrites[i].pBufferInfo = &octreeBufferInfos[i];
+		OctreeBufferDescriptorWrites[i + 1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		OctreeBufferDescriptorWrites[i + 1].dstSet = descriptorSet;
+		OctreeBufferDescriptorWrites[i + 1].dstBinding = i + 1;
+		OctreeBufferDescriptorWrites[i + 1].dstArrayElement = 0;
+		OctreeBufferDescriptorWrites[i + 1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		OctreeBufferDescriptorWrites[i + 1].descriptorCount = 1;
+		OctreeBufferDescriptorWrites[i + 1].pBufferInfo = &octreeBufferInfos[i];
 	}
 
 	vkUpdateDescriptorSets(FzbRenderer::globalData.logicalDevice, OctreeBufferDescriptorWrites.size(), OctreeBufferDescriptorWrites.data(), 0, nullptr);
@@ -487,6 +511,7 @@ void FzbSVO_PG_Debug::createOctreeRenderPass() {
 	//搞一个线框，显示聚类后的node的范围
 	uint32_t nodeCount = 0;
 	for (int i = 1; i < this->SVO_PG_MaxDepth - 1; ++i) nodeCount += std::pow(8, i);
+	nodeCount *= 3;
 	cubeMesh.clean();
 	cubeMesh = FzbMesh();
 	cubeMesh.instanceNum = nodeCount;
@@ -519,7 +544,7 @@ void FzbSVO_PG_Debug::createOctreeRenderPass() {
 void FzbSVO_PG_Debug::createSVODebugBufferAndDescirptor() {
 	this->SVO_PG->createSVOBuffers(this->setting.useDeviceAddress);
 
-	this->SVONodeClusterUniformBuffer = fzbCreateUniformBuffer(sizeof(FzbSVONodeClusterUniformObject));
+	this->debugUniformBuffer = fzbCreateUniformBuffer(sizeof(FzbSVONodeClusterUniformObject));
 	//float scale = powf(2.0f, setting.SVONodeClusterLevel + 1);
 	//glm::vec3 nodeSize = glm::vec3(this->SVO_PG->uniformBufferObject.voxelSize_Num) * scale;
 	//float nodeNum = this->SVO_PG->uniformBufferObject.voxelSize_Num.w / scale;
@@ -527,7 +552,7 @@ void FzbSVO_PG_Debug::createSVODebugBufferAndDescirptor() {
 	nodeClusterUniformObject.nodeSize_Num = this->SVO_PG->uniformBufferObject.voxelSize_Num;
 	nodeClusterUniformObject.startPos = this->SVO_PG->uniformBufferObject.voxelStartPos;
 	nodeClusterUniformObject.maxDepth = this->SVO_PG_MaxDepth;
-	nodeClusterUniformObject.nodeClusterInfoLevel = this->setting.SVONodeClusterLevel;
+	//nodeClusterUniformObject.nodeClusterInfoLevel = this->setting.SVONodeClusterLevel;
 	for (int i = 0; i < this->SVO_PG_MaxDepth - 1; ++i) {	//不算根节点
 		nodeClusterUniformObject.nodeCounts[i] = this->SVO_PG->svoCuda_pg->SVOLayerInfos_host[i].divisibleNodeCount * 8;
 		if (this->setting.useDeviceAddress) {
@@ -535,7 +560,7 @@ void FzbSVO_PG_Debug::createSVODebugBufferAndDescirptor() {
 			nodeClusterUniformObject.SVONodesAddress[i] = this->SVO_PG->SVONodesBuffers[i].deviceAddress;
 		}
 	}
-	memcpy(SVONodeClusterUniformBuffer.mapped, &nodeClusterUniformObject, sizeof(FzbSVONodeClusterUniformObject));
+	memcpy(debugUniformBuffer.mapped, &nodeClusterUniformObject, sizeof(FzbSVONodeClusterUniformObject));
 
 	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
 	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
@@ -567,9 +592,9 @@ void FzbSVO_PG_Debug::createSVODebugBufferAndDescirptor() {
 	//SVOBufferDescriptorWrites[0].pBufferInfo = &svoBufferInfo;
 
 	VkDescriptorBufferInfo svoUniformBufferInfo{};
-	svoUniformBufferInfo.buffer = this->SVONodeClusterUniformBuffer.buffer;
+	svoUniformBufferInfo.buffer = this->debugUniformBuffer.buffer;
 	svoUniformBufferInfo.offset = 0;
-	svoUniformBufferInfo.range = this->SVONodeClusterUniformBuffer.size;
+	svoUniformBufferInfo.range = this->debugUniformBuffer.size;
 	SVOBufferDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 	SVOBufferDescriptorWrites[0].dstSet = descriptorSet;
 	SVOBufferDescriptorWrites[0].dstBinding = 0;
@@ -641,52 +666,63 @@ void FzbSVO_PG_Debug::createVGBRenderPass_SVONodeClusterInfo() {
 
 	uint32_t nodeCount = 0;
 	for (int i = 0; i < this->SVO_PG_MaxDepth - 1; ++i) nodeCount += this->SVO_PG->svoCuda_pg->SVOLayerInfos_host[i].divisibleNodeCount * 8;
+	nodeCount *= 3;
 	std::map<std::string, FzbShaderInfo> shaderInfos;
 
-	bool lookCube = false;
-	FzbMesh cubeMesh = FzbMesh();
 	FzbShaderInfo svoNodeClusterCubeShaderInfo = { "/core/SceneDivision/SVO_PG/shaders/Debug/svoNodeClusterPresent/cube" };
+
+	FzbShaderInfo svoNodeClusterWireframeShaderInfo;
+	if (setting.useDeviceAddress) svoNodeClusterWireframeShaderInfo = { "/core/SceneDivision/SVO_PG/shaders/Debug/svoNodeClusterPresent/wireFrame" };
+	else svoNodeClusterWireframeShaderInfo = { "/core/SceneDivision/SVO_PG/shaders/Debug/svoNodeClusterPresent/wireFrame2" };
+
 	FzbShaderInfo diffuseShaderInfo = { "/core/Materials/Diffuse/shaders/forwardRender" };
 	FzbShaderInfo roughconductorShaderInfo = { "/core/Materials/roughconductor/shaders/forwardRender" };
-	if (lookCube) {
+
+	this->presentSourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet);
+	shaderInfos.insert({ "diffuse", diffuseShaderInfo });
+	shaderInfos.insert({ "roughconductor", roughconductorShaderInfo });
+
+	FzbMesh cubeMesh = FzbMesh();
+	cubeMesh.instanceNum = nodeCount;
+	if (setting.lookCube) {
 		//搞一个cube，展示聚类后内部AABB及其irradiance
-		cubeMesh = FzbMesh();
-		cubeMesh.instanceNum = nodeCount;
 		fzbCreateCube(cubeMesh, FzbVertexFormat());
 		this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
-		this->presentSourceManager.addMeshMaterial(&this->presentSourceManager.componentScene.sceneMeshSet[1], FzbMaterial("svoNodeClusterCubeDebugMaterial", "svoNodeClusterCubeDebugMaterial"));
+		this->presentSourceManager.addMeshMaterial(&this->presentSourceManager.componentScene.sceneMeshSet[0], FzbMaterial("svoNodeClusterCubeDebugMaterial", "svoNodeClusterCubeDebugMaterial"));
 		shaderInfos.insert({ "svoNodeClusterCubeDebugMaterial", svoNodeClusterCubeShaderInfo });
 	}
 	else {
-		this->presentSourceManager.addMeshMaterial(FzbRenderer::globalData.mainScene.sceneMeshSet);
-		shaderInfos.insert({ "diffuse", diffuseShaderInfo });
-		shaderInfos.insert({ "roughconductor", roughconductorShaderInfo });
+		//搞一个线框，显示聚类后的node的范围
+		fzbCreateCubeWireframe(cubeMesh);
+		this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
+		this->presentSourceManager.addMeshMaterial(&this->presentSourceManager.componentScene.sceneMeshSet[0], FzbMaterial("svoNodeClusterWireframeDebugMaterial", "svoNodeClusterWireframeDebugMaterial"));
+		shaderInfos.insert({ "svoNodeClusterWireframeDebugMaterial", svoNodeClusterWireframeShaderInfo });
 	}
-
-	//搞一个线框，显示聚类后的node的范围
-	cubeMesh.clean();
-	cubeMesh = FzbMesh();
-	cubeMesh.instanceNum = nodeCount;
-	//cubeMesh.instanceNum = std::pow(setting.SVO_PGSetting.voxelNum, 3) / pow(8, setting.SVONodeClusterLevel + 1);
-	fzbCreateCubeWireframe(cubeMesh);
-	this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
-
-	this->presentSourceManager.addMeshMaterial(&this->presentSourceManager.componentScene.sceneMeshSet[0], FzbMaterial("svoNodeClusterWireframeDebugMaterial", "svoNodeClusterWireframeDebugMaterial"));
-	FzbShaderInfo svoNodeClusterWireframeShaderInfo;
-	if(setting.useDeviceAddress) svoNodeClusterWireframeShaderInfo = { "/core/SceneDivision/SVO_PG/shaders/Debug/svoNodeClusterPresent/wireFrame" };
-	else svoNodeClusterWireframeShaderInfo = { "/core/SceneDivision/SVO_PG/shaders/Debug/svoNodeClusterPresent/wireFrame2" };
-	shaderInfos.insert({ "svoNodeClusterWireframeDebugMaterial", svoNodeClusterWireframeShaderInfo });
 
 	this->presentSourceManager.componentScene.createVertexBuffer(true, false);
 	this->presentSourceManager.addSource(shaderInfos);
 
-	if (this->SVO_PG_MaxDepth > 5)
-		this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath].shaderVariants[0].macros.insert({ "LAYER5", true });
-	if (this->SVO_PG_MaxDepth > 6)
-		this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath].shaderVariants[0].macros.insert({ "LAYER6", true });
+	if (setting.lookCube) {
+		for (int i = 1; i < this->SVO_PG_MaxDepth; ++i) {
+			if (this->SVO_PG->SVONodesBuffers[i - 1].size > 0)
+				this->presentSourceManager.shaderSet[svoNodeClusterCubeShaderInfo.shaderPath].shaderVariants[0].macros.insert({ "LAYER" + std::to_string(i), true });
+		}
+	}
+	else {
+		for (int i = 1; i < this->SVO_PG_MaxDepth; ++i) {
+			if (this->SVO_PG->SVONodesBuffers[i - 1].size > 0)
+				this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath].shaderVariants[0].macros.insert({ "LAYER" + std::to_string(i), true });
+		}
+	}
 
-	if (lookCube) {
-		FzbSubPass CubeSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
+	std::vector<FzbShader*> shaderPaths = { &this->presentSourceManager.shaderSet[diffuseShaderInfo.shaderPath],  &this->presentSourceManager.shaderSet[roughconductorShaderInfo.shaderPath] };
+	FzbSubPass forwardSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
+		{ mainScene->cameraAndLightsDescriptorSetLayout }, { mainScene->cameraAndLightsDescriptorSet },
+		mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, shaderPaths);
+	renderRenderPass.addSubPass(forwardSubPass);
+
+	if (setting.lookCube) {
+		FzbSubPass CubeSubPass = FzbSubPass(renderRenderPass.renderPass, 1,
 			{ mainScene->cameraAndLightsDescriptorSetLayout, this->descriptorSetLayout },
 			{ mainScene->cameraAndLightsDescriptorSet, this->descriptorSet },
 			this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer,
@@ -694,17 +730,142 @@ void FzbSVO_PG_Debug::createVGBRenderPass_SVONodeClusterInfo() {
 		renderRenderPass.addSubPass(CubeSubPass);
 	}
 	else {
-		std::vector<FzbShader*> shaderPaths = { &this->presentSourceManager.shaderSet[diffuseShaderInfo.shaderPath],  &this->presentSourceManager.shaderSet[roughconductorShaderInfo.shaderPath] };
-		FzbSubPass forwardSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
-			{ mainScene->cameraAndLightsDescriptorSetLayout }, { mainScene->cameraAndLightsDescriptorSet },
-			mainScene->vertexBuffer.buffer, mainScene->indexBuffer.buffer, shaderPaths);
-		renderRenderPass.addSubPass(forwardSubPass);
+		FzbSubPass CubeWireframeSubPass = FzbSubPass(renderRenderPass.renderPass, 1,
+			{ mainScene->cameraAndLightsDescriptorSetLayout, this->descriptorSetLayout },
+			{ mainScene->cameraAndLightsDescriptorSet, this->descriptorSet },
+			this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer,
+			{ &this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath] });
+		renderRenderPass.addSubPass(CubeWireframeSubPass);
+	}
+}
+
+void FzbSVO_PG_Debug::createSVOWeightsDebugBufferAndDescirptor() {
+	this->SVO_PG->createSVOBuffers(false);
+
+	FzbSVOWeightsUniformObject uniformObject;
+	uniformObject.nodeSize_Num = this->SVO_PG->uniformBufferObject.voxelSize_Num;
+	uniformObject.startPos = this->SVO_PG->uniformBufferObject.voxelStartPos;
+	uniformObject.maxDepth = this->SVO_PG_MaxDepth;
+	//nodeClusterUniformObject.nodeClusterInfoLevel = this->setting.SVONodeClusterLevel;
+	for (int i = 0; i < this->SVO_PG_MaxDepth; ++i) {
+		uniformObject.divisibleNodeCounts[i] = this->SVO_PG->svoCuda_pg->SVOLayerInfos_host[i].divisibleNodeCount;
+		uniformObject.indivisibleNodeCounts[i] = this->SVO_PG->svoCuda_pg->SVOLayerInfos_host[i].indivisibleNodeCount;
+		uniformObject.svoNodeTotalCount += uniformObject.divisibleNodeCounts[i] * 8;
 	}
 
-	FzbSubPass CubeWireframeSubPass = FzbSubPass(renderRenderPass.renderPass, 1,
+	this->debugUniformBuffer = fzbCreateUniformBuffer(sizeof(FzbSVOWeightsUniformObject));
+	memcpy(debugUniformBuffer.mapped, &uniformObject, sizeof(FzbSVOWeightsUniformObject));
+
+	uint32_t descriptorSetArraySize = 2;
+
+	std::map<VkDescriptorType, uint32_t> bufferTypeAndNum;
+	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1 });
+	bufferTypeAndNum.insert({ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, this->SVO_PG_MaxDepth - 1 + 1 });
+	this->descriptorPool = fzbCreateDescriptorPool(bufferTypeAndNum);
+
+	std::vector<VkDescriptorType> descriptorTypes(0);
+	descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+	descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+	for (int i = 0; i < this->SVO_PG_MaxDepth - 1; ++i) {
+		if (this->SVO_PG->SVONodesBuffers[i].size == 0) break;
+		descriptorTypes.push_back(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER);
+		++descriptorSetArraySize;
+	}
+	std::vector<VkShaderStageFlags> descriptorShaderFlags(0);
+	descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	for (int i = 0; i < this->SVO_PG_MaxDepth - 1; ++i) {
+		if (this->SVO_PG->SVONodesBuffers[i].size == 0) break;
+		descriptorShaderFlags.push_back(VK_SHADER_STAGE_ALL);
+	}
+	descriptorSetLayout = fzbCreateDescriptLayout(descriptorSetArraySize, descriptorTypes, descriptorShaderFlags);
+	descriptorSet = fzbCreateDescriptorSet(descriptorPool, descriptorSetLayout);
+
+	std::vector<VkWriteDescriptorSet> svoWeightsBufferDescriptorWrites(descriptorSetArraySize);
+
+	VkDescriptorBufferInfo uniformBuffer;
+	uniformBuffer.buffer = debugUniformBuffer.buffer;
+	uniformBuffer.offset = 0;
+	uniformBuffer.range = debugUniformBuffer.size;
+	svoWeightsBufferDescriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	svoWeightsBufferDescriptorWrites[0].dstSet = descriptorSet;
+	svoWeightsBufferDescriptorWrites[0].dstBinding = 0;
+	svoWeightsBufferDescriptorWrites[0].dstArrayElement = 0;
+	svoWeightsBufferDescriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	svoWeightsBufferDescriptorWrites[0].descriptorCount = 1;
+	svoWeightsBufferDescriptorWrites[0].pBufferInfo = &uniformBuffer;
+
+	VkDescriptorBufferInfo weightsBuffer;
+	weightsBuffer.buffer = this->SVO_PG->SVOWeightsBuffer.buffer;
+	weightsBuffer.offset = 0;
+	weightsBuffer.range = this->SVO_PG->SVOWeightsBuffer.size;
+	svoWeightsBufferDescriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	svoWeightsBufferDescriptorWrites[1].dstSet = descriptorSet;
+	svoWeightsBufferDescriptorWrites[1].dstBinding = 1;
+	svoWeightsBufferDescriptorWrites[1].dstArrayElement = 0;
+	svoWeightsBufferDescriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+	svoWeightsBufferDescriptorWrites[1].descriptorCount = 1;
+	svoWeightsBufferDescriptorWrites[1].pBufferInfo = &weightsBuffer;
+
+	std::vector<VkDescriptorBufferInfo> svoBufferInfos(this->SVO_PG_MaxDepth - 1);
+	for (int i = 0; i < this->SVO_PG_MaxDepth - 1; ++i) {
+		if (this->SVO_PG->SVONodesBuffers[i].size == 0) break;
+
+		svoBufferInfos[i].buffer = this->SVO_PG->SVONodesBuffers[i].buffer;
+		svoBufferInfos[i].offset = 0;
+		svoBufferInfos[i].range = this->SVO_PG->SVONodesBuffers[i].size;
+
+		svoWeightsBufferDescriptorWrites[i + 2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		svoWeightsBufferDescriptorWrites[i + 2].dstSet = descriptorSet;
+		svoWeightsBufferDescriptorWrites[i + 2].dstBinding = i + 2;
+		svoWeightsBufferDescriptorWrites[i + 2].dstArrayElement = 0;
+		svoWeightsBufferDescriptorWrites[i + 2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+		svoWeightsBufferDescriptorWrites[i + 2].descriptorCount = 1;
+		svoWeightsBufferDescriptorWrites[i + 2].pBufferInfo = &svoBufferInfos[i];
+	}
+
+	vkUpdateDescriptorSets(FzbRenderer::globalData.logicalDevice, svoWeightsBufferDescriptorWrites.size(), svoWeightsBufferDescriptorWrites.data(), 0, nullptr);
+}
+//根据相机的pos，找到想要的indivisibleNode，然后显示其与各个node之间的weight
+void FzbSVO_PG_Debug::createSVORenderPass_SVOWeightsInfo() {
+	uint32_t nodeCount = 0;
+	for (int i = 0; i < this->SVO_PG_MaxDepth - 1; ++i) nodeCount += this->SVO_PG->svoCuda_pg->SVOLayerInfos_host[i].divisibleNodeCount * 8;
+
+	FzbMesh cubeMesh = FzbMesh();
+	cubeMesh.instanceNum = nodeCount;
+	fzbCreateCube(cubeMesh, FzbVertexFormat());
+	this->presentSourceManager.componentScene.addMeshToScene(cubeMesh);
+	this->presentSourceManager.componentScene.createVertexBuffer(true, false);
+	this->presentSourceManager.addMeshMaterial(this->presentSourceManager.componentScene.sceneMeshSet, FzbMaterial("svoWeightsDebugMaterial", "svoWeightsDebugMaterial"));
+	FzbShaderInfo svoWeightsShaderInfo = { "/core/SceneDivision/SVO_PG/shaders/Debug/svoWeightsPresent" };
+
+	this->presentSourceManager.addSource({ {"svoWeightsDebugMaterial", svoWeightsShaderInfo} });
+
+	for (int i = 1; i < this->SVO_PG_MaxDepth; ++i) {
+		if (this->SVO_PG->SVONodesBuffers[i - 1].size > 0)
+			this->presentSourceManager.shaderSet[svoWeightsShaderInfo.shaderPath].shaderVariants[0].macros.insert({ "LAYER" + std::to_string(i), true});
+	}
+
+	VkAttachmentDescription colorAttachmentResolve = fzbCreateColorAttachment(FzbRenderer::globalData.swapChainImageFormat);
+	VkAttachmentReference colorAttachmentResolveRef = fzbCreateAttachmentReference(0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+	VkAttachmentDescription depthMapAttachment = fzbCreateDepthAttachment();
+	VkAttachmentReference depthMapAttachmentResolveRef = fzbCreateAttachmentReference(1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+	std::vector<VkAttachmentDescription> attachments = { colorAttachmentResolve, depthMapAttachment };
+
+	std::vector<VkSubpassDescription> subpasses;
+	subpasses.push_back(fzbCreateSubPass(1, &colorAttachmentResolveRef, &depthMapAttachmentResolveRef));
+
+	VkSubpassDependency dependency = fzbCreateSubpassDependency();
+
+	FzbRenderPassSetting renderPassSetting = { true, 1, FzbRenderer::globalData.swapChainExtent, FzbRenderer::globalData.swapChainImageViews.size(), true };
+	renderRenderPass.setting = renderPassSetting;
+	renderRenderPass.createRenderPass(&attachments, subpasses, { dependency });
+	renderRenderPass.createFramebuffers(true);
+
+	FzbSubPass CubeSubPass = FzbSubPass(renderRenderPass.renderPass, 0,
 		{ mainScene->cameraAndLightsDescriptorSetLayout, this->descriptorSetLayout },
 		{ mainScene->cameraAndLightsDescriptorSet, this->descriptorSet },
 		this->presentSourceManager.componentScene.vertexBuffer.buffer, this->presentSourceManager.componentScene.indexBuffer.buffer,
-		{ &this->presentSourceManager.shaderSet[svoNodeClusterWireframeShaderInfo.shaderPath] });
-	renderRenderPass.addSubPass(CubeWireframeSubPass);
+		{ &this->presentSourceManager.shaderSet[svoWeightsShaderInfo.shaderPath] });
+	renderRenderPass.addSubPass(CubeSubPass);
 }

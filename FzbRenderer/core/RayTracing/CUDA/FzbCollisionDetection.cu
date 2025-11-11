@@ -47,13 +47,16 @@ __device__ bool meshCollisionDetection(const float* __restrict__ vertices, const
 	FzbTrianglePos trianglePos;
 	for (int i = 0; i < node.triangleCount; ++i) {	//对于划分不开的node或maxDepth的node，可能包含多个三角形
 		triangle = bvhTriangleInfoArray[node.rightNodeIndex + i];
-		getTriangleVertexPos(vertices, triangle, trianglePos);
+		uint32_t materialType = 0;
+		getTriangleAttribute(vertices, triangle, trianglePos, materialType);
 
 		glm::vec3 E1 = trianglePos.pos1 - trianglePos.pos0;
 		glm::vec3 E2 = trianglePos.pos2 - trianglePos.pos0;
 
-		//glm::vec3 normal = glm::normalize(glm::cross(E1, E2));
-		//if (glm::dot(normal, -ray.direction) <= 0) continue;	//打到了背面，不算撞到，这里应该考虑折射材质的，后面再说吧
+		if (materialType != 2) {
+			glm::vec3 normal = glm::normalize(glm::cross(E1, E2));
+			if (glm::dot(normal, -ray.direction) <= 0) continue;	//打到了背面，不算撞到，这里应该考虑折射材质的，后面再说吧
+		}
 
 		glm::vec3 S = ray.startPos - trianglePos.pos0;
 		glm::vec3 S1 = glm::cross(ray.direction, E2);
@@ -103,9 +106,7 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 	if (anyHit) {
 		ray.hitPos = ray.direction * ray.depth + ray.startPos;
 		if(notOnlyDetection)
-			getTriangleMaterialAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute, bestHitTrianglePos, ray.hitPos);
-		else
-			triangleAttribute.normal = glm::normalize(glm::cross(bestHitTrianglePos.pos1 - bestHitTrianglePos.pos0, bestHitTrianglePos.pos2 - bestHitTrianglePos.pos0));
+			getTriangleAttribute(vertices, materialTextures, bestHitTriangle, triangleAttribute, bestHitTrianglePos, ray.hitPos);
 	}
 	return anyHit;
 }

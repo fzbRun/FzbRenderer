@@ -68,19 +68,19 @@ __device__ void generateRay_SVOPathGuiding(
 		return;
 	}
 
-	float targetDistanceX = targetNodeData.AABB.rightX - targetNodeData.AABB.leftX;
-	float targetDistanceY = targetNodeData.AABB.rightY - targetNodeData.AABB.leftY;
-	float targetDistanceZ = targetNodeData.AABB.rightZ - targetNodeData.AABB.leftZ;
+	float targetDistanceX = targetNodeData.AABB_E.rightX - targetNodeData.AABB_E.leftX;
+	float targetDistanceY = targetNodeData.AABB_E.rightY - targetNodeData.AABB_E.leftY;
+	float targetDistanceZ = targetNodeData.AABB_E.rightZ - targetNodeData.AABB_E.leftZ;
 
-	glm::vec3 nodeCenterPos = glm::vec3(nodeData.AABB.leftX + nodeData.AABB.rightX, nodeData.AABB.leftY + nodeData.AABB.rightY, nodeData.AABB.leftZ + nodeData.AABB.rightZ) * 0.5f;
-	glm::vec3 targetNodeCenterPos = glm::vec3(targetNodeData.AABB.leftX + targetNodeData.AABB.rightX, targetNodeData.AABB.leftY + targetNodeData.AABB.rightY, targetNodeData.AABB.leftZ + targetNodeData.AABB.rightZ) * 0.5f;
-	glm::vec3 nodeDirection = targetNodeCenterPos - nodeCenterPos;
+	//glm::vec3 nodeCenterPos = glm::vec3(nodeData.AABB.leftX + nodeData.AABB.rightX, nodeData.AABB.leftY + nodeData.AABB.rightY, nodeData.AABB.leftZ + nodeData.AABB.rightZ) * 0.5f;
+	glm::vec3 targetNodeCenterPos = glm::vec3(targetNodeData.AABB_E.leftX + targetNodeData.AABB_E.rightX, targetNodeData.AABB_E.leftY + targetNodeData.AABB_E.rightY, targetNodeData.AABB_E.leftZ + targetNodeData.AABB_E.rightZ) * 0.5f;
+	glm::vec3 nodeDirection = targetNodeCenterPos - ray.hitPos;
 
-	glm::vec3 face0StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
+	glm::vec3 face0StartPos = glm::vec3(targetNodeData.AABB_E.leftX, targetNodeData.AABB_E.leftY, targetNodeData.AABB_E.leftZ);
 	face0StartPos.x += nodeDirection.x < 0 ? targetDistanceX : 0.0f;	//在左边
-	glm::vec3 face1StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
+	glm::vec3 face1StartPos = glm::vec3(targetNodeData.AABB_E.leftX, targetNodeData.AABB_E.leftY, targetNodeData.AABB_E.leftZ);
 	face1StartPos.y += nodeDirection.y < 0 ? targetDistanceY : 0.0f;	//在下边
-	glm::vec3 face2StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
+	glm::vec3 face2StartPos = glm::vec3(targetNodeData.AABB_E.leftX, targetNodeData.AABB_E.leftY, targetNodeData.AABB_E.leftZ);
 	face2StartPos.z += nodeDirection.z < 0 ? targetDistanceZ : 0.0f;	//在后边
 
 	float selectFaceArea = 1.0f;
@@ -178,7 +178,7 @@ __device__ void generateRay_SVOPathGuiding(
 		}
 		
 		ray.direction = glm::normalize(ray.direction);
-		ray.startPos = ray.direction * 0.01f + ray.hitPos;
+		ray.startPos = ray.direction * 0.001f + ray.hitPos;
 		ray.depth = FLT_MAX;
 	}
 }	
@@ -237,10 +237,9 @@ __global__ void svoPathGuiding_cuda(
 	if (sppLane == 0) {
 		if (groupFrameCount == 1) resultBuffer[resultIndex] = make_float4(0.0f);
 		//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
-		//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
+		//resultBuffer[resultIndex] = make_float4(0.0f);
 		float4 result = resultBuffer[resultIndex];
 		if (!isfinite(result.x) || !isfinite(result.y) || !isfinite(result.z)) {
-			printf("x\n");
 			resultBuffer[resultIndex] = make_float4(0.0f);
 		}
 		else resultBuffer[resultIndex] = result * ((float)groupFrameCount - 1) / (float)groupFrameCount;
@@ -276,7 +275,7 @@ __global__ void svoPathGuiding_cuda(
 	if (!hit) return;
 	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample);
 
-	uint32_t maxBonceDepth = 2;
+	uint32_t maxBonceDepth = 6;
 #pragma nounroll
 	while (maxBonceDepth > 0) {
 		randomNumberSeed += maxBonceDepth;
@@ -299,7 +298,9 @@ __global__ void svoPathGuiding_cuda(
 
 	radiance /= spp;
 	radiance /= groupFrameCount;
-	radiance = glm::min(radiance, glm::vec3(20.0f));
+	//if (!isfinite(radiance.x) || !isfinite(radiance.y) || !isfinite(radiance.z)) {
+	//	printf("pdf:%f bsdf:%f", pdf, bsdf);
+	//}
 	if (!isfinite(radiance.x) || !isfinite(radiance.y) || !isfinite(radiance.z)) radiance == glm::vec3(0.0f);
 	if (useExternSharedMemory && threadIdx.x < groupSppIndex * spp) {
 		//这是这里如果spp为32的整数倍，则可以先在warp中处理

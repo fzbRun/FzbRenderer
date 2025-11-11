@@ -18,8 +18,9 @@ struct FzbAABBUint {
 	uint rightZ;
 };
 struct FzbSVOVoxelData_PG {
-	vec3 irradiance;
-	vec4 meanNormal;
+	vec4 irradiance;
+	vec4 meanNormal_G;
+	vec4 meanNormal_E;
 	FzbAABBUint AABB;
 };
 layout(set = 0, binding = 1, scalar) coherent volatile buffer VGB {
@@ -154,11 +155,11 @@ void main() {
 		}
 	}
 	
-	//vec3 tangent = normalize(dFdx(worldPos));
-	//vec3 bitangent = normalize(dFdy(worldPos));
-	//vec3 normal =  normalize(cross(bitangent, tangent));
-	//atomicAdd(vgb[voxelIndexU].meanNormal.w, 1.0f);
-	//atomicAdd(vgb[voxelIndexU].meanNormal.x, normal.x);
-	//atomicAdd(vgb[voxelIndexU].meanNormal.y, normal.y);
-	//atomicAdd(vgb[voxelIndexU].meanNormal.z, normal.z);
+	vec3 tangent = normalize(dFdx(worldPos));
+	vec3 bitangent = normalize(dFdy(worldPos));
+	vec3 normal =  normalize(cross(bitangent, tangent));
+	atomicAdd(vgb[voxelIndexU].meanNormal_G.w, 1.0f);
+	atomicAdd(vgb[voxelIndexU].meanNormal_G.x, normal.x);
+	atomicAdd(vgb[voxelIndexU].meanNormal_G.y, normal.y);
+	atomicAdd(vgb[voxelIndexU].meanNormal_G.z, normal.z);
 }

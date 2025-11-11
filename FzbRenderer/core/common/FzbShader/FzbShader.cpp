@@ -544,6 +544,9 @@ FzbShader::FzbShader(std::string path, FzbShaderExtensionsSetting extensionsSett
 				else if (primitiveTopologyValue == "VK_PRIMITIVE_TOPOLOGY_LINE_LIST") {
 					pipelineCreateInfo.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
 				}
+				else if (primitiveTopologyValue == "VK_PRIMITIVE_TOPOLOGY_LINE_STRIP") {
+					pipelineCreateInfo.primitiveTopology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+				}
 				else {
 					throw std::runtime_error("新的基元类型，快来写");
 				}

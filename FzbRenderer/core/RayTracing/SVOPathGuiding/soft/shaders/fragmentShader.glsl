@@ -17,5 +17,7 @@ void main() {
 	uint texelX = uint(texel.x * screenWidth);
 	uint texelY = uint(texel.y * screenHeight);
 	uint resultIndex = texelX + texelY * screenWidth;
-	fragColor = vec4(result[resultIndex].xyz, 1.0f);
+	vec3 result = result[resultIndex].xyz;
+	if (length(result) > 1.0f) result = normalize(result);
+	fragColor = vec4(result, 1.0f);
 }

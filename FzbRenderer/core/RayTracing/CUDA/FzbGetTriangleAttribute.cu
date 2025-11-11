@@ -28,9 +28,8 @@ __device__ glm::mat3 getTBN(const glm::vec3& edge0, const glm::vec3& edge1, cons
 	}
 	return glm::mat3(tangent, bitangent, normal);
 }
-__device__ void getTriangleVertexPos(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTrianglePos& trianglePos) {
-	//FzbPathTracingMaterialUniformObject material = materialInfoArray[triangle.materialIndex];
-	//triangleAttribute.materialType = material.materialType;
+__device__ void getTriangleAttribute(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTrianglePos& trianglePos, uint32_t& materialType) {
+	materialType = materialInfoArray[triangle.materialIndex].materialType;
 
 	int vertexStride = 3; // 位置总是有3个分量
 	if (triangle.vertexFormat & 1) vertexStride += 3; // 法线
@@ -106,7 +105,7 @@ __device__ void getTriangleVertexPos(const float* __restrict__ vertices, FzbBvhN
 	}
 	*/
 }
-__device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices,
+__device__ void getTriangleAttribute(const float* __restrict__ vertices,
 	const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNodeTriangleInfo& triangle, FzbTriangleAttribute& triangleAttribute, const FzbTrianglePos& trianglePos, const glm::vec3& hitPos) {
 	FzbRayTracingMaterialUniformObject material = materialInfoArray[triangle.materialIndex];

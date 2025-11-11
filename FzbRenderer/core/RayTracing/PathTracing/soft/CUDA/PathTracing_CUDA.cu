@@ -48,8 +48,16 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 		if (threadIdx.x < blockDim.x / spp) groupResultRadiance[threadIdx.x] = make_float3(0.0f);
 	}
 	//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
-	//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
-	if (sppLane == 0) resultBuffer[resultIndex] *= ((float)groupFrameCount - 1) / (float)groupFrameCount;
+	if (sppLane == 0) {
+		float4 result = resultBuffer[resultIndex];
+		if (!isfinite(result.x) || !isfinite(result.y) || !isfinite(result.z)) {
+			resultBuffer[resultIndex] = make_float4(0.0f);
+		}
+		else {
+			//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
+			resultBuffer[resultIndex] = result * ((float)groupFrameCount - 1) / (float)groupFrameCount;
+		}
+	}
 	__syncthreads();
 
 	uint32_t randomNumberSeed = groupRandomNumberSeed + threadIndex;
@@ -57,7 +65,7 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 	randomNumberSeed = seed2.x + seed2.y;
 
 	glm::vec3 radiance = glm::vec3(0.0f, 0.0f, 0.0f);
-	float RR = 0.8f;
+	const float RR = 0.8f;
 	float pdf = 1.0f;
 	glm::vec3 bsdf = glm::vec3(1.0f);
 	bool hit = true;
@@ -80,7 +88,7 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 	if (!hit) return;
 	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample);
 
-	uint32_t maxBonceDepth = 2;
+	uint32_t maxBonceDepth = 6;
 	#pragma nounroll
 	while (maxBonceDepth > 0) {
 		randomNumberSeed += maxBonceDepth;
@@ -102,6 +110,9 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 
 	radiance /= spp;
 	radiance /= groupFrameCount;
+	if (!isfinite(radiance.x) || !isfinite(radiance.y) || !isfinite(radiance.z)) {
+		radiance = glm::vec3(0.0f);
+	}
 	if (useExternSharedMemory && threadIdx.x < groupSppIndex * spp) {
 		//这是这里如果spp为32的整数倍，则可以先在warp中处理
 		atomicAdd(&groupResultRadiance[groupSppIndex].x, radiance.x);

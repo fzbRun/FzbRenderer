@@ -99,6 +99,8 @@ void FzbRayTracingSourceManager_Cuda::createRuntimeSource() {
 	//uint32_t randomNumber = distInt(gen);
 	//CHECK(cudaMemcpyToSymbol(systemRandomNumberSeed, &randomNumber, sizeof(uint32_t)));
 	CHECK(cudaMemcpyToSymbol(systemRandomNumberSeed, &FzbRenderer::globalData.randomNumber, sizeof(uint32_t)));
+
+	std::cout << FzbRenderer::globalData.frameIndex << std::endl;
 }
 void FzbRayTracingSourceManager_Cuda::clean() {
 	CHECK(cudaFree(resultBuffer));

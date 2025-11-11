@@ -27,8 +27,8 @@ struct FzbTriangleAttribute {
 const uint32_t maxMaterialCount = 128;
 extern __constant__ FzbRayTracingMaterialUniformObject materialInfoArray[maxMaterialCount];
 
-__device__ void getTriangleVertexPos(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTrianglePos& trianglePos);
-__device__ void getTriangleMaterialAttribute(const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
+__device__ void getTriangleAttribute(const float* __restrict__ vertices, FzbBvhNodeTriangleInfo triangle, FzbTrianglePos& trianglePos, uint32_t& materialType);
+__device__ void getTriangleAttribute(const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNodeTriangleInfo& triangle, FzbTriangleAttribute& triangleAttribute, const FzbTrianglePos& trianglePos, const glm::vec3& hitPos);
 
 #endif

@@ -1,5 +1,13 @@
 #include "FzbSVOCuda_PG.cuh"
 
+__device__ void initAABB(FzbAABB& AABB) {
+	AABB.leftX = FLT_MAX;
+	AABB.leftY = FLT_MAX;
+	AABB.leftZ = FLT_MAX;
+	AABB.rightX = -FLT_MAX;
+	AABB.rightY = -FLT_MAX;
+	AABB.rightZ = -FLT_MAX;
+}
 __device__ void getAABBSum(uint32_t mask, FzbAABB& AABB, uint32_t blockFirstWarpLane) {
 	//得到整合后的AABB的left
 	for (int offset = 4; offset > 0; offset /= 2) {
@@ -54,7 +62,21 @@ __device__ void getAABBSum(FzbAABB& AABB, uint32_t maxEWarpLane) {
 	AABB.rightY = fmaxf(AABB.rightY, maxEAABB_rightY);
 	AABB.rightZ = fmaxf(AABB.rightZ, maxEAABB_rightZ);
 }
+__device__ void getAABB(FzbAABB& AABB, uint32_t warpLane) {
+	AABB.leftX = __shfl_sync(__activemask(), AABB.leftX, warpLane);
+	AABB.leftY = __shfl_sync(__activemask(), AABB.leftY, warpLane);
+	AABB.leftZ = __shfl_sync(__activemask(), AABB.leftZ, warpLane);
+	AABB.rightX = __shfl_sync(__activemask(), AABB.rightX, warpLane);
+	AABB.rightY = __shfl_sync(__activemask(), AABB.rightY, warpLane);
+	AABB.rightZ = __shfl_sync(__activemask(), AABB.rightZ, warpLane);
+}
+__device__ void getVec3(glm::vec3& data, uint32_t warpLane) {
+	data.x = __shfl_sync(__activemask(), data.x, warpLane);
+	data.y = __shfl_sync(__activemask(), data.y, warpLane);
+	data.z = __shfl_sync(__activemask(), data.z, warpLane);
+}
 
+/*
 __global__ void createOctree_device_first(const FzbVoxelData_PG* __restrict__ VGB, FzbSVONodeData_PG* OctreeNodes, uint32_t voxelCount) {
 	__shared__ FzbVGBUniformData groupVGBUniformData;
 	__shared__ FzbSVOUnformData groupSVOUniformData;
@@ -78,7 +100,9 @@ __global__ void createOctree_device_first(const FzbVoxelData_PG* __restrict__ VG
 	uint32_t blockIndexInGroup = threadIdx.x / 8;
 
 	FzbVoxelData_PG voxelData = VGB[threadIndex];
-	bool hasData = voxelData.irradiance != glm::vec3(0.0f);
+	bool hasData = voxelData.irradiance.w != 0.0f;
+	//hasData &= (voxelData.irradiance.x + voxelData.irradiance.y + voxelData.irradiance.z) >= groupSVOUniformData.ignoreIrradianceValueThreshold;
+	glm::vec3 irradiance = hasData ? voxelData.irradiance /= voxelData.irradiance.w : glm::vec3(0.0f);
 	uint32_t warpHasDataMask = __ballot_sync(0xFFFFFFFF, hasData);
 	uint32_t blockHasDataNodeCount = __popc(warpHasDataMask & blockNodeMask);
 
@@ -90,7 +114,8 @@ __global__ void createOctree_device_first(const FzbVoxelData_PG* __restrict__ VG
 
 	if (blockHasDataNodeCount == 0) return;	//当前block中node全部没有数据
 
-	glm::vec3 normal = voxelData.meanNormal.w == 0.0f ? glm::vec3(0.0f) : glm::normalize(glm::vec3(voxelData.meanNormal) / voxelData.meanNormal.w);
+	//glm::vec3 normal = voxelData.meanNormal.w == 0.0f ? glm::vec3(0.0f) : glm::normalize(glm::vec3(voxelData.meanNormal) / voxelData.meanNormal.w);
+	glm::vec3 normal = glm::normalize(glm::vec3(voxelData.meanNormal));
 	FzbAABB AABB = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
 	if (hasData) {
 		AABB = {
@@ -107,7 +132,7 @@ __global__ void createOctree_device_first(const FzbVoxelData_PG* __restrict__ VG
 			FzbSVONodeData_PG nodeData;
 			nodeData.indivisible = 1;
 			nodeData.AABB = AABB;
-			nodeData.irradiance = voxelData.irradiance;
+			nodeData.irradiance = irradiance;
 			nodeData.label = 0;
 			nodeData.normal = normal;
 			OctreeNodes[blockIndex] = nodeData;
@@ -115,7 +140,7 @@ __global__ void createOctree_device_first(const FzbVoxelData_PG* __restrict__ VG
 		return;
 	}
 	//------------------------------------------------irradiance差距判断-------------------------------------------------
-	float irradianceValue = glm::length(voxelData.irradiance);
+	float irradianceValue = glm::length(irradiance);
 	float maxEIrradianceValue = irradianceValue;
 	uint32_t maxEWarpLane = warpLane;
 	for (int offset = 4; offset > 0; offset /= 2) {
@@ -200,7 +225,7 @@ __global__ void createOctree_device_first(const FzbVoxelData_PG* __restrict__ VG
 	meanNormal /= notIgnoreNodeCount;
 	//------------------------------------------------计算的irradiance之和-------------------------------------------------
 	//如果可分，则计算的是所有的node的irradiance之和；如果不可分，则计算的是乘以因子的irradiance之和
-	glm::vec3 mergeIrradiance = voxelData.irradiance;
+	glm::vec3 mergeIrradiance = irradiance;
 	mergeIrradiance *= mergeAABBSurfaceArea < 1e-6 ? 0.0f : surfaceArea / mergeAABBSurfaceArea;
 	for (int offset = 4; offset > 0; offset /= 2) {
 		mergeIrradiance.x += __shfl_down_sync(warpHasDataMask, mergeIrradiance.x, offset, 8);
@@ -355,6 +380,7 @@ __global__ void createOctree_device(FzbSVONodeData_PG* OctreeNodes_children, Fzb
 		OctreeNodes[blockIndex] = nodeData;
 	}
 }
+*/
 /*
 __global__ void createOctree_device_first(const FzbVoxelData_PG* __restrict__ VGB, FzbSVONodeData_PG* OctreeNodes, uint32_t voxelCount) {
 	__shared__ FzbVGBUniformData groupVGBUniformData;
@@ -630,12 +656,398 @@ __global__ void createOctree_device(FzbSVONodeData_PG* OctreeNodes_children, Fzb
 	//	printf("%f %f %f\n", mergeIrradiance.x, mergeIrradiance.y, mergeIrradiance.z);
 }
 */
+
+__global__ void createOctree_device_VGB(const FzbVoxelData_PG* __restrict__ VGB, FzbSVONodeData_PG* OctreeNodes, uint32_t voxelCount) {
+	__shared__ FzbVGBUniformData groupVGBUniformData;
+	__shared__ FzbSVOUnformData groupSVOUniformData;
+
+	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
+	uint32_t warpIndex = threadIdx.x / 32;
+	uint32_t warpLane = threadIdx.x & 31;
+
+	if (threadIndex >= voxelCount) return;		//voxelCount一定是32的整数倍，return不影响洗牌操纵
+	if (threadIdx.x == 0) {
+		groupVGBUniformData = systemVGBUniformData;
+		groupSVOUniformData = systemSVOUniformData;
+	}
+	__syncthreads();
+
+	//这里的block指的是父级node
+	uint32_t indexInBlock = threadIndex & 7;	//在8个兄弟node中的索引
+	uint32_t blockIndex = threadIndex / 8;		//block在全局的索引
+	uint32_t blockFirstWarpLane = (blockIndex & 3) * 8;	//当前block在warp中的位索引
+	uint32_t blockNodeMask = 0xff << blockFirstWarpLane;
+	uint32_t blockIndexInGroup = threadIdx.x / 8;
+
+	FzbVoxelData_PG voxelData = VGB[threadIndex];
+	FzbAABB AABB = {
+			__int_as_float(voxelData.AABB.leftX),
+			__int_as_float(voxelData.AABB.rightX),
+			__int_as_float(voxelData.AABB.leftY),
+			__int_as_float(voxelData.AABB.rightY),
+			__int_as_float(voxelData.AABB.leftZ),
+			__int_as_float(voxelData.AABB.rightZ)
+	};
+
+	bool hasIrradiance = voxelData.irradiance.w != 0.0f;
+	bool hasGeometry = AABB.leftX != FLT_MAX;
+	glm::vec3 irradiance = voxelData.irradiance;
+
+	uint32_t warpHasGeometryMask = __ballot_sync(0xFFFFFFFF, hasGeometry);
+	uint32_t blockHasGeometryNodeCount = __popc(warpHasGeometryMask & blockNodeMask);
+
+	if (blockHasGeometryNodeCount == 0) return;	//当前block中node全部没有数据
+
+	if (blockHasGeometryNodeCount == 1) {
+		if (hasGeometry) {
+			FzbSVONodeData_PG nodeData;
+			nodeData.indivisible = 1;
+			nodeData.AABB_G = AABB;
+			//nodeData.AABB_E = AABB;
+			initAABB(nodeData.AABB_E);
+			nodeData.irradiance = glm::vec3(0.0f); 	// voxelData.irradiance;
+			nodeData.label = 0;
+			nodeData.meanNormal_G = voxelData.meanNormal_G;
+			nodeData.meanNormal_E = glm::vec3(0.0f); //voxelData.meanNormal_E;
+			OctreeNodes[blockIndex] = nodeData;
+		}
+		return;
+	}
+	//---------------------------------------计算整合后的AABB_G-------------------------------------------------
+	FzbAABB mergeAABB_G = AABB;
+	getAABBSum(__activemask(), mergeAABB_G, blockFirstWarpLane);
+	//---------------------------------------计算整合后的meanNormal_G-------------------------------------------------
+	glm::vec3 meanNormal_G = voxelData.meanNormal_G;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		meanNormal_G.x += __shfl_down_sync(__activemask(), meanNormal_G.x, offset, 8);
+		meanNormal_G.y += __shfl_down_sync(__activemask(), meanNormal_G.y, offset, 8);
+		meanNormal_G.z += __shfl_down_sync(__activemask(), meanNormal_G.z, offset, 8);
+	}
+	//------------------------------------------------irradiance差距判断-------------------------------------------------
+	float irradianceValue = glm::length(irradiance);
+	float maxEIrradianceValue = irradianceValue;
+	uint32_t maxEWarpLane = warpLane;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_maxEIrradianceValue = __shfl_down_sync(__activemask(), maxEIrradianceValue, offset, 8);
+		uint32_t other_maxEWarpLane = __shfl_down_sync(__activemask(), maxEWarpLane, offset, 8);
+		if (other_maxEIrradianceValue > maxEIrradianceValue) {
+			maxEIrradianceValue = other_maxEIrradianceValue;
+			maxEWarpLane = other_maxEWarpLane;
+		}
+	}
+	maxEIrradianceValue = __shfl_sync(__activemask(), maxEIrradianceValue, blockFirstWarpLane);
+	maxEWarpLane = __shfl_sync(__activemask(), maxEWarpLane, blockFirstWarpLane);
+
+	if (maxEIrradianceValue == 0.0f) {
+		//getAABB(mergeAABB_G, blockFirstWarpLane);
+		//getVec3(meanNormal_G, blockFirstWarpLane);
+		if (warpLane == blockFirstWarpLane) {
+			FzbSVONodeData_PG nodeData;
+			nodeData.indivisible = 1;
+			nodeData.AABB_G = mergeAABB_G;
+			//nodeData.AABB_E = AABB;
+			initAABB(nodeData.AABB_E);
+			nodeData.irradiance = glm::vec3(0.0f); 	// voxelData.irradiance;
+			nodeData.label = 0;
+			nodeData.meanNormal_G = meanNormal_G;
+			nodeData.meanNormal_E = glm::vec3(0.0f); //normal;
+			OctreeNodes[blockIndex] = nodeData;
+		}
+		return;
+	}
+	//----------------------------------------------判断忽略--------------------------------------------------------
+	uint32_t ignore = 0;
+	float relIrradianceRatio = irradianceValue / maxEIrradianceValue;
+	if (relIrradianceRatio <= groupSVOUniformData.irradianceRelRatioThreshold) ignore = 1;
+
+	uint32_t blockIgnoreMask = ignore << indexInBlock;
+	for (int offset = 4; offset > 0; offset /= 2)
+		blockIgnoreMask |= __shfl_down_sync(__activemask(), blockIgnoreMask, offset, 8);
+	blockIgnoreMask = __shfl_sync(__activemask(), blockIgnoreMask, blockFirstWarpLane);
+	uint32_t blockNotIgnoreCount = 8 - __popc(blockIgnoreMask);
+	if (blockNotIgnoreCount == 1) {	//只有一个不被忽略的node，就当作噪声去掉
+		if (warpLane == blockFirstWarpLane) {
+			FzbSVONodeData_PG nodeData;
+			nodeData.indivisible = 1;
+			nodeData.AABB_G = mergeAABB_G;
+			//nodeData.AABB_E = AABB;
+			initAABB(nodeData.AABB_E);
+			nodeData.irradiance = glm::vec3(0.0f); 	// voxelData.irradiance;
+			nodeData.label = 0;
+			nodeData.meanNormal_G = meanNormal_G;
+			nodeData.meanNormal_E = glm::vec3(0.0f); //normal;
+			OctreeNodes[blockIndex] = nodeData;
+		}
+		return;
+	}
+	//---------------------------------------余弦判断-------------------------------------------------
+	bool indivisible = true;
+	glm::vec3 normalizeNormal_G = hasGeometry ? glm::normalize(voxelData.meanNormal_G) : glm::vec3(0.0f);
+	for (int blockLane = 0; blockLane < 8; ++blockLane) {
+		glm::vec3 other_normal = normalizeNormal_G;
+		getVec3(other_normal, blockFirstWarpLane + blockLane);
+		//if (ignore == 1 || blockLane == indexInBlock || (blockIgnoreMask & (1u << blockLane)) > 0) continue;
+		if (blockLane == indexInBlock || other_normal == glm::vec3(0.0f) || normalizeNormal_G == glm::vec3(0.0f)) continue;
+		float cosine = glm::dot(other_normal, normalizeNormal_G);
+		if (cosine <= groupSVOUniformData.cosineDiffThreshold) indivisible = false;
+	}
+	for (int offset = 4; offset > 0; offset /= 2)
+		indivisible &= __shfl_down_sync(__activemask(), indivisible, offset, 8);
+	//indivisible = __shfl_sync(__activemask(), indivisible, blockFirstWarpLane);
+	//---------------------------------------计算整合后的AABB-------------------------------------------------
+	FzbAABB mergeAABB_E = AABB;
+	if (ignore == 1) mergeAABB_E = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
+	getAABBSum(__activemask(), mergeAABB_E, blockFirstWarpLane);
+
+	//计算所有不被忽略的node聚类后的AABB的表面积
+	float mergeAABBSurfaceArea = 0.0f;
+	if (warpLane == blockFirstWarpLane) {
+		float lengthX = mergeAABB_E.rightX - mergeAABB_E.leftX;
+		float lengthY = mergeAABB_E.rightY - mergeAABB_E.leftY;
+		float lengthZ = mergeAABB_E.rightZ - mergeAABB_E.leftZ;
+		mergeAABBSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
+	}
+	mergeAABBSurfaceArea = __shfl_sync(__activemask(), mergeAABBSurfaceArea, blockFirstWarpLane);
+
+	float surfaceArea = 0.0f;
+	if (hasIrradiance && hasGeometry) {	//有光照才需要surfaceArea来计算缩放因子，虽然说有光照必有几何，但是光栅化可能没有注入进去
+		float lengthX = AABB.rightX - AABB.leftX;
+		float lengthY = AABB.rightY - AABB.leftY;
+		float lengthZ = AABB.rightZ - AABB.leftZ;
+		surfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
+	}
+	//-----------------------------------------------计算法线--------------------------------------------------------------
+	glm::vec3 meanNormal_E = ignore ? glm::vec3(0.0f) : voxelData.meanNormal_E;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		meanNormal_E.x += __shfl_down_sync(__activemask(), meanNormal_E.x, offset, 8);
+		meanNormal_E.y += __shfl_down_sync(__activemask(), meanNormal_E.y, offset, 8);
+		meanNormal_E.z += __shfl_down_sync(__activemask(), meanNormal_E.z, offset, 8);
+	}
+	//------------------------------------------------计算的irradiance之和-------------------------------------------------
+	//如果可分，则计算的是所有的node的irradiance之和；如果不可分，则计算的是乘以因子的irradiance之和
+	glm::vec3 mergeIrradiance = irradiance;
+	mergeIrradiance *= mergeAABBSurfaceArea < 1e-6 ? 0.0f : surfaceArea / mergeAABBSurfaceArea;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradiance.x += __shfl_down_sync(__activemask(), mergeIrradiance.x, offset, 8);
+		mergeIrradiance.y += __shfl_down_sync(__activemask(), mergeIrradiance.y, offset, 8);
+		mergeIrradiance.z += __shfl_down_sync(__activemask(), mergeIrradiance.z, offset, 8);
+	}
+	//-----------------------------------------------赋值------------------------------------------------------------------
+	if (warpLane == blockFirstWarpLane) {
+		FzbSVONodeData_PG nodeData;
+		nodeData.indivisible = indivisible;
+		nodeData.AABB_G = mergeAABB_G;
+		nodeData.AABB_E = mergeAABB_E;
+		nodeData.irradiance = mergeIrradiance;
+		nodeData.label = 0;
+		nodeData.meanNormal_G = meanNormal_G;
+		nodeData.meanNormal_E = meanNormal_E;
+		OctreeNodes[blockIndex] = nodeData;
+	}
+}
+__global__ void createOctree_device_clusterLayer(FzbSVONodeData_PG* OctreeNodes_children, FzbSVONodeData_PG* OctreeNodes, uint32_t nodeCount, uint32_t clusterIndex) {
+	__shared__ FzbSVOUnformData groupSVOUniformData;
+
+	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
+	uint32_t warpIndex = threadIdx.x / 32;
+	uint32_t warpLane = threadIdx.x & 31;
+	if (threadIndex >= nodeCount * nodeCount * nodeCount) return;
+	if (threadIdx.x == 0) {
+		groupSVOUniformData = systemSVOUniformData;
+	}
+	__syncthreads();
+
+	//这里的block指的是父级node
+	uint32_t indexInBlock = threadIndex & 7;	//在8个兄弟node中的索引
+	uint32_t blockIndex = threadIndex / 8;		//block在全局的索引
+	uint32_t blockFirstWarpLane = (blockIndex & 3) * 8;	//当前block在warp中的位索引
+	uint32_t blockNodeMask = 0xff << blockFirstWarpLane;
+	uint32_t blockIndexInGroup = threadIdx.x / 8;
+
+	FzbSVONodeData_PG nodeData = OctreeNodes_children[threadIndex];
+
+	bool hasIrradiance = nodeData.irradiance.x + nodeData.irradiance.y + nodeData.irradiance.z > 0.0f;
+	bool hasGeometry = nodeData.AABB_G.leftX != FLT_MAX;
+
+	uint32_t warpHasGeometryMask = __ballot_sync(0xFFFFFFFF, hasGeometry);
+	uint32_t blockHasGeometryNodeCount = __popc(warpHasGeometryMask & blockNodeMask);
+
+	if (blockHasGeometryNodeCount == 0) return;	//当前block中node全部没有数据
+	if (blockHasGeometryNodeCount == 1) {	//只有一个有值的node，则直接赋值即可
+		if (hasGeometry) {
+			nodeData.indivisible = 1;
+			OctreeNodes[blockIndex] = nodeData;
+		}
+		return;
+	}
+	//---------------------------------------计算整合后的AABB_G-------------------------------------------------
+	FzbAABB mergeAABB_G = nodeData.AABB_G;
+	getAABBSum(__activemask(), mergeAABB_G, blockFirstWarpLane);
+	//---------------------------------------计算整合后的meanNormal_G-------------------------------------------------
+	glm::vec3 meanNormal_G = hasGeometry ? nodeData.meanNormal_G : glm::vec3(0.0f);
+	for (int offset = 4; offset > 0; offset /= 2) {
+		meanNormal_G.x += __shfl_down_sync(__activemask(), meanNormal_G.x, offset, 8);
+		meanNormal_G.y += __shfl_down_sync(__activemask(), meanNormal_G.y, offset, 8);
+		meanNormal_G.z += __shfl_down_sync(__activemask(), meanNormal_G.z, offset, 8);
+	}
+	//------------------------------------------------irradiance差距判断-------------------------------------------------
+	float irradianceValue = glm::length(nodeData.irradiance);
+	float maxEIrradianceValue = irradianceValue;
+	uint32_t maxEWarpLane = warpLane;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		float other_maxEIrradianceValue = __shfl_down_sync(__activemask(), maxEIrradianceValue, offset, 8);
+		uint32_t other_maxEWarpLane = __shfl_down_sync(__activemask(), maxEWarpLane, offset, 8);
+		if (other_maxEIrradianceValue > maxEIrradianceValue) {
+			maxEIrradianceValue = other_maxEIrradianceValue;
+			maxEWarpLane = other_maxEWarpLane;
+		}
+	}
+	maxEIrradianceValue = __shfl_sync(__activemask(), maxEIrradianceValue, blockFirstWarpLane);
+	maxEWarpLane = __shfl_sync(__activemask(), maxEWarpLane, blockFirstWarpLane);
+
+	if (maxEIrradianceValue == 0.0f) {
+		if (warpLane == blockFirstWarpLane) {
+			FzbSVONodeData_PG nodeData;
+			nodeData.indivisible = 1;
+			nodeData.AABB_G = mergeAABB_G;
+			initAABB(nodeData.AABB_E);
+			nodeData.irradiance = glm::vec3(0.0f);
+			nodeData.label = 0;
+			nodeData.meanNormal_G = meanNormal_G;
+			nodeData.meanNormal_E = glm::vec3(0.0f);
+			OctreeNodes[blockIndex] = nodeData;
+		}
+		return;
+	}
+	//----------------------------------------------判断忽略--------------------------------------------------------
+	uint32_t ignore = 0;
+	float relIrradianceRatio = irradianceValue / maxEIrradianceValue;
+	if (relIrradianceRatio <= groupSVOUniformData.irradianceRelRatioThreshold) ignore = 1;
+
+	uint32_t blockIgnoreMask = ignore << indexInBlock;
+	for (int offset = 4; offset > 0; offset /= 2)
+		blockIgnoreMask |= __shfl_down_sync(__activemask(), blockIgnoreMask, offset, 8);
+	blockIgnoreMask = __shfl_sync(__activemask(), blockIgnoreMask, blockFirstWarpLane);
+	uint32_t blockNotIgnoreCount = 8 - __popc(blockIgnoreMask);
+	if (blockNotIgnoreCount == 1) {
+		getAABB(mergeAABB_G, blockFirstWarpLane);
+		getVec3(meanNormal_G, blockFirstWarpLane);
+		if (warpLane == maxEWarpLane) {
+			nodeData.indivisible = 1;
+			nodeData.AABB_G = mergeAABB_G;
+			nodeData.meanNormal_G = meanNormal_G;
+			OctreeNodes[blockIndex] = nodeData;
+		}
+		return;
+	}
+	//---------------------------------------余弦判断-------------------------------------------------
+	bool indivisible = true;
+	glm::vec3 normalizeNormal_G = hasGeometry ? glm::normalize(nodeData.meanNormal_G) : glm::vec3(0.0f);
+	for (int blockLane = 0; blockLane < 8; ++blockLane) {
+		glm::vec3 other_normal = normalizeNormal_G;
+		getVec3(other_normal, blockFirstWarpLane + blockLane);
+		//if (ignore == 1 || blockLane == indexInBlock || (blockIgnoreMask & (1u << blockLane)) > 0) continue;
+		if (blockLane == indexInBlock || other_normal == glm::vec3(0.0f) || normalizeNormal_G == glm::vec3(0.0f)) continue;
+		float cosine = glm::dot(other_normal, normalizeNormal_G);
+		if (cosine <= groupSVOUniformData.cosineDiffThreshold) indivisible = false;
+	}
+	for (int offset = 4; offset > 0; offset /= 2)
+		indivisible &= __shfl_down_sync(__activemask(), indivisible, offset, 8);
+	//indivisible = __shfl_sync(__activemask(), indivisible, blockFirstWarpLane);
+	//---------------------------------------计算整合后的AABB-------------------------------------------------
+	FzbAABB mergeAABB_E = nodeData.AABB_E;
+	if (ignore == 1) mergeAABB_E = { FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX, FLT_MAX, -FLT_MAX };
+	getAABBSum(__activemask(), mergeAABB_E, blockFirstWarpLane);
+
+	//计算所有不被忽略的node聚类后的AABB的表面积
+	float mergeAABBSurfaceArea = 0.0f;
+	if (warpLane == blockFirstWarpLane) {
+		float lengthX = mergeAABB_E.rightX - mergeAABB_E.leftX;
+		float lengthY = mergeAABB_E.rightY - mergeAABB_E.leftY;
+		float lengthZ = mergeAABB_E.rightZ - mergeAABB_E.leftZ;
+		mergeAABBSurfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
+	}
+	mergeAABBSurfaceArea = __shfl_sync(__activemask(), mergeAABBSurfaceArea, blockFirstWarpLane);
+
+	float surfaceArea = 0.0f;
+	if (hasIrradiance && hasGeometry) {	//有光照才需要surfaceArea来计算缩放因子，虽然说有光照必有几何，但是光栅化可能没有注入进去
+		float lengthX = nodeData.AABB_E.rightX - nodeData.AABB_E.leftX;
+		float lengthY = nodeData.AABB_E.rightY - nodeData.AABB_E.leftY;
+		float lengthZ = nodeData.AABB_E.rightZ - nodeData.AABB_E.leftZ;
+		surfaceArea = (lengthX * lengthY + lengthX * lengthZ + lengthY * lengthZ) * 2;
+	}
+	//-----------------------------------------------计算法线--------------------------------------------------------------
+	glm::vec3 meanNormal_E = ignore ? glm::vec3(0.0f) : nodeData.meanNormal_E;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		meanNormal_E.x += __shfl_down_sync(__activemask(), meanNormal_E.x, offset, 8);
+		meanNormal_E.y += __shfl_down_sync(__activemask(), meanNormal_E.y, offset, 8);
+		meanNormal_E.z += __shfl_down_sync(__activemask(), meanNormal_E.z, offset, 8);
+	}
+	//------------------------------------------------计算的irradiance之和-------------------------------------------------
+	//如果可分，则计算的是所有的node的irradiance之和；如果不可分，则计算的是乘以因子的irradiance之和
+	glm::vec3 mergeIrradiance = nodeData.irradiance;
+	mergeIrradiance *= mergeAABBSurfaceArea < 1e-6 ? 0.0f : surfaceArea / mergeAABBSurfaceArea;
+	for (int offset = 4; offset > 0; offset /= 2) {
+		mergeIrradiance.x += __shfl_down_sync(__activemask(), mergeIrradiance.x, offset, 8);
+		mergeIrradiance.y += __shfl_down_sync(__activemask(), mergeIrradiance.y, offset, 8);
+		mergeIrradiance.z += __shfl_down_sync(__activemask(), mergeIrradiance.z, offset, 8);
+	}
+	//-----------------------------------------------赋值------------------------------------------------------------------
+	if (warpLane == blockFirstWarpLane) {
+		nodeData.indivisible = indivisible;
+		nodeData.AABB_G = mergeAABB_G;
+		nodeData.AABB_E = mergeAABB_E;
+		nodeData.irradiance = mergeIrradiance;
+		nodeData.meanNormal_G = meanNormal_G;
+		nodeData.meanNormal_E = meanNormal_E;
+		OctreeNodes[blockIndex] = nodeData;
+	}
+}
+__global__ void createOctree_device_noClusterLayer(FzbSVONodeData_PG* OctreeNodes_children, FzbSVONodeData_PG* OctreeNodes, uint32_t nodeCount) {
+	__shared__ FzbSVOUnformData groupSVOUniformData;
+
+	uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
+	uint32_t warpIndex = threadIdx.x / 32;
+	uint32_t warpLane = threadIdx.x & 31;
+	if (threadIndex >= nodeCount * nodeCount * nodeCount) return;
+	if (threadIdx.x == 0) {
+		groupSVOUniformData = systemSVOUniformData;
+	}
+	__syncthreads();
+
+	//这里的block指的是父级node
+	uint32_t indexInBlock = threadIndex & 7;	//在8个兄弟node中的索引
+	uint32_t blockIndex = threadIndex / 8;		//block在全局的索引
+	uint32_t blockFirstWarpLane = (blockIndex & 3) * 8;	//当前block在warp中的位索引
+	uint32_t blockNodeMask = 0xff << blockFirstWarpLane;
+	uint32_t blockIndexInGroup = threadIdx.x / 8;
+
+	FzbSVONodeData_PG nodeData = OctreeNodes_children[threadIndex];
+
+	bool hasIrradiance = nodeData.irradiance.x + nodeData.irradiance.y + nodeData.irradiance.z > 0.0f;
+	bool hasGeometry = nodeData.AABB_G.leftX != FLT_MAX;
+
+	uint32_t warpHasGeometryMask = __ballot_sync(0xFFFFFFFF, hasGeometry);
+	uint32_t blockHasGeometryNodeCount = __popc(warpHasGeometryMask & blockNodeMask);
+
+	if (blockHasGeometryNodeCount == 0) return;	//当前block中node全部没有数据
+	if (blockHasGeometryNodeCount == 1) {	//只有一个有值的node，则直接赋值即可
+		if (hasGeometry) {
+			nodeData.indivisible = 0;
+			OctreeNodes[blockIndex] = nodeData;
+		}
+	}else if (warpLane == __ffs(warpHasGeometryMask & blockNodeMask) - 1) {
+		nodeData.indivisible = 0;
+		nodeData.irradiance.x = 1.0f;
+		OctreeNodes[blockIndex] = nodeData;
+	}
+}
+
 void FzbSVOCuda_PG::createOctreeNodes() {
 	uint32_t voxelCount = std::pow(setting.voxelNum, 3);
 	uint32_t blockSize = createSVOKernelBlockSize;
 	uint32_t gridSize = (voxelCount + blockSize - 1) / blockSize;
-	createOctree_device_first<<<gridSize, blockSize, 0, stream>>> (VGB, OctreeNodes_multiLayer[SVONodes_maxDepth - 2], voxelCount);
-	checkKernelFunction();
+	createOctree_device_VGB <<<gridSize, blockSize, 0, stream>>> (VGB, OctreeNodes_multiLayer[SVONodes_maxDepth - 2], voxelCount);
 	for (int i = SVONodes_maxDepth - 2; i > 1; --i) {
 		FzbSVONodeData_PG* SVONodes_children = OctreeNodes_multiLayer[i];
 		FzbSVONodeData_PG* SVONodes = OctreeNodes_multiLayer[i - 1];
@@ -643,9 +1055,10 @@ void FzbSVOCuda_PG::createOctreeNodes() {
 		uint32_t nodeTotalCount = nodeCount * nodeCount * nodeCount;
 		blockSize = nodeTotalCount > createSVOKernelBlockSize ? createSVOKernelBlockSize : nodeTotalCount;
 		gridSize = (nodeTotalCount + blockSize - 1) / blockSize;
-		createOctree_device<<<gridSize, blockSize, 0, stream>>> (SVONodes_children, SVONodes, nodeCount);
-		checkKernelFunction();
+		if (i > 3) createOctree_device_clusterLayer << <gridSize, blockSize, 0, stream >> > (SVONodes_children, SVONodes, nodeCount, SVONodes_maxDepth - i);
+		else createOctree_device_noClusterLayer << <gridSize, blockSize, 0, stream >> > (SVONodes_children, SVONodes, nodeCount);
 	}
+	checkKernelFunction();
 }
 
 __global__ void initOctree(FzbSVONodeData_PG* Octree, uint32_t svoCount) {
@@ -657,15 +1070,12 @@ __global__ void initOctree(FzbSVONodeData_PG* Octree, uint32_t svoCount) {
 	//data.pdf = 1.0f;
 	//data.shuffleKey = 0;
 	data.label = 0;
-	data.AABB.leftX = FLT_MAX;
-	data.AABB.leftY = FLT_MAX;
-	data.AABB.leftZ = FLT_MAX;
-	data.AABB.rightX = -FLT_MAX;
-	data.AABB.rightY = -FLT_MAX;
-	data.AABB.rightZ = -FLT_MAX;
-	data.influence = 0.0;
+	initAABB(data.AABB_G);
+	initAABB(data.AABB_E);
+	//data.influence = 0.0;
 	data.irradiance = glm::vec3(0.0f);
-	data.normal = glm::vec3(0.0f);
+	data.meanNormal_G = glm::vec3(0.0f);
+	data.meanNormal_E = glm::vec3(0.0f);
 	Octree[threadIndex] = data;
 }
 void FzbSVOCuda_PG::initCreateOctreeNodesSource() {

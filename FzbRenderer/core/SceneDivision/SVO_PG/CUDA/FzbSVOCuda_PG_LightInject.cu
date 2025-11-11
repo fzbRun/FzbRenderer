@@ -27,8 +27,8 @@ __device__ void lightInject_getRadiance(FzbTriangleAttribute& triangleAttribute,
 	const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, uint32_t& randomNumberSeed,
 	glm::vec3& irradiance, glm::vec3& radiance) {
-	irradiance = triangleAttribute.emissive;
-	radiance = triangleAttribute.emissive;
+	irradiance = triangleAttribute.emissive * glm::max(glm::dot(-ray.direction, triangleAttribute.normal), 0.0f);
+	radiance = triangleAttribute.emissive * glm::max(glm::dot(-ray.direction, triangleAttribute.normal), 0.0f);
 	FzbRay tempRay;
 	FzbTriangleAttribute hitTriangleAttribute;
 	for (int i = 0; i < lightSet->pointLightCount; ++i) {
@@ -50,21 +50,24 @@ __device__ void lightInject_getRadiance(FzbTriangleAttribute& triangleAttribute,
 		const FzbRayTracingAreaLight& light = lightSet->areaLightInfoArray[i];
 		float randomNumberX = rand(randomNumberSeed);
 		float randomNumberY = rand(randomNumberSeed);
-		glm::vec3 lightPos = glm::vec3(light.worldPos + randomNumberX * light.edge0 + randomNumberY * light.edge1);
+		glm::vec3 lightPos = light.worldPos + randomNumberX * light.edge0 + randomNumberY * light.edge1;
 		glm::vec3 direction = lightPos - ray.hitPos;
 		if ((triangleAttribute.materialType != 2 && glm::dot(direction, triangleAttribute.normal) <= 0) ||
 			glm::dot(light.normal, -direction) <= 0.0f) continue;
+
+		tempRay.direction = glm::normalize(direction);
 		tempRay.startPos = ray.hitPos + direction * 0.001f;
 		tempRay.depth = FLT_MAX;
-		tempRay.direction = glm::normalize(direction);
 		float r = glm::length(direction);
+
 		bool hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, tempRay, hitTriangleAttribute, false);
 		if (!hit) continue;
 		else if (abs(tempRay.depth - r) > 0.1f) continue;
+
 		glm::vec3 lightRadiance_cosTheta = light.radiance * glm::clamp(glm::dot(triangleAttribute.normal, tempRay.direction), 0.0f, 1.0f);
 		lightRadiance_cosTheta *= light.area;	// pdf = 1 / area
-		lightRadiance_cosTheta *= glm::dot(-light.normal, tempRay.direction);	//微分单位从dw换为dA
-		r = glm::max(r, 1.0f);
+		lightRadiance_cosTheta *= glm::dot(light.normal, -tempRay.direction);	//微分单位从dw换为dA
+		r = glm::max(r, 0.0001f);
 		glm::vec3 irradiance_temp = lightRadiance_cosTheta / (r * r);
 		irradiance += irradiance_temp;
 		radiance += irradiance_temp * getBSDF(triangleAttribute, tempRay.direction, -ray.direction, tempRay);
@@ -164,27 +167,35 @@ __global__ void lightInject_cuda(FzbVoxelData_PG* VGB,
 			++pathLength;
 		}
 
-		atomicAdd(&VGB[voxelIndices[pathLength - 1]].irradiance.x, voxelIrradiances[pathLength - 1].x);
-		atomicAdd(&VGB[voxelIndices[pathLength - 1]].irradiance.y, voxelIrradiances[pathLength - 1].y);
-		atomicAdd(&VGB[voxelIndices[pathLength - 1]].irradiance.z, voxelIrradiances[pathLength - 1].z);
+		if (voxelIrradiances[pathLength - 1].x + voxelIrradiances[pathLength - 1].y + voxelIrradiances[pathLength - 1].z > 0.0f) {
+			atomicAdd(&VGB[voxelIndices[pathLength - 1]].irradiance.x, voxelIrradiances[pathLength - 1].x);
+			atomicAdd(&VGB[voxelIndices[pathLength - 1]].irradiance.y, voxelIrradiances[pathLength - 1].y);
+			atomicAdd(&VGB[voxelIndices[pathLength - 1]].irradiance.z, voxelIrradiances[pathLength - 1].z);
+			atomicAdd(&VGB[voxelIndices[pathLength - 1]].irradiance.w, 1.0f);
+			
+			voxelNormals[pathLength - 1] *= glm::length(voxelIrradiances[pathLength - 1]);
+			atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal_E.x, voxelNormals[pathLength - 1].x);
+			atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal_E.y, voxelNormals[pathLength - 1].y);
+			atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal_E.z, voxelNormals[pathLength - 1].z);
+			//atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal.w, normalWeight);
+		}
 		glm::vec3 radiance = voxelRadiance[pathLength - 1];
-		atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal.x, voxelNormals[pathLength - 1].x);
-		atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal.y, voxelNormals[pathLength - 1].y);
-		atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal.z, voxelNormals[pathLength - 1].z);
-		atomicAdd(&VGB[voxelIndices[pathLength - 1]].meanNormal.w, 1.0f);
 		for (int i = pathLength - 2; i >= 0; --i) {
 			voxelIrradiances[i] += radiance * voxelCosTheta[i];
+			radiance = voxelRadiance[i] + radiance * voxelCosTheta[i] * voxelBSDF[i] / voxelPDF[i];
 
-			atomicAdd(&VGB[voxelIndices[i]].irradiance.x, voxelIrradiances[i].x);
-			atomicAdd(&VGB[voxelIndices[i]].irradiance.y, voxelIrradiances[i].y);
-			atomicAdd(&VGB[voxelIndices[i]].irradiance.z, voxelIrradiances[i].z);
+			if (voxelIrradiances[i].x + voxelIrradiances[i].y + voxelIrradiances[i].z > 0.0f) {
+				atomicAdd(&VGB[voxelIndices[i]].irradiance.x, voxelIrradiances[i].x);
+				atomicAdd(&VGB[voxelIndices[i]].irradiance.y, voxelIrradiances[i].y);
+				atomicAdd(&VGB[voxelIndices[i]].irradiance.z, voxelIrradiances[i].z);
+				atomicAdd(&VGB[voxelIndices[i]].irradiance.w, 1.0f);
 
-			radiance = voxelRadiance[i] + radiance * voxelBSDF[i] / voxelPDF[i];
-
-			atomicAdd(&VGB[voxelIndices[i]].meanNormal.x, voxelNormals[i].x);
-			atomicAdd(&VGB[voxelIndices[i]].meanNormal.y, voxelNormals[i].y);
-			atomicAdd(&VGB[voxelIndices[i]].meanNormal.z, voxelNormals[i].z);
-			atomicAdd(&VGB[voxelIndices[i]].meanNormal.w, 1.0f);
+				voxelNormals[i] *= glm::length(voxelIrradiances[i]);
+				atomicAdd(&VGB[voxelIndices[i]].meanNormal_E.x, voxelNormals[i].x);
+				atomicAdd(&VGB[voxelIndices[i]].meanNormal_E.y, voxelNormals[i].y);
+				atomicAdd(&VGB[voxelIndices[i]].meanNormal_E.z, voxelNormals[i].z);
+				//atomicAdd(&VGB[voxelIndices[i]].meanNormal.w, 1.0f);
+			}
 		}
 	}
 }
@@ -198,7 +209,6 @@ void FzbSVOCuda_PG::lightInject() {
 	uint32_t blockSize = 512;
 	uint32_t gridSize = (rayCount + blockSize - 1) / blockSize;
 
-	checkKernelFunction();
 	lightInject_cuda << < gridSize, blockSize, 0, stream >> > (VGB,
 		sourceManager->vertices, sourceManager->materialTextures, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray,
 		rayCount, setting.lightInjectSPP);
