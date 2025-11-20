@@ -63,10 +63,10 @@
 		<bsdf type="diffuse" id="LightBSDF">
 			<rgb name="reflectance" value="1, 1, 1" />
 			<emissive>
-				<rgb name="radiance" value="500, 500, 500" />
+				<rgb name="radiance" value="1000, 1000, 1000" />
 			</emissive>
 		</bsdf>
-		<bsdf type="roughconductor" id="Pot2BSDF">
+		<bsdf type="roughconductor" id="Pot1BSDF">
 			<float name="alpha" value="0.15" />
 			<string name="distribution" value="ggx" />
 			<rgb name="specular_reflectance" value="1, 1, 1" />
@@ -74,20 +74,29 @@
 			<rgb name="k" value="9.22387, 6.26952, 4.837" />
 		</bsdf>
 		<!--
-		<bsdf type="dielectric" id="MaterialBSDF">
+		<bsdf type="dielectric" id="Pot2BSDF">
 			<float name="int_ior" value="1.5" />
 			<float name="ext_ior" value="1" />
 		</bsdf>
-		-->
-		<!--
-		<bsdf type="roughdielectric" id="MaterialBSDF">
+		<bsdf type="roughdielectric" id="Pot2BSDF">
 			<float name="alpha" value="0.25" />
 			<float name="int_ior" value="1.5" />
 			<float name="ext_ior" value="1" />
 		</bsdf>
-		-->
-		<bsdf type="diffuse" id="Pot3BSDF">
+		<bsdf type="diffuse" id="Pot2BSDF">
 			<rgb name="reflectance" value="0.8, 0.8, 0.8" />
+		</bsdf>
+		-->
+		<bsdf type="diffuse" id="Pot2BSDF">
+			<rgb name="reflectance" value="0.8, 0.8, 0.8" />
+		</bsdf>
+		
+		<bsdf type="roughconductor" id="Pot3BSDF">
+			<float name="alpha" value="0.5" />
+			<string name="distribution" value="beckmann" />
+			<rgb name="specular_reflectance" value="1, 1, 1" />
+			<rgb name="eta" value="1.91, 1.31, 0.82" />
+			<rgb name="k" value="8.05, 6.93, 5.99" />
 		</bsdf>
 	</bsdfs>
 	<lights>
@@ -221,47 +230,47 @@
 			<boolean name="face_normals" value="true" />
 			<ref id="DiffuseBSDF" />
 		</shape>
-		<shape type="obj" id="Pot2_0001">
+		<shape type="obj" id="Pot1_0001">
 			<string name="filename" value="models/Mesh009.obj" />
 			<transform name="to_world">
 				<matrix value="-0.0757886 0 -0.0468591 -1.95645 0 0.0891049 0 0.648205 0.0468591 0 -0.0757886 -1.77687 0 0 0 1" />
+			</transform>
+			<ref id="Pot1BSDF" />
+		</shape>
+		<shape type="obj" id="Pot1_0002">
+			<string name="filename" value="models/Mesh000.obj" />
+			<transform name="to_world">
+				<matrix value="-0.0757886 0 -0.0468591 -1.95645 0 0.0891049 0 0.648205 0.0468591 0 -0.0757886 -1.77687 0 0 0 1" />
+			</transform>
+			<ref id="Pot1BSDF" />
+		</shape>
+		<shape type="obj" id="Pot2_0001">
+			<string name="filename" value="models/Mesh000.obj" />
+			<transform name="to_world">
+				<matrix value="-0.0891049 0 7.7898e-009 -1.95645 0 0.0891049 0 0.648205 -7.7898e-009 0 -0.0891049 -2.67687 0 0 0 1" />
 			</transform>
 			<ref id="Pot2BSDF" />
 		</shape>
 		<shape type="obj" id="Pot2_0002">
-			<string name="filename" value="models/Mesh000.obj" />
+			<string name="filename" value="models/Mesh009.obj" />
 			<transform name="to_world">
-				<matrix value="-0.0757886 0 -0.0468591 -1.95645 0 0.0891049 0 0.648205 0.0468591 0 -0.0757886 -1.77687 0 0 0 1" />
+				<matrix value="-0.0891049 0 7.7898e-009 -1.95645 0 0.0891049 0 0.648205 -7.7898e-009 0 -0.0891049 -2.67687 0 0 0 1" />
 			</transform>
 			<ref id="Pot2BSDF" />
 		</shape>
 		<shape type="obj" id="Pot3_0001">
-			<string name="filename" value="models/Mesh000.obj" />
-			<transform name="to_world">
-				<matrix value="-0.0891049 0 7.7898e-009 -1.95645 0 0.0891049 0 0.648205 -7.7898e-009 0 -0.0891049 -2.67687 0 0 0 1" />
-			</transform>
-			<ref id="Pot3BSDF" />
-		</shape>
-		<shape type="obj" id="Pot3_0002">
-			<string name="filename" value="models/Mesh009.obj" />
-			<transform name="to_world">
-				<matrix value="-0.0891049 0 7.7898e-009 -1.95645 0 0.0891049 0 0.648205 -7.7898e-009 0 -0.0891049 -2.67687 0 0 0 1" />
-			</transform>
-			<ref id="Pot3BSDF" />
-		</shape>
-				<shape type="obj" id="Material_0001">
 			<string name="filename" value="models/Mesh009.obj" />
 			<transform name="to_world">
 				<matrix value="-0.0837611 0 0.0303939 -1.95645 0 0.0891049 0 0.651268 -0.0303939 0 -0.0837611 -3.57687 0 0 0 1" />
 			</transform>
-			<ref id="MaterialBSDF" />
+			<ref id="Pot3BSDF" />
 		</shape>
-		<shape type="obj" id="Material_0002">
+		<shape type="obj" id="Pot3_0002">
 			<string name="filename" value="models/Mesh000.obj" />
 			<transform name="to_world">
 				<matrix value="-0.083761 0 0.0303938 -1.95645 0 0.0891049 0 0.651268 -0.0303938 0 -0.083761 -3.57687 0 0 0 1" />
 			</transform>
-			<ref id="MaterialBSDF" />
+			<ref id="Pot3BSDF" />
 		</shape>
 	</shapes>
 </scene>

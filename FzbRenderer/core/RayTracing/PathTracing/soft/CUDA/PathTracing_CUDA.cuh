@@ -15,6 +15,9 @@
 
 struct FzbPathTracingSetting {
 	uint32_t spp = 1;
+	bool Acc = false;
+	uint32_t maxDepth = 10;
+	bool useNEE = false;
 	bool useSphericalRectangleSample = false;
 	bool useCudaRandom = false;
 };

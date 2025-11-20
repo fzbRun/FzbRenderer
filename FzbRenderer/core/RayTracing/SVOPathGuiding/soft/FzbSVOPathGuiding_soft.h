@@ -13,6 +13,7 @@ struct FzbSVOPathGuidingSettingUniformObject {
 struct FzbSVOPathGuiding_soft : public FzbFeatureComponent_LoopRender {
 public:
 	FzbSVOPathGuidingSetting_soft setting;
+	FzbSVOPathGuidingCudaSetting cudaSetting;
 	std::shared_ptr<FzbSVO_PG> SVO_PG;
 	FzbRayTracingSourceManager* rayTracingSourceManager;
 	FzbRasterizationSourceManager presentSourceManager;
@@ -37,6 +38,8 @@ private:
 	void presentPrepare() override;
 	void createBufferAndDescirptor();
 	void createRenderPass();
+
+	void updateCudaSetting();
 };
 
 #endif

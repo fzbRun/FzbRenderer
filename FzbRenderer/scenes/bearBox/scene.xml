@@ -2,16 +2,22 @@
 	<sensor type="perspective">
 		<float name="fov" value="60"/>
 		<transform name="to_world">
-			<matrix value="-1 0 0 0 0 1 0 1 0 0 -1 5 0 0 0 1"/>
+			<matrix value="-1 0 0 0 0 1 0 1 0 0 -1 4 0 0 0 1"/>
 		</transform>
 	</sensor>
+	
 	<bsdfs>
 		<bsdf type="roughdielectric" id="lensBSDF">
-			<float name="alpha" value="0.1" />
+			<float name="alpha" value="0.01" />
+			<float name="int_ior" value="1.5" />
+			<float name="ext_ior" value="1" />
+		</bsdf>
+		<bsdf type="dielectric" id="lensBSDF2">
 			<float name="int_ior" value="1.5" />
 			<float name="ext_ior" value="1" />
 		</bsdf>
 	</bsdfs>
+	
 	<lights>
 		<light type="rectangle" id="Light">
 			<shape>
@@ -27,10 +33,26 @@
 			</transform>
 		</shape>
 		<!--
-		<shape type = "rectangle" id = "lens">
+		<shape type = "cube" id = "lensCube">
+			<ref id="lensBSDF2" />
+			<transform name="to_world">
+				<matrix value="1 0 0 -0.5 0 1 0 0 0 0 1 2.0 0 0 0 1" />
+				<rgb name = "rotate" value = "0, 0, 0" />
+			</transform>
+		</shape>
+
+		<shape type = "rectangle" id = "lens1">
 			<ref id="lensBSDF" />
 			<transform name="to_world">
-				<matrix value="1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 1" />
+				<matrix value="1 0 0 0 0 1 0 0 0 0 1 1.5 0 0 0 1" />
+				<rgb name = "rotate" value = "0, 180, 0" />
+			</transform>
+		</shape>
+		<shape type = "rectangle" id = "lens2">
+			<ref id="lensBSDF" />
+			<transform name="to_world">
+				<matrix value="1 0 0 -0.5 0 1 0 0.5 0 0 1 1.8 0 0 0 1" />
+				<rgb name = "rotate" value = "0, 0, 0" />
 			</transform>
 		</shape>
 		-->

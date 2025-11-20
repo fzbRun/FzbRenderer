@@ -45,10 +45,10 @@ struct FzbQuadrilateral_resue {		//¶ÔÓÚÒ»¸öÃæÐèÒª±»¶à´Î²ÉÑù£¬Ôò¿ÉÒÔ³õÊ¼»¯Ò»´Îºó¸
 __device__ const float PI = 3.1415926535f;
 __device__ const float PI_countdown = 0.31830988618;
 extern __constant__ uint32_t systemPointLightCount;
-const uint32_t maxPointLightCount = 16;
+const uint32_t maxPointLightCount = 4;
 extern __constant__ FzbRayTracingPointLight systemPointLightInfoArray[maxPointLightCount];
 extern __constant__ uint32_t systemAreaLightCount;
-const uint32_t maxAreaLightCount = 8;
+const uint32_t maxAreaLightCount = 4;
 extern __constant__ FzbRayTracingAreaLight systemAreaLightInfoArray[maxAreaLightCount];
 
 //-------------------------------------------------------º¯Êý-----------------------------------------
@@ -64,7 +64,7 @@ __device__ glm::vec3 sphericalRectangleSample(const FzbQuadrilateral& quadrangle
 __device__ glm::vec3 getRadiance(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, const FzbRayTracingLightSet* lightSet,
 	const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, uint32_t& randomNumberSeed,
-	bool useSphericalRectangleSample = false);
+	bool useNEE = false, bool useSphericalRectangleSample = false);
 
 
 #endif

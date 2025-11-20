@@ -109,7 +109,7 @@ __device__ void getTriangleAttribute(const float* __restrict__ vertices,
 	const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNodeTriangleInfo& triangle, FzbTriangleAttribute& triangleAttribute, const FzbTrianglePos& trianglePos, const glm::vec3& hitPos) {
 	FzbRayTracingMaterialUniformObject material = materialInfoArray[triangle.materialIndex];
-	triangleAttribute.materialType = material.materialType;
+	//triangleAttribute.materialType = material.materialType;
 	
 	int vertexStride = 3; // 位置总是有3个分量
 	if (triangle.vertexFormat & 1) vertexStride += 3; // 法线
@@ -131,7 +131,7 @@ __device__ void getTriangleAttribute(const float* __restrict__ vertices,
 		attributeStartIndex2 += 3;
 		triangleAttribute.normal = glm::normalize((normal0 + normal1 + normal2) / 3.0f);
 	}
-	else triangleAttribute.normal = glm::normalize(glm::cross(edge0, edge1)); //没有法线，那么使用面法线
+	//else triangleAttribute.normal = glm::normalize(glm::cross(edge0, edge1)); //没有法线，那么使用面法线
 	//获取texCoords，根据三个顶点的线性插值；不对，不应该这样，应该根据hitPos的位置来决定texCoord
 	glm::vec2 texCoords0;
 	glm::vec2 texCoords1;
@@ -203,6 +203,10 @@ __device__ void getTriangleAttribute(const float* __restrict__ vertices,
 		triangleAttribute.albedo = material.numberAttribute[0];
 		triangleAttribute.roughness = glm::clamp(material.numberAttribute[1].x, 0.1f, 1.0f);
 		triangleAttribute.eta = material.numberAttribute[1].y;
+	}
+	else if (material.materialType == 3) {
+		triangleAttribute.albedo = material.numberAttribute[0];
+		triangleAttribute.eta = material.numberAttribute[1].x;
 	}
 	triangleAttribute.emissive = material.emissive;
 }

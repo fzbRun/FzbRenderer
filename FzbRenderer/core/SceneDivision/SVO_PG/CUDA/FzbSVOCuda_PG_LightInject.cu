@@ -103,7 +103,7 @@ __global__ void lightInject_cuda(FzbVoxelData_PG* VGB,
 	uint2 seed2 = pcg2d(make_uint2(threadIndex) * randomNumberSeed);
 	randomNumberSeed = seed2.x + seed2.y;
 
-	const uint32_t maxPathDepth = 3;
+	const uint32_t maxPathDepth = 2;
 	glm::vec3 voxelRadiance[maxPathDepth];	//传回上一个撞击点的radiance
 	glm::vec3 voxelIrradiances[maxPathDepth];	//当前撞击点得到的irradiance，包括NEE + 上一个点的radiance
 	uint32_t voxelIndices[maxPathDepth];
@@ -194,19 +194,19 @@ __global__ void lightInject_cuda(FzbVoxelData_PG* VGB,
 				atomicAdd(&VGB[voxelIndices[i]].meanNormal_E.x, voxelNormals[i].x);
 				atomicAdd(&VGB[voxelIndices[i]].meanNormal_E.y, voxelNormals[i].y);
 				atomicAdd(&VGB[voxelIndices[i]].meanNormal_E.z, voxelNormals[i].z);
-				//atomicAdd(&VGB[voxelIndices[i]].meanNormal.w, 1.0f);
+				//atomicAdd(&VGB[voxelIndices[i]].meanNormal_E.w, 1.0f);
 			}
 		}
 	}
 }
 
 void FzbSVOCuda_PG::lightInject() {
-	this->sourceManager->createRuntimeSource();
+	//this->sourceManager->createRuntimeSource();
 
 	VkExtent2D resolution = FzbRenderer::globalData.getResolution();
 	uint32_t texelCount = resolution.width * resolution.height;
 	uint32_t rayCount = texelCount;
-	uint32_t blockSize = 512;
+	uint32_t blockSize = 256;
 	uint32_t gridSize = (rayCount + blockSize - 1) / blockSize;
 
 	lightInject_cuda << < gridSize, blockSize, 0, stream >> > (VGB,

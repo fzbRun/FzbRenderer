@@ -233,6 +233,12 @@ FzbMaterial getMaterialFromMTL(aiMaterial* materialData) {
 		materialData->Get(AI_MATKEY_REFRACTI, eta);
 		material.properties.numberProperties.insert({ "bsdfPara", { glm::vec4(alpha, eta, 0.0f, 0.0f) } });
 	}
+	else if (illumModel == 3) {
+		material.type = "dielectric";
+		float eta = 1.5f;
+		materialData->Get(AI_MATKEY_REFRACTI, eta);
+		material.properties.numberProperties.insert({ "bsdfPara", { glm::vec4(1.0f / eta, 0.0, 0.0f, 0.0f) } });
+	}
 	
 	return material;
 }

@@ -24,6 +24,7 @@ vec4 getIllumination(vec3 o, vec3 normal, vec3 albedo) {
 		radiance += blindFong(i, h, normal, albedo, light.strength.xyz);
 	}
 
+	radiance = normalize(radiance);
 	return vec4(radiance, 1.0f);
 }
 

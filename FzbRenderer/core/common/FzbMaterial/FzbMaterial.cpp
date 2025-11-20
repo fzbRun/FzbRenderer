@@ -3,11 +3,13 @@
 #include "../../Materials/Diffuse/FzbDiffuseMaterial.h"
 #include "../../Materials/Roughconductor/FzbRoughconductorMaterial.h"
 #include "../../Materials/Roughdielectric/FzbRoughdielectricMaterial.h"
+#include "../../Materials/Dielectric/FzbDielectricMaterial.h"
 
 std::map<std::string, std::string> materialPaths{
 	{ "diffuse", "/core/Materials/Diffuse" },
 	{ "roughconductor", "/core/Materials/Roughconductor" },
 	{ "roughdielectric", "/core/Materials/Roughdielectric" },
+	{ "dielectric", "/core/Materials/Dielectric" },
 };
 
 FzbMaterial::FzbMaterial() {};
@@ -53,6 +55,7 @@ void FzbMaterial::getSceneXMLInfo(pugi::xml_node& materialNode) {
 	if (this->type == "diffuse") FzbDiffuseMaterial::getSceneXMLInfo(this, materialNode);
 	else if (this->type == "roughconductor") FzbRoughconductorMaterial::getSceneXMLInfo(this, materialNode);
 	else if (this->type == "roughdielectric") FzbRoughdielectricMaterial::getSceneXMLInfo(this, materialNode);
+	else if (this->type == "dielectric") FzbDielectricMaterial::getSceneXMLInfo(this, materialNode);
 }
 
 void FzbMaterial::clean() {
@@ -68,11 +71,13 @@ int FzbMaterial::getMaterialAttributeIndex(std::string attribute) {
 	if (this->type == "diffuse") return FzbDiffuseMaterial::getAttributeIndex(attribute);
 	else if (this->type == "roughconductor") return FzbRoughconductorMaterial::getAttributeIndex(attribute);
 	else if (this->type == "roughdielectric") return FzbRoughdielectricMaterial::getAttributeIndex(attribute);
+	else if (this->type == "dielectric") return FzbDielectricMaterial::getAttributeIndex(attribute);
 }
 int FzbMaterial::getMaterialTextureNum() {
 	if (this->type == "diffuse") return FzbDiffuseMaterial::textureNum;
 	else if (this->type == "roughconductor") return FzbRoughconductorMaterial::textureNum;
 	else if (this->type == "roughdielectric") return FzbRoughdielectricMaterial::textureNum;
+	else if (this->type == "dielectric") return FzbDielectricMaterial::textureNum;
 }
 void FzbMaterial::createSource(std::string scenePath, std::map<std::string, FzbImage>& sceneImages) {
 	if (this->hasCreateSource) return;

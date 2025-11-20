@@ -44,6 +44,10 @@ struct FzbRoughdielectricMaterial {
 			if (int_iorNode && ext_iorNode) {
 				float int_ior = std::stof(int_iorNode.attribute("value").value());
 				float ext_ior = std::stof(ext_iorNode.attribute("value").value());
+
+				if (int_ior == ext_ior) throw std::runtime_error("不允许两边折射率相同");
+				if (int_ior == 0 || ext_ior == 0) throw std::runtime_error("不允许折射率为0");
+
 				bsdfPara.y = ext_ior / int_ior;
 			}
 		}

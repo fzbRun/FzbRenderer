@@ -29,7 +29,7 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 	glm::vec3 bitangent = glm::cross(triangleAttribute.normal, triangleAttribute.tangent) * triangleAttribute.handed;
 	glm::mat3 TBN = glm::mat3(triangleAttribute.tangent, bitangent, triangleAttribute.normal);
 
-	if (triangleAttribute.materialType == 0) {	
+	if (triangleAttribute.materialType == 0) {
 		//余弦重要性采样
 		//float sinTheta = glm::sqrt(randomNumber1);
 		//float cosTheta = glm::sqrt(1 - sinTheta * sinTheta);
@@ -42,7 +42,7 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 		ray.direction = glm::normalize(TBN * glm::vec3(x, y, z));
 		pdf *= 0.5f * PI_countdown;
 	}
-	else {
+	else if(triangleAttribute.materialType <= 2){
 		float cosTheta = glm::sqrt((1.0f - randomNumber1) / ((triangleAttribute.roughness * triangleAttribute.roughness - 1.0f) * randomNumber1 + 1.0f));
 		float sinTheta = glm::sqrt(1.0f - cosTheta * cosTheta);
 		float x = sinTheta * glm::cos(phi);
@@ -51,41 +51,89 @@ __device__ void generateRay(const FzbTriangleAttribute& triangleAttribute, float
 		glm::vec3 h = glm::vec3(x, y, z);
 		h = glm::normalize(TBN * h);
 
+		float eta = triangleAttribute.eta;
+		if (!ray.ext) {
+			h = -h;
+			eta = 1.0f / eta;
+		}
+		float cosTheta_OH = glm::dot(-ray.direction, h);	//h与o需要是同侧，因此余弦必然大于0
+
 		if (triangleAttribute.materialType == 1) {		//粗糙导体
 			pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f)), 0.001f);
-			ray.direction = 2.0f * glm::max(glm::dot(-ray.direction, h), 0.001f) * h + ray.direction;	//这里得到的只是h，还需要从h转为i
+			ray.direction = 2.0f * cosTheta_OH * h + ray.direction;	//这里得到的只是h，还需要从h转为i
 		}
-		else if (triangleAttribute.materialType == 2) {		//粗糙电解质
-			/*
-			这里需要注意几个点
-			1. 我们material中记录的eta是mesh折射率与空气的比值，所以当ray从mesh内部出去时，eta为倒数
-			2. 现在h是在mesh表面的半球中的，而公式要求h与o是同侧的，所以这里需要修正
-			*/
-			float eta = triangleAttribute.eta;
-			if (!ray.ext) {	//在内部(eta记录的是从外到内的折射率之比)
-				h = -h;
-				eta = 1.0f / eta;
-				ray.ext = true;	//折射完后回到外部
-			}
-			else ray.ext = false;
-			float cosTheta_OH = glm::dot(-ray.direction, h);	//h与o需要是同侧，因此余弦必然大于0
-			glm::vec3 F = fresnelSchlick(cosTheta_OH, triangleAttribute.albedo);
-			float F_oneChanel = glm::max(0.299 * F.x + 0.587 * F.y + 0.114 * F.z, 0.1);
+		else if (triangleAttribute.materialType == 2) {		//粗电解质
+			float F_oneChanel;
 			float randomNumber3 = rand(randomNumberSeed);
+			if (eta * eta * (1.0f - cosTheta_OH * cosTheta_OH) >= 1.0f) F_oneChanel = 1.0f;	//全反射
+			else {
+				glm::vec3 F = fresnelSchlick(cosTheta_OH, triangleAttribute.albedo);
+				F_oneChanel = glm::max(0.299 * F.x + 0.587 * F.y + 0.114 * F.z, 0.1);
+			}
+
 			if (randomNumber3 < F_oneChanel) {	//反射
 				ray.refraction = false;
 				pdf *= F_oneChanel;
-				pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(glm::dot(-ray.direction, h), 0.01f)), 0.001f);
-				ray.direction = 2.0f * glm::max(glm::dot(-ray.direction, h), 0.001f) * h + ray.direction;
+				pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * cosTheta / (4.0f * glm::max(cosTheta_OH, 0.01f)), 0.001f);
+				ray.direction = 2.0f * cosTheta_OH * h + ray.direction;
 			}
-			else {	//折射
+			else{	//折射
+				ray.ext = !ray.ext;
+
 				ray.refraction = true;
 				pdf *= 1.0f - F_oneChanel;
-				//glm::vec3 o = -ray.direction;
-				float weight = (eta * eta) / ((1.0f + eta * eta + 2.0f * eta) * cosTheta_OH);
-				pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * weight, 0.001f);
-				ray.direction = glm::normalize((eta * cosTheta_OH - (glm::sqrt(1.0f + eta * eta * (cosTheta_OH * cosTheta_OH - 1.0f)))) * h + eta * ray.direction);
+				
+				float weight = glm::dot(ray.direction, -h) + eta * cosTheta_OH;
+				weight *= weight;
+				weight = (eta * eta * cosTheta_OH) / weight;
+				pdf *= glm::max(DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness) * weight * cosTheta, 0.001f);
+				ray.direction = glm::normalize
+				(
+					(
+						eta * cosTheta_OH - 
+						(glm::sqrt(1.0f + eta * eta * (cosTheta_OH * cosTheta_OH - 1.0f)))
+					) * h +
+					eta * ray.direction
+				);
 			}
+		}
+	}
+	else if (triangleAttribute.materialType == 3) {
+		float eta = triangleAttribute.eta;
+		glm::vec3 h = triangleAttribute.normal;
+		if (!ray.ext) {
+			h = -h;
+			eta = 1.0f / eta;
+		}
+		float cosTheta_OH = glm::dot(-ray.direction, h);
+
+		float F_oneChanel;
+		float randomNumber3 = rand(randomNumberSeed);
+		if (eta * eta * (1.0f - cosTheta_OH * cosTheta_OH) >= 1.0f) F_oneChanel = 1.0f;	//全反射
+		else {
+			glm::vec3 F = fresnelSchlick(cosTheta_OH, triangleAttribute.albedo);
+			F_oneChanel = glm::max(0.299 * F.x + 0.587 * F.y + 0.114 * F.z, 0.1);
+		}
+
+		if (randomNumber3 < F_oneChanel) {	//反射
+			ray.refraction = false;
+			pdf *= F_oneChanel;
+			ray.direction = 2.0f * cosTheta_OH * h + ray.direction;
+		}
+		else {
+			ray.ext = !ray.ext;
+
+			ray.refraction = true;
+			pdf *= 1.0f - F_oneChanel;
+
+			ray.direction = glm::normalize
+			(
+				(
+					eta * cosTheta_OH -
+					(glm::sqrt(1.0f + eta * eta * (cosTheta_OH * cosTheta_OH - 1.0f)))
+					) * h +
+				eta * ray.direction
+			);
 		}
 	}
 	ray.startPos = ray.direction * 0.001f + ray.hitPos;

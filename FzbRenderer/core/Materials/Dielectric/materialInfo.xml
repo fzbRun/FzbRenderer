@@ -1,0 +1,14 @@
+<Material>
+	<vertexFormat>
+		<pos available = "true"/>
+		<normal available = "false"/>
+		<texCoords available = "true"/>
+		<tangent available = "false"/>
+	</vertexFormat>
+	<attributes>
+		<attribute name = "albedoMap" type = "texture" />
+		<attribute name = "normalMap"  type = "texture" />
+		<attribute name = "albedo"  type = "rgba" value = "1, 1, 1, 1"/>
+		<attribute name = "bsdfPara"  type = "rgba" value = "1.5, 0, 0, 0"/>	<!--0: 折射率-->
+	</attributes>
+</Material>

@@ -47,8 +47,9 @@ public:
 	void init() override;
 	void clean() override;
 
-	void createOctreeBuffers();
-	void createSVOBuffers(bool useDeviceAddress = true);
+	void createOctreeBuffers(bool isG);
+	void createSVOBuffers(bool isG, bool useDeviceAddress = true);
+	void createSVOWeightsBuffer();
 private:
 	void addExtensions();
 
@@ -70,6 +71,7 @@ struct FzbSVOSetting_PG_Debug {
 	bool OctreeNodeDebugInfo = false;
 	bool SVONodeClusterDebugInfo = false;
 	bool lookCube = 0;
+	bool isG = true;
 	bool SVOWeightsDebugInfo = false;
 	bool useDeviceAddress = false;	//用设备地址在renderDoc中看不到数据
 };
@@ -92,8 +94,10 @@ struct FzbSVOWeightsUniformObject {
 	glm::vec4 startPos;
 	uint32_t maxDepth;
 	uint32_t svoNodeTotalCount = 0;
-	int divisibleNodeCounts[7];
-	int indivisibleNodeCounts[7];
+	int divisibleNodeCounts_G[7];
+	int indivisibleNodeCounts_G[7];
+	int divisibleNodeCounts_E[7];
+	int indivisibleNodeCounts_E[7];
 };
 
 struct FzbSVO_PG_Debug : public FzbFeatureComponent_LoopRender {

@@ -14,13 +14,13 @@ __device__ float DistributionGGX(const glm::vec3& N, const glm::vec3& H, float r
 
 	return nom / denom;
 }
-__device__ float GeometrySchlickGGX(float NdotV, float roughness)
+__device__ float GeometrySchlickGGX(float cosine, float roughness)
 {
 	float r = (roughness + 1.0);
 	float k = (r * r) / 8.0;
 
-	float nom = NdotV;
-	float denom = glm::max(NdotV * (1.0f - k) + k, 0.0001f);
+	float nom = cosine;
+	float denom = glm::max(cosine * (1.0f - k) + k, 0.0001f);
 
 	return nom / denom;
 }
@@ -39,22 +39,35 @@ __device__ glm::vec3 fresnelSchlick(float cosTheta, const glm::vec3& F0)
 }
 __device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, const glm::vec3& incidence, const glm::vec3& outgoing, const FzbRay& ray) {
 	if(triangleAttribute.materialType == 0) return glm::vec3(PI_countdown) * triangleAttribute.albedo;
+	else if (triangleAttribute.materialType == 3) {
+		float eta = ray.ext ? 1.0f / triangleAttribute.eta : triangleAttribute.eta;
+		float cosTheta_OH = abs(glm::dot(triangleAttribute.normal, outgoing));
+
+		glm::vec3 F = fresnelSchlick(cosTheta_OH, triangleAttribute.albedo);
+		if (ray.refraction) {
+			float cosTheta_IH = abs(glm::dot(incidence, triangleAttribute.normal));
+			float weight = cosTheta_OH - (1.0f / eta) * cosTheta_IH;
+			weight = weight * weight;
+			return (1.0f - F) / weight;
+		}
+		else return F / (4.0f * cosTheta_OH * cosTheta_OH);
+	}
 	else {
 		if (ray.refraction && triangleAttribute.materialType == 2) {
 			float eta = ray.ext ? 1.0f / triangleAttribute.eta : triangleAttribute.eta;
 			glm::vec3 h = glm::normalize(incidence + outgoing * eta);
+			float cosTheta_OH = abs(glm::dot(outgoing, h));
+			float cosTheta_IH = abs(glm::dot(incidence, h));
+
 			float NDF = DistributionGGX(triangleAttribute.normal, h, triangleAttribute.roughness);
 			float G = GeometrySmith(triangleAttribute.normal, outgoing, incidence, triangleAttribute.roughness, true);
 			glm::vec3 F = fresnelSchlick(glm::abs(glm::dot(h, outgoing)), triangleAttribute.albedo);
-			float cosTheta_IH = glm::dot(incidence, h);
-			float cosTheta_OH = glm::dot(outgoing, h);
-			float weight = (1.0f / eta) * cosTheta_IH + cosTheta_OH;
+
+			float weight = cosTheta_OH - (1.0f / eta) * cosTheta_IH;
 			weight = weight * weight;
 			weight = (cosTheta_IH * cosTheta_OH) / (glm::dot(incidence, triangleAttribute.normal) * glm::dot(outgoing, triangleAttribute.normal)) / weight;
 			weight = glm::abs(weight);
 			glm::vec3 ft = NDF * G * (1.0f - F) * weight;
-			//printf("%f %f\n", glm::dot(h, triangleAttribute.normal), NDF);
-			//printf("%f %f %f\n", NDF, G, weight);
 			return ft;
 		}
 		else {
@@ -73,10 +86,10 @@ __device__ glm::vec3 getBSDF(const FzbTriangleAttribute& triangleAttribute, cons
 			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("h:%f %f %f\n", h.x, h.y, h.z);
 			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("incidence:%f %f %f\n", incidence.x, incidence.y, incidence.z);
 			//if (!isfinite(fr.x / weight) || !isfinite(fr.y / weight) || !isfinite(fr.z / weight)) printf("outgoing:%f %f %f\n", outgoing.x, outgoing.y, outgoing.z);
- 
+			
 			return fr /= weight;
 		}
-	} 
+	}
 	return glm::vec3(0.0f);
 }
 
@@ -259,7 +272,7 @@ __device__ glm::vec3 NEE(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, c
 			glm::vec3 lightPos = glm::vec3(light.worldPos + randomNumberX * light.edge0 + randomNumberY * light.edge1);
 			direction = lightPos - ray.hitPos;
 		}
-		if ((triangleAttribute.materialType != 2 && glm::dot(direction, triangleAttribute.normal) <= 0) ||
+		if ((triangleAttribute.materialType != 2 && triangleAttribute.materialType != 3 && glm::dot(direction, triangleAttribute.normal) <= 0) ||
 			glm::dot(-light.normal, direction) <= 0.0f) continue;
 		tempRay.direction = glm::normalize(direction);
 		tempRay.startPos = ray.hitPos + tempRay.direction * 0.001f;
@@ -268,7 +281,7 @@ __device__ glm::vec3 NEE(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, c
 		float r = glm::length(direction);
 		bool hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, tempRay, hitTriangleAttribute, false);
 		if (!hit) continue;
-		else if (abs(tempRay.depth - r) > 0.1f) continue;
+		else if (abs(tempRay.depth - r) > 0.001f) continue;
 		glm::vec3 lightRadiance_cosTheta = light.radiance;
 		if (!useSphericalRectangleSample) {
 			lightRadiance_cosTheta *= glm::dot(-light.normal, tempRay.direction);	//微分单位从dw换为dA
@@ -286,10 +299,13 @@ __device__ glm::vec3 NEE(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, c
 __device__ glm::vec3 getRadiance(FzbTriangleAttribute& triangleAttribute, FzbRay& ray, const FzbRayTracingLightSet* lightSet,
 	const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, uint32_t& randomNumberSeed,
-	bool useSphericalRectangleSample) {
+	bool useNEE, bool useSphericalRectangleSample) {
 	glm::vec3 radiance = glm::vec3(0.0f);
-	//radiance += NEE(triangleAttribute, ray, lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, useSphericalRectangleSample);
-	radiance += triangleAttribute.emissive * (triangleAttribute.materialType != 2 ? glm::max(glm::dot(triangleAttribute.normal, -ray.direction), 0.0f) : 1.0f);
+	if(useNEE) radiance += NEE(triangleAttribute, ray, lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, useSphericalRectangleSample);
+	float cosine_ON = 1.0f;
+	if (triangleAttribute.materialType != 2 && triangleAttribute.materialType != 3)
+		cosine_ON = glm::max(glm::dot(triangleAttribute.normal, -ray.direction), 0.0f);
+	radiance += triangleAttribute.emissive * cosine_ON;
 	return radiance;
 }
 

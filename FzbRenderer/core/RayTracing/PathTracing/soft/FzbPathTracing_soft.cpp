@@ -11,6 +11,8 @@ FzbPathTracing_soft::FzbPathTracing_soft(pugi::xml_node& PathTracingNode) {
 	else return;
 	if (pugi::xml_node componentSettingNode = PathTracingNode.child("rendererComponentSetting")) {
 		this->setting.spp = std::stoi(componentSettingNode.child("spp").attribute("value").value());
+		this->setting.Acc = std::string(componentSettingNode.child("spp").attribute("Acc").value()) == "true";
+		this->setting.maxDepth = std::stoi(componentSettingNode.child("maxDepth").attribute("value").value());
 		this->setting.useSphericalRectangleSample = std::string(componentSettingNode.child("useSphericalRectangleSample").attribute("value").value()) == "true";
 	}
 	this->setting.useCudaRandom = false;

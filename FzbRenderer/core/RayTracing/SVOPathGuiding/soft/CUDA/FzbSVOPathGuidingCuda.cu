@@ -15,8 +15,13 @@ __device__ void generateRay_SVOPathGuiding(
 	const FzbTriangleAttribute& hitTriangleAttribute, float& pdf, FzbRay& ray, uint32_t& randomNumberSeed,
 	FzbSVOPathGuidingCudaSetting& groupSetting)
 {
+	if (hitTriangleAttribute.materialType == 3) {	//镜面反射和投射就直接通过BSDF采样即可
+		generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
+		return;
+	}
+
 	//根据hitPos找到当前node是哪个
-	FzbSVONodeData_PG nodeData; nodeData.label = 1;
+	FzbSVONodeData_PG_G nodeData; nodeData.label = 1;
 	glm::vec3 nodeGroupStartPos = groupSetting.voxelGroupStartPos;
 	glm::vec3 nodeSize = (float)groupSetting.voxelCount * groupSetting.voxelSize;
 	uint32_t layerIndex = 1;
@@ -26,7 +31,7 @@ __device__ void generateRay_SVOPathGuiding(
 		nodeSize /= 2.0f;
 		glm::ivec3 nodeIndexXYZ = glm::ivec3((ray.hitPos - nodeGroupStartPos) / nodeSize);
 		nodeDataIndex = nodeIndexXYZ.x + 2 * nodeIndexXYZ.y + 4 * nodeIndexXYZ.z + (nodeData.label - 1) * 8;
-		nodeData = groupSetting.SVONodes[layerIndex][nodeDataIndex];
+		nodeData = groupSetting.SVONodes_G[layerIndex][nodeDataIndex];
 		if (nodeData.indivisible) break;
 
 		nodeGroupStartPos += glm::vec3(nodeIndexXYZ) * nodeSize;
@@ -36,21 +41,22 @@ __device__ void generateRay_SVOPathGuiding(
 		return;
 	}
 
-	uint32_t layerNodeSum = (nodeData.label - 1) * groupSetting.SVONodeTotalCount;
+	float selectNodeWeightSum = 1.0f;
+	bool getTargetNode = false;
+
+	uint32_t layerNodeSum = (nodeData.label - 1) * groupSetting.SVONodeTotalCount_E;
 	uint32_t nodeWeightStartIndex = layerNodeSum;
 	uint32_t targetLayerIndex = 1;
 	uint32_t targetNodeDataIndex = 0;
-	FzbSVONodeData_PG targetNodeData;
-	bool getTargetNode = false;
+	FzbSVONodeData_PG_E targetNodeData;
 	int childNodeIndex;
-	float selectNodeWeightSum = 1.0f;
 	for (; targetLayerIndex < groupSetting.maxSVOLayer; ++targetLayerIndex) {
 		float randomNumber = rand(randomNumberSeed);
 		for (childNodeIndex = 0; childNodeIndex < 8; ++childNodeIndex) {
 			float weight = groupSetting.SVONodeWeights[nodeWeightStartIndex + childNodeIndex];
 			if (randomNumber <= weight) {
-				targetNodeData = groupSetting.SVONodes[targetLayerIndex][targetNodeDataIndex + childNodeIndex];
-				selectNodeWeightSum *= weight;	//找到该node的概率密度
+				targetNodeData = groupSetting.SVONodes_E[targetLayerIndex][targetNodeDataIndex + childNodeIndex];
+				selectNodeWeightSum *= weight * targetNodeData.notIgnoreRatio;	//找到该node的概率密度
 				if (targetNodeData.indivisible) getTargetNode = true;
 				else targetNodeDataIndex = (targetNodeData.label - 1) * 8;	//其子节点在该层的起始索引
 				break;
@@ -59,28 +65,41 @@ __device__ void generateRay_SVOPathGuiding(
 		}
 
 		if (getTargetNode || childNodeIndex == 8) break;
-		layerNodeSum += groupSetting.SVOLayerInfos[targetLayerIndex - 1].divisibleNodeCount * 8;
+		layerNodeSum += groupSetting.SVOLayerInfos_E[targetLayerIndex - 1].divisibleNodeCount * 8;
 		nodeWeightStartIndex = layerNodeSum + targetNodeDataIndex;
 	}
-
-	if (glm::length(targetNodeData.irradiance) == 0 || childNodeIndex == 8) {
+	if (childNodeIndex == 8) {
 		generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
 		return;
 	}
 
-	float targetDistanceX = targetNodeData.AABB_E.rightX - targetNodeData.AABB_E.leftX;
-	float targetDistanceY = targetNodeData.AABB_E.rightY - targetNodeData.AABB_E.leftY;
-	float targetDistanceZ = targetNodeData.AABB_E.rightZ - targetNodeData.AABB_E.leftZ;
-
-	//glm::vec3 nodeCenterPos = glm::vec3(nodeData.AABB.leftX + nodeData.AABB.rightX, nodeData.AABB.leftY + nodeData.AABB.rightY, nodeData.AABB.leftZ + nodeData.AABB.rightZ) * 0.5f;
-	glm::vec3 targetNodeCenterPos = glm::vec3(targetNodeData.AABB_E.leftX + targetNodeData.AABB_E.rightX, targetNodeData.AABB_E.leftY + targetNodeData.AABB_E.rightY, targetNodeData.AABB_E.leftZ + targetNodeData.AABB_E.rightZ) * 0.5f;
+	glm::vec3 targetNodeCenterPos = glm::vec3(targetNodeData.AABB.leftX + targetNodeData.AABB.rightX,
+		targetNodeData.AABB.leftY + targetNodeData.AABB.rightY,
+		targetNodeData.AABB.leftZ + targetNodeData.AABB.rightZ) * 0.5f;
 	glm::vec3 nodeDirection = targetNodeCenterPos - ray.hitPos;
 
-	glm::vec3 face0StartPos = glm::vec3(targetNodeData.AABB_E.leftX, targetNodeData.AABB_E.leftY, targetNodeData.AABB_E.leftZ);
+	bool refraction = false;
+	bool ext = ray.ext;
+	if (glm::dot(nodeDirection, hitTriangleAttribute.normal) <= 0) {
+		if (hitTriangleAttribute.materialType == 2 || hitTriangleAttribute.materialType == 3) {
+			refraction = true;
+			ext = !ext;
+		}
+		else {
+			generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
+			return;
+		}
+	}
+
+	float targetDistanceX = targetNodeData.AABB.rightX - targetNodeData.AABB.leftX;
+	float targetDistanceY = targetNodeData.AABB.rightY - targetNodeData.AABB.leftY;
+	float targetDistanceZ = targetNodeData.AABB.rightZ - targetNodeData.AABB.leftZ;
+
+	glm::vec3 face0StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
 	face0StartPos.x += nodeDirection.x < 0 ? targetDistanceX : 0.0f;	//在左边
-	glm::vec3 face1StartPos = glm::vec3(targetNodeData.AABB_E.leftX, targetNodeData.AABB_E.leftY, targetNodeData.AABB_E.leftZ);
+	glm::vec3 face1StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
 	face1StartPos.y += nodeDirection.y < 0 ? targetDistanceY : 0.0f;	//在下边
-	glm::vec3 face2StartPos = glm::vec3(targetNodeData.AABB_E.leftX, targetNodeData.AABB_E.leftY, targetNodeData.AABB_E.leftZ);
+	glm::vec3 face2StartPos = glm::vec3(targetNodeData.AABB.leftX, targetNodeData.AABB.leftY, targetNodeData.AABB.leftZ);
 	face2StartPos.z += nodeDirection.z < 0 ? targetDistanceZ : 0.0f;	//在后边
 
 	float selectFaceArea = 1.0f;
@@ -89,6 +108,7 @@ __device__ void generateRay_SVOPathGuiding(
 	float selectFaceProbability = rand(randomNumberSeed);
 	float randomU = rand(randomNumberSeed);		//当前node的AABB上的随机点
 	float randomV = rand(randomNumberSeed);
+	glm::vec3 sampleDirection = -hitTriangleAttribute.normal;
 	if (groupSetting.useSphericalRectangleSample) {
 		glm::vec3 edge0 = glm::vec3(targetDistanceX, 0.0f, 0.0f);
 		glm::vec3 edge1 = glm::vec3(0.0f, targetDistanceY, 0.0f);
@@ -102,7 +122,7 @@ __device__ void generateRay_SVOPathGuiding(
 		quad2.S = isnan(quad2.S) ? 0.0f : quad2.S;
 
 		//发生这种全为0的情况说明hitPos位于采样平面上，我们退化为BSDF采样
-		if (quad0.S + quad1.S + quad2.S == 0.0f) ray.direction = -hitTriangleAttribute.normal;
+		if (quad0.S + quad1.S + quad2.S == 0.0f) {}
 		else {
 			glm::vec3 sphereQuadrilateralSolidAngle = glm::vec3(quad0.S, quad1.S, quad2.S);
 			sphereQuadrilateralSolidAngle /= quad0.S + quad1.S + quad2.S;
@@ -120,7 +140,7 @@ __device__ void generateRay_SVOPathGuiding(
 				sphericalRectangleSampleProbability *= sphereQuadrilateralSolidAngle.z;
 			}
 
-			ray.direction = sphericalRectangleSample(sampleQuad, randomU, randomV, sphericalRectangleSampleProbability);
+			sampleDirection = sphericalRectangleSample(sampleQuad, randomU, randomV, sphericalRectangleSampleProbability);
 		}
 	}
 	else {
@@ -165,21 +185,23 @@ __device__ void generateRay_SVOPathGuiding(
 			sphericalRectangleSampleProbability = faceSelectWeight.z;
 		}
 
-		ray.direction = samplePos - ray.hitPos;
+		sampleDirection = samplePos - ray.hitPos;
 	}
 
-	if (glm::dot(ray.direction, hitTriangleAttribute.normal) <= 0) generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
+	if (glm::dot(sampleDirection, hitTriangleAttribute.normal) <= 0 && !refraction) generateRay(hitTriangleAttribute, pdf, ray, randomNumberSeed);
 	else {
 		pdf *= selectNodeWeightSum;
 		pdf *= sphericalRectangleSampleProbability;
 		if (!groupSetting.useSphericalRectangleSample) {
-			float r = glm::length(ray.direction);
-			pdf *= glm::dot(-glm::normalize(ray.direction), faceNormal) / glm::max((selectFaceArea * r * r), 0.001f);
+			float r = glm::length(sampleDirection);
+			pdf *= glm::dot(-glm::normalize(sampleDirection), faceNormal) / glm::max((selectFaceArea * r * r), 0.001f);
 		}
 		
-		ray.direction = glm::normalize(ray.direction);
+		ray.direction = glm::normalize(sampleDirection);
 		ray.startPos = ray.direction * 0.001f + ray.hitPos;
 		ray.depth = FLT_MAX;
+		ray.refraction = refraction;
+		ray.ext = ext;
 	}
 }	
 //-------------------------------------------------------------------------------------------------
@@ -197,8 +219,9 @@ __global__ void svoPathGuiding_cuda(
 	__shared__ FzbRayTracingAreaLight grouprAreaLightInfoArray[maxAreaLightCount];		//692B
 	__shared__ FzbRayTracingLightSet lightSet;
 
-	__shared__ FzbSVOLayerInfo groupSVOLayerInfos[8];
-	__shared__ FzbSVONodeData_PG* groupSVONodesArray[8];
+	__shared__ FzbSVOLayerInfo groupSVOLayerInfos_E[8];
+	__shared__ FzbSVONodeData_PG_G* groupSVONodesArray_G[8];
+	__shared__ FzbSVONodeData_PG_E* groupSVONodesArray_E[8];
 
 	volatile const uint32_t threadIndex = threadIdx.x + blockDim.x * blockIdx.x;
 	if (threadIndex >= rayCount) return;
@@ -217,13 +240,15 @@ __global__ void svoPathGuiding_cuda(
 	}
 	__syncwarp();
 	if (threadIdx.x < groupSetting.maxSVOLayer) {
-		groupSVOLayerInfos[threadIdx.x] = groupSetting.SVOLayerInfos[threadIdx.x];
-		groupSVONodesArray[threadIdx.x] = groupSetting.SVONodes[threadIdx.x];
+		groupSVOLayerInfos_E[threadIdx.x] = groupSetting.SVOLayerInfos_E[threadIdx.x];
+		groupSVONodesArray_G[threadIdx.x] = groupSetting.SVONodes_G[threadIdx.x];
+		groupSVONodesArray_E[threadIdx.x] = groupSetting.SVONodes_E[threadIdx.x];
 	}
 	__syncwarp();
 	if (threadIdx.x == 0) {		//将全局内存改为共享内存
-		groupSetting.SVOLayerInfos = groupSVOLayerInfos;
-		groupSetting.SVONodes = groupSVONodesArray;
+		groupSetting.SVOLayerInfos_E = groupSVOLayerInfos_E;
+		groupSetting.SVONodes_G = groupSVONodesArray_G;
+		groupSetting.SVONodes_E = groupSVONodesArray_E;
 	}
 	__syncthreads();
 
@@ -237,13 +262,13 @@ __global__ void svoPathGuiding_cuda(
 	if (sppLane == 0) {
 		if (groupFrameCount == 1) resultBuffer[resultIndex] = make_float4(0.0f);
 		//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
-		//resultBuffer[resultIndex] = make_float4(0.0f);
-		float4 result = resultBuffer[resultIndex];
-		if (!isfinite(result.x) || !isfinite(result.y) || !isfinite(result.z)) {
-			resultBuffer[resultIndex] = make_float4(0.0f);
-		}
-		else resultBuffer[resultIndex] = result * ((float)groupFrameCount - 1) / (float)groupFrameCount;
-
+		if (groupSetting.Acc) {
+			float4 result = resultBuffer[resultIndex];
+			if (!isfinite(result.x) || !isfinite(result.y) || !isfinite(result.z)) {
+				resultBuffer[resultIndex] = make_float4(0.0f);
+			}
+			else resultBuffer[resultIndex] = result * ((float)groupFrameCount - 1) / (float)groupFrameCount;
+		}else resultBuffer[resultIndex] = make_float4(0.0f);
 	}
 	__syncthreads();
 
@@ -273,9 +298,9 @@ __global__ void svoPathGuiding_cuda(
 
 	hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, ray, hitTriangleAttribute);
 	if (!hit) return;
-	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample);
+	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useNEE, groupSetting.useSphericalRectangleSample);
 
-	uint32_t maxBonceDepth = 6;
+	uint32_t maxBonceDepth = groupSetting.maxDepth;
 #pragma nounroll
 	while (maxBonceDepth > 0) {
 		randomNumberSeed += maxBonceDepth;
@@ -292,15 +317,12 @@ __global__ void svoPathGuiding_cuda(
 		if (!hit) break;
 		
 		bsdf *= getBSDF(lastHitTriangleAttribute, ray.direction, lastDirection, ray) * glm::abs(glm::dot(ray.direction, lastHitTriangleAttribute.normal));
-		radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample) * bsdf / pdf;
+		radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useNEE, groupSetting.useSphericalRectangleSample) * bsdf / pdf;
 		--maxBonceDepth;
 	}
 
 	radiance /= spp;
-	radiance /= groupFrameCount;
-	//if (!isfinite(radiance.x) || !isfinite(radiance.y) || !isfinite(radiance.z)) {
-	//	printf("pdf:%f bsdf:%f", pdf, bsdf);
-	//}
+	if (groupSetting.Acc) radiance /= groupFrameCount;
 	if (!isfinite(radiance.x) || !isfinite(radiance.y) || !isfinite(radiance.z)) radiance == glm::vec3(0.0f);
 	if (useExternSharedMemory && threadIdx.x < groupSppIndex * spp) {
 		//这是这里如果spp为32的整数倍，则可以先在warp中处理
@@ -333,15 +355,14 @@ FzbSVOPathGuidingCuda::FzbSVOPathGuidingCuda(std::shared_ptr<FzbRayTracingSource
 	this->setting = setting;
 	this->SVOCuda_PG = SVOCuda_PG;
 
-	CHECK(cudaMemcpyToSymbol(svoPathGuidingSetting, &setting, sizeof(FzbSVOPathGuidingCudaSetting)));
-
 	//设置cuda配置，更多的使用L1 cache
 	cudaFuncSetAttribute(svoPathGuiding_cuda<true>, cudaFuncAttributeMaxDynamicSharedMemorySize, (setting.spp >= sharedMemorySPP ? blockSize / setting.spp : 0) * sizeof(float3));	//3070 128KB，则L1 96KB，sharedMemory 32KB
 	cudaFuncSetAttribute(svoPathGuiding_cuda<false>, cudaFuncAttributeMaxDynamicSharedMemorySize, 0);
 }
+void FzbSVOPathGuidingCuda::updateSVOData(FzbSVOPathGuidingCudaSetting cudaSetting) {
+	CHECK(cudaMemcpyToSymbol(svoPathGuidingSetting, &cudaSetting, sizeof(FzbSVOPathGuidingCudaSetting)));
+}
 void FzbSVOPathGuidingCuda::SVOPathGuiding(HANDLE startSemaphoreHandle) {
-	this->sourceManager->createRuntimeSource();
-
 	VkExtent2D resolution = FzbRenderer::globalData.getResolution();
 	uint32_t texelCount = resolution.width * resolution.height;
 	uint32_t rayCount = texelCount * setting.spp;
@@ -370,7 +391,8 @@ void FzbSVOPathGuidingCuda::SVOPathGuiding(HANDLE startSemaphoreHandle) {
 			sourceManager->resultBuffer, sourceManager->vertices, sourceManager->materialTextures,
 			sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray, rayCount
 		);
-	//checkKernelFunction();
+	printf("PathGuiding：\n");
+	checkKernelFunction();
 	//CHECK(cudaDeviceSynchronize());
 	//this->meanRunTime += cpuSecond() - start;
 	//++runCount;

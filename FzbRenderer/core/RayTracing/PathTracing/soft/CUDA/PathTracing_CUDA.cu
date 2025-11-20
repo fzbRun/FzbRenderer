@@ -49,14 +49,15 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 	}
 	//if (threadIndex < systemCameraInfo.screenWidth * systemCameraInfo.screenHeight * spp) resultBuffer[threadIndex] = make_float4(0.0f);
 	if (sppLane == 0) {
-		float4 result = resultBuffer[resultIndex];
-		if (!isfinite(result.x) || !isfinite(result.y) || !isfinite(result.z)) {
-			resultBuffer[resultIndex] = make_float4(0.0f);
-		}
-		else {
-			//if (sppLane == 0) resultBuffer[resultIndex] = make_float4(0.0f);
-			resultBuffer[resultIndex] = result * ((float)groupFrameCount - 1) / (float)groupFrameCount;
-		}
+		if (groupSetting.Acc) {
+			if(groupFrameCount == 1) resultBuffer[resultIndex] = make_float4(0.0f);
+			float4 result = resultBuffer[resultIndex];
+			if (!isfinite(result.x) || !isfinite(result.y) || !isfinite(result.z))
+				resultBuffer[resultIndex] = make_float4(0.0f);
+			else 
+				resultBuffer[resultIndex] = result * ((float)groupFrameCount - 1) / (float)groupFrameCount;
+		}else resultBuffer[resultIndex] = make_float4(0.0f);
+
 	}
 	__syncthreads();
 
@@ -86,9 +87,10 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 
 	hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, ray, hitTriangleAttribute);
 	if (!hit) return;
-	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample);
+	radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray,
+		randomNumberSeed, groupSetting.useNEE, groupSetting.useSphericalRectangleSample);
 
-	uint32_t maxBonceDepth = 6;
+	uint32_t maxBonceDepth = groupSetting.maxDepth;
 	#pragma nounroll
 	while (maxBonceDepth > 0) {
 		randomNumberSeed += maxBonceDepth;
@@ -104,12 +106,14 @@ __global__ void pathTracing_cuda(float4* resultBuffer, const float* __restrict__
 		if (!hit) break;
 
 		bsdf *= getBSDF(lastHitTriangleAttribute, ray.direction, lastDirection, ray) * glm::abs(glm::dot(ray.direction, lastHitTriangleAttribute.normal));
-		radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray, randomNumberSeed, groupSetting.useSphericalRectangleSample) * bsdf / pdf;
+		if (bsdf == glm::vec3(0.0f)) break;
+		radiance += getRadiance(hitTriangleAttribute, ray, &lightSet, vertices, materialTextures, bvhNodeArray, bvhTriangleInfoArray,
+			randomNumberSeed, groupSetting.useNEE, groupSetting.useSphericalRectangleSample) * bsdf / pdf;
 		--maxBonceDepth;
 	}
 
 	radiance /= spp;
-	radiance /= groupFrameCount;
+	if (groupSetting.Acc) radiance /= groupFrameCount;
 	if (!isfinite(radiance.x) || !isfinite(radiance.y) || !isfinite(radiance.z)) {
 		radiance = glm::vec3(0.0f);
 	}
@@ -181,7 +185,7 @@ void FzbPathTracingCuda::pathTracing(HANDLE startSemaphoreHandle) {
 	if (setting.spp >= sharedMemorySPP) pathTracing_cuda<true> << <gridSize, blockSize, sharedMemorySize, sourceManager->stream >> > (sourceManager->resultBuffer, sourceManager->vertices, sourceManager->materialTextures, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray, rayCount);
 	else pathTracing_cuda<false> << <gridSize, blockSize, sharedMemorySize, sourceManager->stream >> > (sourceManager->resultBuffer, sourceManager->vertices, sourceManager->materialTextures, sourceManager->bvhNodeArray, sourceManager->bvhTriangleInfoArray, rayCount);
 #ifndef NDEBUG
-	CHECK(cudaDeviceSynchronize());
+	checkKernelFunction();
 	this->meanRunTime += cpuSecond() - start;
 	++runCount;
 	if (runCount == 20) {

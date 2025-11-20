@@ -10,6 +10,9 @@ FzbSVOPathGuiding_soft::FzbSVOPathGuiding_soft(pugi::xml_node& SVOPathGuidingNod
 
 	if (pugi::xml_node componentSettingNode = SVOPathGuidingNode_soft.child("rendererComponentSetting")) {
 		this->setting.spp = std::stoi(componentSettingNode.child("spp").attribute("value").value());
+		this->setting.Acc = std::string(componentSettingNode.child("spp").attribute("Acc").value()) == "true";
+		this->setting.maxDepth = std::stoi(componentSettingNode.child("maxDepth").attribute("value").value());
+		this->setting.useNEE = std::string(componentSettingNode.child("useNEE").attribute("value").value()) == "true";
 		this->setting.useSphericalRectangleSample = std::string(componentSettingNode.child("useSphericalRectangleSample").attribute("value").value()) == "true";
 	}
 
@@ -41,18 +44,15 @@ void FzbSVOPathGuiding_soft::init() {
 void FzbSVOPathGuiding_soft::presentPrepare(){
 	fzbCreateCommandBuffers(1);
 
-	FzbSVOPathGuidingCudaSetting cudaSetting;
 	cudaSetting.spp = setting.spp;
+	cudaSetting.Acc = setting.Acc;
+	cudaSetting.maxDepth = setting.maxDepth;
+	cudaSetting.useNEE = setting.useNEE;
 	cudaSetting.useSphericalRectangleSample = setting.useSphericalRectangleSample;
 	cudaSetting.voxelCount = setting.SVO_PGSetting.voxelNum;
 	cudaSetting.voxelSize = this->SVO_PG->uniformBufferObject.voxelSize_Num;
 	cudaSetting.voxelGroupStartPos = this->SVO_PG->uniformBufferObject.voxelStartPos;
-	cudaSetting.maxSVOLayer = this->SVO_PG->svoCuda_pg->SVONodes_maxDepth;
-	cudaSetting.SVOIndivisibleNodeTotalCount = this->SVO_PG->svoCuda_pg->SVOInDivisibleNodeTotalCount_host;
-	cudaSetting.SVONodeTotalCount = this->SVO_PG->svoCuda_pg->SVONodeTotalCount_host;
-	cudaSetting.SVONodes = this->SVO_PG->svoCuda_pg->SVONodes_multiLayer_Array;
-	cudaSetting.SVOLayerInfos = this->SVO_PG->svoCuda_pg->SVOLayerInfos;
-	cudaSetting.SVONodeWeights = this->SVO_PG->svoCuda_pg->SVONodeWeights;
+
 	svoPathGuidingCUDA = std::make_unique<FzbSVOPathGuidingCuda>(rayTracingSourceManager->sourceManagerCuda, cudaSetting, this->SVO_PG->svoCuda_pg);
 	
 	createBufferAndDescirptor();
@@ -128,11 +128,23 @@ void FzbSVOPathGuiding_soft::createRenderPass() {
 	renderRenderPass.addSubPass(presentSubPass);
 }
 
+void FzbSVOPathGuiding_soft::updateCudaSetting() {
+	cudaSetting.maxSVOLayer = this->SVO_PG->svoCuda_pg->SVONodes_maxDepth;
+	cudaSetting.SVONodeTotalCount_E = this->SVO_PG->svoCuda_pg->SVONode_E_TotalCount_host;
+	cudaSetting.SVONodes_G = this->SVO_PG->svoCuda_pg->SVONodes_G_multiLayer_Array;
+	cudaSetting.SVONodes_E = this->SVO_PG->svoCuda_pg->SVONodes_E_multiLayer_Array;
+	cudaSetting.SVOLayerInfos_E = this->SVO_PG->svoCuda_pg->SVOLayerInfos_E;
+	cudaSetting.SVONodeWeights = this->SVO_PG->svoCuda_pg->SVONodeWeights;
+	svoPathGuidingCUDA->updateSVOData(cudaSetting);
+}
 FzbSemaphore FzbSVOPathGuiding_soft::render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence) {
 	VkCommandBuffer commandBuffer = commandBuffers[0];
 	vkResetCommandBuffer(commandBuffer, 0);
 	fzbBeginCommandBuffer(commandBuffer);
 
+	this->rayTracingSourceManager->sourceManagerCuda->createRuntimeSource();
+	this->SVO_PG->svoCuda_pg->createSVOCuda_PG(nullptr);
+	updateCudaSetting();
 	svoPathGuidingCUDA->SVOPathGuiding(nullptr);
 	renderRenderPass.render(commandBuffer, imageIndex);
 

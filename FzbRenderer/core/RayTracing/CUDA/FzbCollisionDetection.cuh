@@ -13,7 +13,9 @@
 
 __device__ bool AABBCollisionDetection(FzbAABB AABB, FzbRay ray);
 __device__ bool meshCollisionDetection(const float* __restrict__ vertices, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, const cudaTextureObject_t* __restrict__ materialTextures,
-	FzbRay& ray, const FzbBvhNode& node, FzbBvhNodeTriangleInfo& hitTriangle, FzbTrianglePos& trianglePos);
+	FzbRay& ray, const FzbBvhNode& node,
+	FzbBvhNodeTriangleInfo& hitTriangle, FzbTrianglePos& trianglePos,
+	glm::vec3& normal, uint32_t& materialType);
 
 const int BVH_MAX_DEPTH = 16;
 __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray,

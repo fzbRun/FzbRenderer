@@ -12,7 +12,8 @@
 enum MaterialType {
 	diffuse = 0,
 	roughconductor = 1,
-	roughdielectric = 2
+	roughdielectric = 2,
+	dielectric = 3
 };
 struct FzbShaderVariant;
 struct FzbMaterial {

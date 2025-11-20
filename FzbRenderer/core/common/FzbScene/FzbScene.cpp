@@ -413,30 +413,22 @@ FzbMainScene::FzbMainScene(std::string path) {
 	for (pugi::xml_node shapeNode : shapesNode.children("shape")) {
 		std::string meshType = shapeNode.attribute("type").value();
 		std::string meshID = shapeNode.attribute("id").value();
-		pugi::xml_node tranform = shapeNode.select_node(".//transform[@name='to_world']").node();
-
-		//if (meshID == "Light") {
-		//	glm::mat4 modelMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
-		//	glm::vec3 strength = glm::vec3(1.0f);	//默认值
-		//	if (pugi::xml_node emitter = shapeNode.child("emitter")) 
-		//		strength = fzbGetRGBFromString(emitter.select_node(".//rgb[@name='radiance']").node().attribute("value").value());
-		//	
-		//	if (meshType == "point") {
-		//		glm::vec3 position = glm::vec3(modelMatrix * glm::vec4(1.0f));
-		//		this->sceneLights.push_back(FzbLight(position, strength));
-		//	}
-		//	else if (meshType == "rectangle") {
-		//		
-		//	}
-		//	continue;
-		//}
 
 		std::string materialID = "defaultMaterial";
 		if (pugi::xml_node material = shapeNode.select_node(".//ref").node()) materialID = material.attribute("id").value();
 		if (!sceneMaterials.count(materialID)) materialID = "defaultMaterial";
 
 		glm::mat4 transformMatrix(1.0f);
-		if (tranform) transformMatrix = fzbGetMat4FromString(tranform.child("matrix").attribute("value").value());
+		pugi::xml_node transform = shapeNode.select_node(".//transform[@name='to_world']").node();
+		if (transform) {
+			transformMatrix = fzbGetMat4FromString(transform.child("matrix").attribute("value").value());
+			if (pugi::xml_node rotateNode = transform.select_node(".//rgb[@name='rotate']").node()) {
+				glm::vec3 rotateAngle = glm::radians(fzbGetRGBFromString(rotateNode.attribute("value").value()));
+				if(rotateAngle.x > 0.01f) transformMatrix = glm::rotate(transformMatrix, rotateAngle.x, glm::vec3(1, 0, 0));
+				if(rotateAngle.y > 0.01f) transformMatrix = glm::rotate(transformMatrix, rotateAngle.y, glm::vec3(0, 1, 0));
+				if(rotateAngle.z > 0.01f) transformMatrix = glm::rotate(transformMatrix, rotateAngle.z, glm::vec3(0, 0, 1));
+			}
+		}
 
 		FzbMesh mesh;
 		if (meshType == "obj") {
@@ -445,9 +437,9 @@ FzbMainScene::FzbMainScene(std::string path) {
 			}
 			else throw std::runtime_error("obj文件没有路径");
 		}
-		else if (meshType == "rectangle") {
-			mesh.type = rectangle;
-		}else continue;
+		else if (meshType == "rectangle") mesh.type = rectangle;
+		else if (meshType == "cube") mesh.type = cube;
+		else continue;
 		mesh.transformMatrix = transformMatrix;
 		mesh.material = &sceneMaterials[materialID];
 		mesh.id = meshID;
@@ -482,6 +474,7 @@ void FzbMainScene::initScene(bool compress, bool isMainScene) {
 		FzbVertexFormat vertexFormat_all = fzbVertexFormatMergeUpward(mesh_nodata.vertexFormat, vertexFormat_allMesh_prepocess);
 		if (mesh_nodata.path == "") {
 			if (mesh_nodata.type == rectangle) fzbCreateRectangle(meshes_hasData[0], vertexFormat_all, mesh_nodata.transformMatrix);
+			else if (mesh_nodata.type == cube) fzbCreateCube(meshes_hasData[0], vertexFormat_all, mesh_nodata.transformMatrix);
 		}else meshes_hasData = fzbGetMeshFromOBJ(mesh_nodata.path, vertexFormat_all, mesh_nodata.transformMatrix);
 		for (int j = 0; j < meshes_hasData.size(); ++j) {
 			FzbMesh& mesh_hasData = meshes_hasData[j];
@@ -624,7 +617,7 @@ void FzbMainScene::createCameraAndLightDescriptor() {
 	cameraAndLightsDescriptorSetLayout = fzbCreateDescriptLayout(descriptorTypes.size(), descriptorTypes, descriptorShaderFlags);
 	cameraAndLightsDescriptorSet = fzbCreateDescriptorSet(cameraAndLigthsDescriptorPool, cameraAndLightsDescriptorSetLayout);
 
-	std::vector<VkWriteDescriptorSet> uniformDescriptorWrites(sceneCameras.size() + sceneLights.size());
+	std::vector<VkWriteDescriptorSet> uniformDescriptorWrites(2);	//sceneCameras.size() + sceneLights.size()
 	int index = 0;
 	VkDescriptorBufferInfo cameraUniformBufferInfo{};
 	if (useCameras) {

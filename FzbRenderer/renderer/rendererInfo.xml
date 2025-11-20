@@ -6,18 +6,6 @@
 	<rendererType value = "Forward">
 		<available value = "true" />
 	</rendererType>
-	<rendererType value = "PathTracing_soft">
-		<available value = "true" />
-		<rendererComponentSetting>
-			<spp value = "1" />
-			<useSphericalRectangleSample value = "true" />
-		</rendererComponentSetting>
-		<childComponents>
-			<featureComponent name = "BVH">
-				<available value = "true" />
-			</featureComponent>
-		</childComponents>
-	</rendererType>
 	<rendererType value = "SVO_PG_Debug">
 		<available value = "true" />
 		<rendererComponentSetting>
@@ -45,83 +33,28 @@
 			</featureComponentSetting>
 		</featureComponent>
 	</featureComponents> 
-	
-	<rendererType value = "SVO_PG_Debug">
-		<available value = "true" />
-		<rendererComponentSetting>
-			<voxelAABBDebugInfo value = "true" />
-			<voxelIrradianceDebugInfo value = "false" />
-			<OctreeNodeDebugInfo value = "false" />
-			<SVONodeClusterDebugInfo value = "false" level = "1" />
-		</rendererComponentSetting>
-		<childComponents>
-			<featureComponent name = "SVO_PG">
-				<available value = "true" />
-				<featureComponentSetting>
-					<voxelNum value = "64" />
-					<useCube value = "true" />
-					<lightInjectSPP value = "4" />
 
-					<irradianceRelRatioThreshold value = "0.3" />
-					<ignoreIrradianceValueThreshold value = "100.0" />
-					<surfaceAreaThreshold value = "1.5" />
-					<voxelMultiple value = "16.0" />
-
-				</featureComponentSetting>
-				<childComponents>
-					<featureComponent name = "BVH">
-						<available value = "true" />
-					</featureComponent>
-				</childComponents>
-			</featureComponent>
-		</childComponents>
-	</rendererType>
-	
-	<rendererType value = "SVOPathGuiding_soft">
-		<available value = "true" />
-		<rendererComponentSetting>
-			<spp value = "1" />
-			<useSphericalRectangleSample value = "true" />
-		</rendererComponentSetting>
-		<childComponents>
-			<featureComponent name = "SVO_PG">
-				<available value = "true" />
-				<featureComponentSetting>
-					<voxelNum value = "64" />
-					<useCube value = "true" />
-					<lightInjectSPP value = "16" />
-
-					<irradianceRelRatioThreshold value = "0.3" />
-					<ignoreIrradianceValueThreshold value = "100.0" />
-					<surfaceAreaThreshold value = "1.5" />
-					<voxelMultiple value = "16.0" />
-				</featureComponentSetting>
-				<childComponents>
-					<featureComponent name = "BVH">
-						<available value = "true" />
-					</featureComponent>
-				</childComponents>
-			</featureComponent>
-		</childComponents>
-	</rendererType>
 	-->
 
 	<rendererType value = "SVOPathGuiding_soft">
 		<available value = "true" />
 		<rendererComponentSetting>
-			<spp value = "1" />
+			<spp value = "1" Acc = "true"/>
+			<maxDepth value = "16" />
+			<useNEE value = "false" />
 			<useSphericalRectangleSample value = "true" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "SVO_PG">
 				<available value = "true" />
 				<featureComponentSetting>
-					<voxelNum value = "64" />
+					<voxelNum value = "16" />
 					<useCube value = "false" />
-					<lightInjectSPP value = "16" />
+					<lightInjectSPP value = "1" />
 
 					<irradianceRelRatioThreshold value = "0.5" />
-					<cosineDiffThreshold value = "0.707" />
+					<entropyThreshold value = "0.35" />
+
 				</featureComponentSetting>
 				<childComponents>
 					<featureComponent name = "BVH">
@@ -131,31 +64,49 @@
 			</featureComponent>
 		</childComponents>
 	</rendererType>
-
+	
 	
 </renderer>
 
 <!--
-					
+
+	<rendererType value = "PathTracing_soft">
+		<available value = "true" />
+		<rendererComponentSetting>
+			<spp value = "1" Acc = "false"/>
+			<maxDepth value = "1" />
+			<useNEE value = "false" />
+			<useSphericalRectangleSample value = "true" />
+		</rendererComponentSetting>
+		<childComponents>
+			<featureComponent name = "BVH">
+				<available value = "true" />
+			</featureComponent>
+		</childComponents>
+	</rendererType>
+	
+	-->
+
+<!--				
 	<rendererType value = "SVO_PG_Debug">
 		<available value = "true" />
 		<rendererComponentSetting>
 			<voxelAABBDebugInfo value = "false" />
 			<voxelIrradianceDebugInfo value = "false" />
-			<OctreeNodeDebugInfo value = "false" />
-			<SVONodeClusterDebugInfo value = "true" lookCube = "false" />
-			<SVOWeightsDebugInfo value = "false" />
+			<OctreeNodeDebugInfo value = "false" isG = "false"/>
+			<SVONodeClusterDebugInfo value = "false" isG = "false"/>
+			<SVOWeightsDebugInfo value = "true" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "SVO_PG">
 				<available value = "true" />
 				<featureComponentSetting>
-					<voxelNum value = "64" />
+					<voxelNum value = "32" />
 					<useCube value = "false" />
 					<lightInjectSPP value = "1" />
 
-					<irradianceRelRatioThreshold value = "0.2" />
-					<cosineDiffThreshold value = "0.707" />
+					<irradianceRelRatioThreshold value = "0.5" />
+					<entropyThreshold value = "0.35" />
 
 				</featureComponentSetting>
 				<childComponents>
@@ -171,19 +122,22 @@
 	<rendererType value = "SVOPathGuiding_soft">
 		<available value = "true" />
 		<rendererComponentSetting>
-			<spp value = "1" />
+			<spp value = "1" Acc = "true"/>
+			<maxDepth value = "16" />
+			<useNEE value = "false" />
 			<useSphericalRectangleSample value = "true" />
 		</rendererComponentSetting>
 		<childComponents>
 			<featureComponent name = "SVO_PG">
 				<available value = "true" />
 				<featureComponentSetting>
-					<voxelNum value = "64" />
+					<voxelNum value = "32" />
 					<useCube value = "false" />
-					<lightInjectSPP value = "16" />
+					<lightInjectSPP value = "1" />
 
 					<irradianceRelRatioThreshold value = "0.5" />
-					<cosineDiffThreshold value = "0.707" />
+					<entropyThreshold value = "0.35" />
+
 				</featureComponentSetting>
 				<childComponents>
 					<featureComponent name = "BVH">

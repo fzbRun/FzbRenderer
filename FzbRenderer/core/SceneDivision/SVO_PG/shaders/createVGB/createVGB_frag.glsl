@@ -2,6 +2,7 @@
 #extension GL_EXT_shader_atomic_float : enable
 
 layout(location = 0) in vec3 worldPos;
+layout(location = 1) in flat vec3 normal;
 
 layout(set = 0, binding = 0) uniform voxelBufferObject{
 	mat4 VP[3];
@@ -155,11 +156,9 @@ void main() {
 		}
 	}
 	
-	vec3 tangent = normalize(dFdx(worldPos));
-	vec3 bitangent = normalize(dFdy(worldPos));
-	vec3 normal =  normalize(cross(bitangent, tangent));
+	vec3 normal_G = normalize(normal);
 	atomicAdd(vgb[voxelIndexU].meanNormal_G.w, 1.0f);
-	atomicAdd(vgb[voxelIndexU].meanNormal_G.x, normal.x);
-	atomicAdd(vgb[voxelIndexU].meanNormal_G.y, normal.y);
-	atomicAdd(vgb[voxelIndexU].meanNormal_G.z, normal.z);
+	atomicAdd(vgb[voxelIndexU].meanNormal_G.x, normal_G.x);
+	atomicAdd(vgb[voxelIndexU].meanNormal_G.y, normal_G.y);
+	atomicAdd(vgb[voxelIndexU].meanNormal_G.z, normal_G.z);
 }

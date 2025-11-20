@@ -41,20 +41,20 @@ __device__ bool AABBCollisionDetection(FzbAABB AABB, FzbRay ray) {
 	return true;
 }
 __device__ bool meshCollisionDetection(const float* __restrict__ vertices, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, const cudaTextureObject_t* __restrict__ materialTextures,
-	FzbRay& ray, const FzbBvhNode& node, FzbBvhNodeTriangleInfo& hitTriangle, FzbTrianglePos& hitTrianglePos) {
+	FzbRay& ray, const FzbBvhNode& node,
+	FzbBvhNodeTriangleInfo& hitTriangle, FzbTrianglePos& hitTrianglePos, glm::vec3& normal, uint32_t& materialType) {
 	bool hit = false;
 	FzbBvhNodeTriangleInfo triangle;
 	FzbTrianglePos trianglePos;
 	for (int i = 0; i < node.triangleCount; ++i) {	//对于划分不开的node或maxDepth的node，可能包含多个三角形
 		triangle = bvhTriangleInfoArray[node.rightNodeIndex + i];
-		uint32_t materialType = 0;
 		getTriangleAttribute(vertices, triangle, trianglePos, materialType);
 
 		glm::vec3 E1 = trianglePos.pos1 - trianglePos.pos0;
 		glm::vec3 E2 = trianglePos.pos2 - trianglePos.pos0;
+		normal = glm::normalize(glm::cross(E1, E2));
 
-		if (materialType != 2) {
-			glm::vec3 normal = glm::normalize(glm::cross(E1, E2));
+		if (materialType != 2 && materialType != 3) {
 			if (glm::dot(normal, -ray.direction) <= 0) continue;	//打到了背面，不算撞到，这里应该考虑折射材质的，后面再说吧
 		}
 
@@ -81,6 +81,12 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 	FzbTrianglePos bestHitTrianglePos;
 	bool anyHit = false;
 	nodeIndices[stackTop] = 0;
+
+	FzbBvhNodeTriangleInfo hitTriangle;
+	FzbTrianglePos hitTrianglePos;
+	glm::vec3 hitTriangleNormal;
+	uint32_t hitTriangleMaterialType;
+
 	while (stackTop > -1) {
 		const volatile uint32_t& nodeIndex = nodeIndices[stackTop];
 		const FzbBvhNode& node = bvhNodeArray[nodeIndex];
@@ -89,11 +95,11 @@ __device__ bool sceneCollisionDetection(const FzbBvhNode* __restrict__ bvhNodeAr
 			continue;
 		}
 		if (node.leftNodeIndex == 0) {	//如果撞到叶节点了，则进行mesh碰撞检测
-			FzbBvhNodeTriangleInfo hitTriangle;
-			FzbTrianglePos hitTrianglePos;
-			if (meshCollisionDetection(vertices, bvhTriangleInfoArray, materialTextures, ray, node, hitTriangle, hitTrianglePos)) {
+			if (meshCollisionDetection(vertices, bvhTriangleInfoArray, materialTextures, ray, node, hitTriangle, hitTrianglePos, hitTriangleNormal, hitTriangleMaterialType)) {
 				bestHitTriangle = hitTriangle;
 				bestHitTrianglePos = hitTrianglePos;
+				triangleAttribute.normal = hitTriangleNormal;
+				triangleAttribute.materialType = hitTriangleMaterialType;
 				anyHit = true;
 			}
 			--stackTop;;

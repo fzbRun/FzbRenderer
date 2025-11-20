@@ -18,6 +18,6 @@ void main() {
 	uint texelY = uint(texel.y * screenHeight);
 	uint resultIndex = texelX + texelY * screenWidth;
 	vec3 result = result[resultIndex].xyz;
-	if (length(result) > 1.0f) result = normalize(result);
+	//if (length(result) > 1.0f) result = normalize(result);
 	fragColor = vec4(result, 1.0f);
 }
