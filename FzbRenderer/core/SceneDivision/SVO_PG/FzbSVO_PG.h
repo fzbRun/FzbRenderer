@@ -50,6 +50,8 @@ public:
 	void createOctreeBuffers(bool isG);
 	void createSVOBuffers(bool isG, bool useDeviceAddress = true);
 	void createSVOWeightsBuffer();
+
+	void createSVO_PG();
 private:
 	void addExtensions();
 
@@ -61,7 +63,6 @@ private:
 
 	void createVGBRenderPass();
 	void createVGB();
-	void createSVO_PG();
 };
 
 struct FzbSVOSetting_PG_Debug {

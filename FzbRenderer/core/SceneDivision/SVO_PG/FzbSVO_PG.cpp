@@ -38,7 +38,6 @@ void FzbSVO_PG::init() {
 	FzbVGBUniformData VGBUniformData = { setting.voxelNum, glm::vec3(uniformBufferObject.voxelSize_Num), uniformBufferObject.voxelStartPos };
 	svoCuda_pg = std::make_shared<FzbSVOCuda_PG>(rayTracingSourceManager.sourceManagerCuda, setting, VGBUniformData, VGB, SVOFinishedSemaphore.handle, setting.thresholds);
 	createVGB();
-	//createSVO_PG();
 }
 void FzbSVO_PG::clean() {
 	FzbFeatureComponent_PreProcess::clean();
@@ -218,6 +217,7 @@ void FzbSVO_PG::createVGB() {
 	fzbSubmitCommandBuffer(commandBuffer, {}, waitStages, { VGBFinishedSemaphore.semaphore });
 }
 void FzbSVO_PG::createSVO_PG() {
+	this->rayTracingSourceManager.sourceManagerCuda->createRuntimeSource();
 	svoCuda_pg->createSVOCuda_PG(VGBFinishedSemaphore.handle);
 }
 
@@ -328,6 +328,7 @@ void FzbSVO_PG_Debug::createImages() {
 }
 void FzbSVO_PG_Debug::init() {
 	FzbFeatureComponent_LoopRender::init();
+	this->SVO_PG->createSVO_PG();
 	presentPrepare();
 }
 FzbSemaphore FzbSVO_PG_Debug::render(uint32_t imageIndex, FzbSemaphore startSemaphore, VkFence fence) {

@@ -92,7 +92,7 @@
 		</bsdf>
 		
 		<bsdf type="roughconductor" id="Pot3BSDF">
-			<float name="alpha" value="0.5" />
+			<float name="alpha" value="0.15" />
 			<string name="distribution" value="beckmann" />
 			<rgb name="specular_reflectance" value="1, 1, 1" />
 			<rgb name="eta" value="1.91, 1.31, 0.82" />

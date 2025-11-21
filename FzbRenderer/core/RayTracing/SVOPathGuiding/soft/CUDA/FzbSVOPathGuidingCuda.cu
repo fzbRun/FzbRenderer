@@ -238,7 +238,8 @@ __global__ void svoPathGuiding_cuda(
 		lightSet.pointLightInfoArray = groupPointLightInfoArray;
 		lightSet.areaLightInfoArray = grouprAreaLightInfoArray;
 	}
-	__syncwarp();
+	__syncthreads();
+
 	if (threadIdx.x < groupSetting.maxSVOLayer) {
 		groupSVOLayerInfos_E[threadIdx.x] = groupSetting.SVOLayerInfos_E[threadIdx.x];
 		groupSVONodesArray_G[threadIdx.x] = groupSetting.SVONodes_G[threadIdx.x];

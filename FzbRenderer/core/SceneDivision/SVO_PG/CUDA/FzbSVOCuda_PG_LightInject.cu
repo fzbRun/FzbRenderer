@@ -27,7 +27,7 @@ __device__ void lightInject_getRadiance(FzbTriangleAttribute& triangleAttribute,
 	const float* __restrict__ vertices, const cudaTextureObject_t* __restrict__ materialTextures,
 	const FzbBvhNode* __restrict__ bvhNodeArray, const FzbBvhNodeTriangleInfo* __restrict__ bvhTriangleInfoArray, uint32_t& randomNumberSeed,
 	glm::vec3& irradiance, glm::vec3& radiance) {
-	irradiance = triangleAttribute.emissive * glm::max(glm::dot(-ray.direction, triangleAttribute.normal), 0.0f);
+	irradiance = triangleAttribute.emissive;
 	radiance = triangleAttribute.emissive * glm::max(glm::dot(-ray.direction, triangleAttribute.normal), 0.0f);
 	FzbRay tempRay;
 	FzbTriangleAttribute hitTriangleAttribute;
@@ -61,8 +61,7 @@ __device__ void lightInject_getRadiance(FzbTriangleAttribute& triangleAttribute,
 		float r = glm::length(direction);
 
 		bool hit = sceneCollisionDetection(bvhNodeArray, bvhTriangleInfoArray, vertices, materialTextures, tempRay, hitTriangleAttribute, false);
-		if (!hit) continue;
-		else if (abs(tempRay.depth - r) > 0.1f) continue;
+		if (!hit || tempRay.depth < r - 0.01f) continue;
 
 		glm::vec3 lightRadiance_cosTheta = light.radiance * glm::clamp(glm::dot(triangleAttribute.normal, tempRay.direction), 0.0f, 1.0f);
 		lightRadiance_cosTheta *= light.area;	// pdf = 1 / area
@@ -181,6 +180,11 @@ __global__ void lightInject_cuda(FzbVoxelData_PG* VGB,
 		}
 		glm::vec3 radiance = voxelRadiance[pathLength - 1];
 		for (int i = pathLength - 2; i >= 0; --i) {
+			//if (voxelNormals[i] == glm::vec3(0.0f, 1.0f, 0.0f) && voxelNormals[i + 1] == glm::vec3(0.0f, 0.0f, 1.0f))
+			//	printf("%f %f %f %f %f %f\n",
+			//		radiance.x, radiance.y, radiance.z,
+			//		voxelIrradiances[pathLength - 1].x, voxelIrradiances[pathLength - 1].y, voxelIrradiances[pathLength - 1].z);
+
 			voxelIrradiances[i] += radiance * voxelCosTheta[i];
 			radiance = voxelRadiance[i] + radiance * voxelCosTheta[i] * voxelBSDF[i] / voxelPDF[i];
 

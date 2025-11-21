@@ -1801,6 +1801,7 @@ __global__ void initSVO_G(FzbSVONodeData_PG_G* SVO, uint32_t svoCount) {
 	data.indivisible = 1;
 	data.label = 0;
 	initAABB_SVO(data.AABB);
+	data.entropy = 0.0f;
 	data.meanNormal = glm::vec3(0.0f);
 	SVO[threadIndex] = data;
 }
@@ -1812,31 +1813,39 @@ __global__ void initSVO_E(FzbSVONodeData_PG_E* SVO, uint32_t svoCount) {
 	data.indivisible = 1;
 	data.label = 0;
 	initAABB_SVO(data.AABB);
+	data.notIgnoreRatio = 1.0f;
 	data.irradiance = glm::vec3(0.0f);
+	data.meanNormal = glm::vec3(0.0f);
 	SVO[threadIndex] = data;
 }
 void FzbSVOCuda_PG::initCreateSVONodesSource(bool allocate) {
-	if (allocate) {	//避免循环时分配和销毁显存，所以开辟最大范围的空间
+	//避免循环时分配和销毁显存，所以开辟最大范围的空间
+	if (allocate) {
 		this->SVONodes_multiLayer_G.resize(SVONodes_maxDepth);
 		SVONodes_multiLayer_G[0] = nullptr;
-		for (int i = 1; i < SVONodes_maxDepth; ++i) {
-			uint32_t nodeCount = SVONodesMaxCount[i];	// std::pow(8, i);
-			CHECK(cudaMalloc((void**)&SVONodes_multiLayer_G[i], nodeCount * sizeof(FzbSVONodeData_PG_G)));
-			uint32_t blockSize = nodeCount > 1024 ? 1024 : nodeCount;
-			uint32_t gridSize = (nodeCount + blockSize - 1) / blockSize;
-			initSVO_G << <gridSize, blockSize, 0, stream >> > (this->SVONodes_multiLayer_G[i], nodeCount);
-		}
+	}
 
+	for (int i = 1; i < SVONodes_maxDepth; ++i) {
+		uint32_t nodeCount = SVONodesMaxCount[i];	// std::pow(8, i);
+		if(allocate) CHECK(cudaMalloc((void**)&SVONodes_multiLayer_G[i], nodeCount * sizeof(FzbSVONodeData_PG_G)));
+		uint32_t blockSize = nodeCount > 1024 ? 1024 : nodeCount;
+		uint32_t gridSize = (nodeCount + blockSize - 1) / blockSize;
+		initSVO_G << <gridSize, blockSize, 0, stream >> > (this->SVONodes_multiLayer_G[i], nodeCount);
+	}
+
+	if (allocate) {
 		this->SVONodes_multiLayer_E.resize(SVONodes_maxDepth);
 		SVONodes_multiLayer_E[0] = nullptr;
-		for (int i = 1; i < SVONodes_maxDepth; ++i) {
-			uint32_t nodeCount = SVONodesMaxCount[i];	// std::pow(8, i);
-			CHECK(cudaMalloc((void**)&SVONodes_multiLayer_E[i], nodeCount * sizeof(FzbSVONodeData_PG_E)));
-			uint32_t blockSize = nodeCount > 1024 ? 1024 : nodeCount;
-			uint32_t gridSize = (nodeCount + blockSize - 1) / blockSize;
-			initSVO_E << <gridSize, blockSize, 0, stream >> > (this->SVONodes_multiLayer_E[i], nodeCount);
-		}
+	}
+	for (int i = 1; i < SVONodes_maxDepth; ++i) {
+		uint32_t nodeCount = SVONodesMaxCount[i];	// std::pow(8, i);
+		if(allocate)  CHECK(cudaMalloc((void**)&SVONodes_multiLayer_E[i], nodeCount * sizeof(FzbSVONodeData_PG_E)));
+		uint32_t blockSize = nodeCount > 1024 ? 1024 : nodeCount;
+		uint32_t gridSize = (nodeCount + blockSize - 1) / blockSize;
+		initSVO_E << <gridSize, blockSize, 0, stream >> > (this->SVONodes_multiLayer_E[i], nodeCount);
+	}
 
+	if (allocate) {	
 		this->SVONodeThreadBlockInfos.resize(SVONodes_maxDepth);
 		for (int i = 0; i < SVONodes_maxDepth; ++i) {
 			uint32_t nodeCount = SVONodesMaxCount[i];	// std::pow(8, i);
@@ -1861,14 +1870,15 @@ void FzbSVOCuda_PG::initCreateSVONodesSource(bool allocate) {
 
 	if (allocate) CHECK(cudaMalloc((void**)&this->SVOLayerInfos_G, SVONodes_maxDepth * sizeof(FzbSVOLayerInfo)));
 	CHECK(cudaMemset(this->SVOLayerInfos_G, 0, SVONodes_maxDepth * sizeof(FzbSVOLayerInfo)));
+
+	if (allocate) CHECK(cudaMalloc((void**)&this->SVOLayerInfos_E, SVONodes_maxDepth * sizeof(FzbSVOLayerInfo)));
+	CHECK(cudaMemset(this->SVOLayerInfos_E, 0, SVONodes_maxDepth * sizeof(FzbSVOLayerInfo)));
+
 	FzbSVOLayerInfo rootLayer = { 1, 0 };
 	CHECK(cudaMemcpy(this->SVOLayerInfos_G, &rootLayer, sizeof(FzbSVOLayerInfo), cudaMemcpyHostToDevice));
-
-	if(allocate) CHECK(cudaMalloc((void**)&this->SVOLayerInfos_E, SVONodes_maxDepth * sizeof(FzbSVOLayerInfo)));
-	CHECK(cudaMemset(this->SVOLayerInfos_E, 0, SVONodes_maxDepth * sizeof(FzbSVOLayerInfo)));
 	CHECK(cudaMemcpy(this->SVOLayerInfos_E, &rootLayer, sizeof(FzbSVOLayerInfo), cudaMemcpyHostToDevice));
 
-	if (allocate) {
+	if(allocate) {
 		SVOLayerInfos_G_host.resize(SVONodes_maxDepth);
 		SVOLayerInfos_G_host[0] = { 1, 0 };
 

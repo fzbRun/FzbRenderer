@@ -388,7 +388,7 @@ __global__ void getSVONodesWeight_device(
 						float doubleSide = min(glm::length(targetNodeData_E.meanNormal), 1.0f);
 						cosine = dot(glm::normalize(targetNodeData_E.meanNormal), -ray.direction);
 						if (cosine > 0) cosine *= doubleSide;
-						else cosine *= (1.0f - doubleSide);
+						else cosine = abs(cosine) * (1.0f - doubleSide);
 					}
 						
 					//if (useG) cosine *= max(dot(normalizeNormal, ray.direction), 0.0f);
@@ -495,15 +495,17 @@ void FzbSVOCuda_PG::initGetSVONodesWeightSource(bool allocate) {
 
 		CHECK(cudaMalloc((void**)&this->SVONodes_E_multiLayer_Array, this->SVONodes_maxDepth * sizeof(FzbSVONodeData_PG_E*)));
 		CHECK(cudaMemcpy(this->SVONodes_E_multiLayer_Array, SVONodes_multiLayer_E.data(), this->SVONodes_maxDepth * sizeof(FzbSVONodeData_PG_E*), cudaMemcpyHostToDevice));
-	
-		//最终的weiht，每个不可分node对应每个SVONode(包括无值)之间的weight
-		uint32_t maxIndivisibleNodeTotalCount_G = 0;
-		uint32_t maxTotalNodeCount_E = 0;
-		for (int i = 1; i < this->SVONodes_maxDepth; ++i) {
-			maxIndivisibleNodeTotalCount_G += SVONodesMaxCount[i];
-			maxTotalNodeCount_E += SVONodesMaxCount[i];
-		}
+	}
 
+	//最终的weiht，每个不可分node对应每个SVONode(包括无值)之间的weight
+	uint32_t maxIndivisibleNodeTotalCount_G = 0;
+	uint32_t maxTotalNodeCount_E = 0;
+	for (int i = 1; i < this->SVONodes_maxDepth; ++i) {
+		maxIndivisibleNodeTotalCount_G += SVONodesMaxCount[i];
+		maxTotalNodeCount_E += SVONodesMaxCount[i];
+	}
+
+	if (allocate) {
 		CHECK(cudaMalloc((void**)&this->SVODivisibleNodeBlockWeight, maxIndivisibleNodeTotalCount_G * SVONodesMaxCount[SVONodesMaxCount.size() - 3] * sizeof(float)));
 		CHECK(cudaMemset(SVODivisibleNodeBlockWeight, 0, maxIndivisibleNodeTotalCount_G * SVONodesMaxCount[SVONodesMaxCount.size() - 3] * sizeof(float)));
 
@@ -511,6 +513,6 @@ void FzbSVOCuda_PG::initGetSVONodesWeightSource(bool allocate) {
 		CHECK(cudaMemset(SVOFatherDivisibleNodeBlockWeight, 0, maxIndivisibleNodeTotalCount_G * SVONodesMaxCount[SVONodesMaxCount.size() - 2] * sizeof(float)));
 
 		CHECK(cudaMalloc((void**)&this->SVONodeWeights, maxIndivisibleNodeTotalCount_G * maxTotalNodeCount_E * sizeof(float)));
-		CHECK(cudaMemset(this->SVONodeWeights, 0, maxIndivisibleNodeTotalCount_G * maxTotalNodeCount_E * sizeof(float)));
 	}
+	CHECK(cudaMemset(this->SVONodeWeights, 0, maxIndivisibleNodeTotalCount_G * maxTotalNodeCount_E * sizeof(float)));
 }

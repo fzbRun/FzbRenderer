@@ -1,7 +1,7 @@
 <renderer>
 	<name value = "FzbRenderer" />
 	<resolution width = "1280" height = "720" />
-	<sceneXML path = "/scenes/bearBox" />
+	<sceneXML path = "/scenes/veach-ajar" />
 	<!--
 	<rendererType value = "Forward">
 		<available value = "true" />
@@ -39,7 +39,7 @@
 	<rendererType value = "SVOPathGuiding_soft">
 		<available value = "true" />
 		<rendererComponentSetting>
-			<spp value = "1" Acc = "true"/>
+			<spp value = "1" Acc = "false"/>
 			<maxDepth value = "16" />
 			<useNEE value = "false" />
 			<useSphericalRectangleSample value = "true" />
