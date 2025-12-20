@@ -16,6 +16,9 @@
   - 使用多线程对顶点数据进行压缩，去除冗余顶点数据
   - 所有的 Mesh 共用一个顶点缓冲，即使顶点数据格式不同，如有的只有 pos，有的同时有 pos 和 normal，缓冲除了几个字节的 padding 外没有冗余。
   - 渲染只需要在最开始绑定一次顶点缓冲
+- **Shader 变体**：
+  - 自定义 shader 类实现宏处理和 shader 变体
+  - 每个 shader 变体对应一个 meshSet，只有当 shader 变体改变时才会换绑 pipeline
 - **BVH**：使用 cuda 实现 BVH 的构建
 - **SVO**：
   - 使用光栅体素化得到均匀体素网格(Buffer)
