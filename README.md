@@ -11,6 +11,7 @@
 - **xml 交互**：
   - 用户可以在 renderInfo/renderInfo.xml 中指定使用的渲染器以及相应参数
   - 用户可以在 resources/xxx/sceneInfo.xml 中指定 xxx 场景的信息，如相机参数、材质、光照、mesh(与[mitsuba 3](https://www.mitsuba-renderer.org/)相似)
+  - 用户可以在 xxx/shaderInfo.xml 中指定 xxxshader 的信息，如 shader 需要的顶点属性、管线设置(如背面剔除)、着色器版本等
 - **模型读取**：可以对 obj 文件进行读取
 - **顶点缓冲优化**：
   - 使用多线程对顶点数据进行压缩，去除冗余顶点数据
