@@ -1,6 +1,6 @@
 # FzbRenderer
 
-<img src="./result/SVOPathGuiding/cover.png" alt="RendererCover" style="width:100%; border-radius:6px; display:block;" />
+<img src="./result/SVOPathGuiding/PG2.png" alt="RendererCover" style="width:100%; border-radius:6px; display:block;" />
 
 ## 项目简介
 
